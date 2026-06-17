@@ -1,0 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Inter:wght@400;500;600;700&family=Kalam:wght@400;700&family=Playfair+Display:ital,wght@0,400;1,400;1,600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-handwritten: "Kalam", "Architects Daughter", cursive;
+  --font-serif: "Playfair Display", Georgia, serif;
+}
+
+body {
+  background-color: #fdfaf6; /* Warm off-white amber background */
+  color: #2d2319; /* Warm dark brown primary text */
+  font-family: var(--font-sans);
+}
+
+.dark body {
+  background-color: #1a1612; /* Warm dark amber background */
+  color: #f7ede2;
+}

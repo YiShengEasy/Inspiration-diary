@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "ImageCard": {
+      "title": "Image Card",
+      "description": "An image with design terms that is stored on a specific day of a week.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "weekId": { "type": "string" },
+        "dayIndex": { "type": "integer" },
+        "imageUrl": { "type": "string" },
+        "terms": { "type": "array" },
+        "decoType": { "type": "string" },
+        "angle": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "weekId", "dayIndex", "imageUrl", "terms", "decoType", "angle", "createdAt"]
+    },
+    "WeeklyNote": {
+      "title": "Weekly Note",
+      "description": "A full-width, height-adjustable text note for a specific week.",
+      "type": "object",
+      "properties": {
+        "weekId": { "type": "string" },
+        "note": { "type": "string" },
+        "height": { "type": "integer" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["weekId", "note", "height"]
+    }
+  },
+  "firestore": {
+    "/cards/{cardId}": {
+      "schema": "ImageCard",
+      "description": "The cards uploaded and analyzed by week and day."
+    },
+    "/notes/{weekId}": {
+      "schema": "WeeklyNote",
+      "description": "The weekly full-width notes."
+    }
+  }
+}
