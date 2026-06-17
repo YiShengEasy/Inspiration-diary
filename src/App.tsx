@@ -10,6 +10,8 @@ import {
   saveCard,
   deleteCard,
   updateCardTerms,
+  loadSettings,
+  saveSettings,
 } from "./lib/dbClient";
 import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
@@ -52,6 +54,18 @@ export default function App() {
   const [anthropicModel, setAnthropicModel] = useState<string>(() => {
     return localStorage.getItem("custom_anthropic_model") || "claude-3-5-sonnet-latest";
   });
+  const [thirdPartyApiKey, setThirdPartyApiKey] = useState<string>(() => {
+    return localStorage.getItem("custom_thirdparty_api_key") || "";
+  });
+  const [thirdPartyBaseUrl, setThirdPartyBaseUrl] = useState<string>(() => {
+    return localStorage.getItem("custom_thirdparty_base_url") || "";
+  });
+  const [thirdPartyModel, setThirdPartyModel] = useState<string>(() => {
+    return localStorage.getItem("custom_thirdparty_model") || "";
+  });
+  const [thirdPartyThinking, setThirdPartyThinking] = useState<boolean>(() => {
+    return localStorage.getItem("custom_thirdparty_thinking") === "true";
+  });
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
   const dragStartRef = useRef<number | null>(null);
@@ -70,6 +84,24 @@ export default function App() {
   useEffect(() => {
     setWeekId(getWeekIdentifier(currentDate));
   }, [currentDate]);
+
+  // Load AI settings from DB on startup (DB values take priority over localStorage)
+  useEffect(() => {
+    loadSettings().then((dbSettings) => {
+      if (Object.keys(dbSettings).length === 0) return;
+      if (dbSettings.custom_provider) { setCustomProvider(dbSettings.custom_provider); localStorage.setItem("custom_provider", dbSettings.custom_provider); }
+      if (dbSettings.custom_gemini_api_key !== undefined) { setCustomApiKey(dbSettings.custom_gemini_api_key); localStorage.setItem("custom_gemini_api_key", dbSettings.custom_gemini_api_key); }
+      if (dbSettings.custom_gemini_base_url !== undefined) { setCustomGeminiBaseUrl(dbSettings.custom_gemini_base_url); localStorage.setItem("custom_gemini_base_url", dbSettings.custom_gemini_base_url); }
+      if (dbSettings.custom_gemini_model) { setSelectedModel(dbSettings.custom_gemini_model); localStorage.setItem("custom_gemini_model", dbSettings.custom_gemini_model); }
+      if (dbSettings.custom_anthropic_auth_token !== undefined) { setAnthropicAuthToken(dbSettings.custom_anthropic_auth_token); localStorage.setItem("custom_anthropic_auth_token", dbSettings.custom_anthropic_auth_token); }
+      if (dbSettings.custom_anthropic_base_url) { setAnthropicBaseUrl(dbSettings.custom_anthropic_base_url); localStorage.setItem("custom_anthropic_base_url", dbSettings.custom_anthropic_base_url); }
+      if (dbSettings.custom_anthropic_model) { setAnthropicModel(dbSettings.custom_anthropic_model); localStorage.setItem("custom_anthropic_model", dbSettings.custom_anthropic_model); }
+      if (dbSettings.custom_thirdparty_api_key !== undefined) { setThirdPartyApiKey(dbSettings.custom_thirdparty_api_key); localStorage.setItem("custom_thirdparty_api_key", dbSettings.custom_thirdparty_api_key); }
+      if (dbSettings.custom_thirdparty_base_url !== undefined) { setThirdPartyBaseUrl(dbSettings.custom_thirdparty_base_url); localStorage.setItem("custom_thirdparty_base_url", dbSettings.custom_thirdparty_base_url); }
+      if (dbSettings.custom_thirdparty_model !== undefined) { setThirdPartyModel(dbSettings.custom_thirdparty_model); localStorage.setItem("custom_thirdparty_model", dbSettings.custom_thirdparty_model); }
+      if (dbSettings.custom_thirdparty_thinking !== undefined) { const v = dbSettings.custom_thirdparty_thinking === "true"; setThirdPartyThinking(v); localStorage.setItem("custom_thirdparty_thinking", String(v)); }
+    }).catch((err) => console.error("Failed to load settings from DB:", err));
+  }, []);
 
   // Handle Dark mode sync
   useEffect(() => {
@@ -229,6 +261,12 @@ export default function App() {
         if (anthropicBaseUrl) {
           headers["x-anthropic-base-url"] = anthropicBaseUrl;
         }
+      } else if (customProvider === "thirdparty") {
+        headers["x-provider"] = "gemini"; // server routes third-party via non-Google base URL
+        if (thirdPartyApiKey) headers["x-api-key"] = thirdPartyApiKey;
+        if (thirdPartyModel) headers["x-model-name"] = thirdPartyModel;
+        if (thirdPartyBaseUrl) headers["x-gemini-base-url"] = thirdPartyBaseUrl;
+        if (thirdPartyThinking) headers["x-thinking-enabled"] = "true";
       } else {
         if (customApiKey) {
           headers["x-api-key"] = customApiKey;
@@ -691,6 +729,10 @@ export default function App() {
           anthropicAuthToken={anthropicAuthToken}
           anthropicBaseUrl={anthropicBaseUrl}
           anthropicModel={anthropicModel}
+          thirdPartyApiKey={thirdPartyApiKey}
+          thirdPartyBaseUrl={thirdPartyBaseUrl}
+          thirdPartyModel={thirdPartyModel}
+          thirdPartyThinking={thirdPartyThinking}
           onSave={(config) => {
             localStorage.setItem("custom_provider", config.customProvider);
             localStorage.setItem("custom_gemini_api_key", config.customApiKey);
@@ -699,6 +741,24 @@ export default function App() {
             localStorage.setItem("custom_anthropic_auth_token", config.anthropicAuthToken);
             localStorage.setItem("custom_anthropic_base_url", config.anthropicBaseUrl);
             localStorage.setItem("custom_anthropic_model", config.anthropicModel);
+            localStorage.setItem("custom_thirdparty_api_key", config.thirdPartyApiKey);
+            localStorage.setItem("custom_thirdparty_base_url", config.thirdPartyBaseUrl);
+            localStorage.setItem("custom_thirdparty_model", config.thirdPartyModel);
+            localStorage.setItem("custom_thirdparty_thinking", String(config.thirdPartyThinking));
+
+            saveSettings({
+              custom_provider: config.customProvider,
+              custom_gemini_api_key: config.customApiKey,
+              custom_gemini_base_url: config.customGeminiBaseUrl,
+              custom_gemini_model: config.selectedModel,
+              custom_anthropic_auth_token: config.anthropicAuthToken,
+              custom_anthropic_base_url: config.anthropicBaseUrl,
+              custom_anthropic_model: config.anthropicModel,
+              custom_thirdparty_api_key: config.thirdPartyApiKey,
+              custom_thirdparty_base_url: config.thirdPartyBaseUrl,
+              custom_thirdparty_model: config.thirdPartyModel,
+              custom_thirdparty_thinking: String(config.thirdPartyThinking),
+            });
 
             setCustomProvider(config.customProvider);
             setCustomApiKey(config.customApiKey);
@@ -707,6 +767,10 @@ export default function App() {
             setAnthropicAuthToken(config.anthropicAuthToken);
             setAnthropicBaseUrl(config.anthropicBaseUrl);
             setAnthropicModel(config.anthropicModel);
+            setThirdPartyApiKey(config.thirdPartyApiKey);
+            setThirdPartyBaseUrl(config.thirdPartyBaseUrl);
+            setThirdPartyModel(config.thirdPartyModel);
+            setThirdPartyThinking(config.thirdPartyThinking);
           }}
         />
       )}
