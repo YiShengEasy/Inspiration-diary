@@ -10,13 +10,15 @@ import {
   saveCard,
   deleteCard,
   updateCardTerms,
+  loadSettings,
+  saveSettings,
 } from "./lib/dbClient";
 import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
 import PolaroidCard from "./components/PolaroidCard";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
-import SettingsModal from "./components/SettingsModal";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
+import SettingsModal from "./components/SettingsModal";
 
 export default function App() {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -53,6 +55,18 @@ export default function App() {
   const [anthropicModel, setAnthropicModel] = useState<string>(() => {
     return localStorage.getItem("custom_anthropic_model") || "claude-3-5-sonnet-latest";
   });
+  const [thirdPartyApiKey, setThirdPartyApiKey] = useState<string>(() => {
+    return localStorage.getItem("custom_thirdparty_api_key") || "";
+  });
+  const [thirdPartyBaseUrl, setThirdPartyBaseUrl] = useState<string>(() => {
+    return localStorage.getItem("custom_thirdparty_base_url") || "";
+  });
+  const [thirdPartyModel, setThirdPartyModel] = useState<string>(() => {
+    return localStorage.getItem("custom_thirdparty_model") || "";
+  });
+  const [thirdPartyThinking, setThirdPartyThinking] = useState<boolean>(() => {
+    return localStorage.getItem("custom_thirdparty_thinking") === "true";
+  });
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
   const dragStartRef = useRef<number | null>(null);
@@ -71,6 +85,24 @@ export default function App() {
   useEffect(() => {
     setWeekId(getWeekIdentifier(currentDate));
   }, [currentDate]);
+
+  // Load AI settings from DB on startup (DB values take priority over localStorage)
+  useEffect(() => {
+    loadSettings().then((dbSettings) => {
+      if (Object.keys(dbSettings).length === 0) return;
+      if (dbSettings.custom_provider) { setCustomProvider(dbSettings.custom_provider); localStorage.setItem("custom_provider", dbSettings.custom_provider); }
+      if (dbSettings.custom_gemini_api_key !== undefined) { setCustomApiKey(dbSettings.custom_gemini_api_key); localStorage.setItem("custom_gemini_api_key", dbSettings.custom_gemini_api_key); }
+      if (dbSettings.custom_gemini_base_url !== undefined) { setCustomGeminiBaseUrl(dbSettings.custom_gemini_base_url); localStorage.setItem("custom_gemini_base_url", dbSettings.custom_gemini_base_url); }
+      if (dbSettings.custom_gemini_model) { setSelectedModel(dbSettings.custom_gemini_model); localStorage.setItem("custom_gemini_model", dbSettings.custom_gemini_model); }
+      if (dbSettings.custom_anthropic_auth_token !== undefined) { setAnthropicAuthToken(dbSettings.custom_anthropic_auth_token); localStorage.setItem("custom_anthropic_auth_token", dbSettings.custom_anthropic_auth_token); }
+      if (dbSettings.custom_anthropic_base_url) { setAnthropicBaseUrl(dbSettings.custom_anthropic_base_url); localStorage.setItem("custom_anthropic_base_url", dbSettings.custom_anthropic_base_url); }
+      if (dbSettings.custom_anthropic_model) { setAnthropicModel(dbSettings.custom_anthropic_model); localStorage.setItem("custom_anthropic_model", dbSettings.custom_anthropic_model); }
+      if (dbSettings.custom_thirdparty_api_key !== undefined) { setThirdPartyApiKey(dbSettings.custom_thirdparty_api_key); localStorage.setItem("custom_thirdparty_api_key", dbSettings.custom_thirdparty_api_key); }
+      if (dbSettings.custom_thirdparty_base_url !== undefined) { setThirdPartyBaseUrl(dbSettings.custom_thirdparty_base_url); localStorage.setItem("custom_thirdparty_base_url", dbSettings.custom_thirdparty_base_url); }
+      if (dbSettings.custom_thirdparty_model !== undefined) { setThirdPartyModel(dbSettings.custom_thirdparty_model); localStorage.setItem("custom_thirdparty_model", dbSettings.custom_thirdparty_model); }
+      if (dbSettings.custom_thirdparty_thinking !== undefined) { const v = dbSettings.custom_thirdparty_thinking === "true"; setThirdPartyThinking(v); localStorage.setItem("custom_thirdparty_thinking", String(v)); }
+    }).catch((err) => console.error("Failed to load settings from DB:", err));
+  }, []);
 
   // Handle Dark mode sync
   useEffect(() => {
@@ -230,6 +262,12 @@ export default function App() {
         if (anthropicBaseUrl) {
           headers["x-anthropic-base-url"] = anthropicBaseUrl;
         }
+      } else if (customProvider === "thirdparty") {
+        headers["x-provider"] = "gemini"; // server routes third-party via non-Google base URL
+        if (thirdPartyApiKey) headers["x-api-key"] = thirdPartyApiKey;
+        if (thirdPartyModel) headers["x-model-name"] = thirdPartyModel;
+        if (thirdPartyBaseUrl) headers["x-gemini-base-url"] = thirdPartyBaseUrl;
+        if (thirdPartyThinking) headers["x-thinking-enabled"] = "true";
       } else {
         if (customApiKey) {
           headers["x-api-key"] = customApiKey;
@@ -361,7 +399,7 @@ export default function App() {
     setIsInjectingMock(true);
     setMockSuccessMessage("");
     try {
-      // 1. Create 6 mock templates representing diverse aesthetic styles
+      // 1. Create mock templates representing diverse aesthetic styles
       const mockTemplates = [
         {
           style: "wabi-sabi",
@@ -439,20 +477,13 @@ export default function App() {
           terms: template.terms,
           decoType: deco,
           angle,
-          createdAt: Date.now() - (10 - i) * 10000, // staggered slightly
+          createdAt: Date.now() - (10 - i) * 10000,
         };
         await saveCard(mockCard);
       }
 
       // 4. Fill notebook notes page
-      const beautifulMockNotes = `★ 灵感随手记 (Mock Weekly Ideas Journal):
-- 本周美学探索：围绕冷暖色温与有机几何（Organic Geometry）的碰撞展开。
-- 星期一的【侘寂美学】粗糙花瓶奠定了返璞归真的色调氛围，推荐搭配生亚麻与粗泥灰的材质硬装。
-- 星期二引入的【赛博朋克霓虹】作为未来感冲撞点，给沉闷的极简版面制造了前卫趣味。
-- 星期三的【经典包豪斯】红黄蓝几何三原色，是版面排版与视觉重心的基础规则。
-- 星期四的【温柔莫兰迪】午后茶歇，平衡了高饱和的冰冷，回归生活的松弛气韵。
-- 星期五与周末引入的【孟菲斯波普】以及【中世纪胡桃木】则给本周探索画上了圆满句号。
-★ 下周计划：深入探索中世纪复古未来主义（Retro-Futurism）与数码迷幻印花的结合。`;
+      const beautifulMockNotes = `★ 灵感随手记 (Mock Weekly Ideas Journal):\n- 本周美学探索：围绕冷暖色温与有机几何（Organic Geometry）的碰撞展开。\n- 星期一的【侘寂美学】粗糙花瓶奠定了返璞归真的色调氛围，推荐搭配生亚麻与粗泥灰的材质硬装。\n- 星期二引入的【赛博朋克霓虹】作为未来感冲撞点，给沉闷的极简版面制造了前卫趣味。\n- 星期三的【经典包豪斯】红黄蓝几何三原色，是版面排版与视觉重心的基础规则。\n- 星期四的【温柔莫兰迪】午后茶歇，平衡了高饱和的冰冷，回归生活的松弛气韵。\n- 星期五与周末引入的【孟菲斯波普】以及【中世纪胡桃木】则给本周探索画上了圆满句号。\n★ 下周计划：深入探索中世纪复古未来主义（Retro-Futurism）与数码迷幻印花的结合。`;
 
       setNoteContent(beautifulMockNotes);
       await saveNote(weekId, beautifulMockNotes, 280);
@@ -478,11 +509,17 @@ export default function App() {
       setNoteContent("");
       await saveNote(weekId, "", 220);
       setNoteHeight(220);
-      setMockSuccessMessage("🧹 本周数据已清空。你可以再次点击“填充 Mock 数据”按钮进行还原！");
+      setMockSuccessMessage("🧹 本周数据已清空。你可以再次点击\"填充 Mock 数据\"按钮进行还原！");
       setTimeout(() => setMockSuccessMessage(""), 5000);
     } catch (err) {
       console.error("Failed to clear week:", err);
     }
+  };
+
+  // Helper to resolve Chinese labels for day indices
+  const getDayLabelForDayIndex = (idx: number): string => {
+    const days = ["星期一 (Monday)", "星期二 (Tuesday)", "星期三 (Wednesday)", "星期四 (Thursday)", "星期五 (Friday)", "周末 (Weekend)"];
+    return days[idx] || "记录时间";
   };
 
   // Dynamically filter cards based on user search query (matching terms/keywords case-insensitively)
@@ -491,56 +528,6 @@ export default function App() {
     const q = searchQuery.toLowerCase().trim();
     return card.terms.some((term) => term.toLowerCase().includes(q));
   });
-
-  // Zoom modal carousel navigation helpers
-  const handlePrevZoomedCard = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (filteredCards.length <= 1 || !zoomedCard) return;
-    const currentIdx = filteredCards.findIndex((c) => c.id === zoomedCard.id);
-    if (currentIdx === -1) return;
-    const prevIdx = (currentIdx - 1 + filteredCards.length) % filteredCards.length;
-    setZoomedCard(filteredCards[prevIdx]);
-  };
-
-  const handleNextZoomedCard = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (filteredCards.length <= 1 || !zoomedCard) return;
-    const currentIdx = filteredCards.findIndex((c) => c.id === zoomedCard.id);
-    if (currentIdx === -1) return;
-    const nextIdx = (currentIdx + 1) % filteredCards.length;
-    setZoomedCard(filteredCards[nextIdx]);
-  };
-
-  // Keyboard navigation when zoomed
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!zoomedCard || filteredCards.length <= 1) return;
-      
-      const currentIdx = filteredCards.findIndex((c) => c.id === zoomedCard.id);
-      if (currentIdx === -1) return;
-      
-      if (e.key === "ArrowLeft") {
-        const prevIdx = (currentIdx - 1 + filteredCards.length) % filteredCards.length;
-        setZoomedCard(filteredCards[prevIdx]);
-      } else if (e.key === "ArrowRight") {
-        const nextIdx = (currentIdx + 1) % filteredCards.length;
-        setZoomedCard(filteredCards[nextIdx]);
-      } else if (e.key === "Escape") {
-        setZoomedCard(null);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [zoomedCard, filteredCards]);
-
-  // Helper to resolve Chinese labels for day indices
-  const getDayLabelForDayIndex = (idx: number): string => {
-    const days = ["星期一 (Monday)", "星期二 (Tuesday)", "星期三 (Wednesday)", "星期四 (Thursday)", "星期五 (Friday)", "周末 (Weekend)"];
-    return days[idx] || "记录时间";
-  };
 
   return (
     <div className="min-h-screen flex flex-col transition-colors duration-300">
@@ -649,7 +636,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Mock Data Generator Panel - Highly visual, interactive & easily controllable */}
+        {/* Mock Data Generator Panel */}
         <div className="mb-6 px-2">
           <div className="p-4 md:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 to-amber-700/[0.03] dark:from-amber-500/10 dark:to-transparent border border-amber-500/20 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
@@ -699,7 +686,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Success toast / Status Message */}
           <AnimatePresence>
             {mockSuccessMessage && (
               <motion.div
@@ -935,6 +921,10 @@ export default function App() {
           anthropicAuthToken={anthropicAuthToken}
           anthropicBaseUrl={anthropicBaseUrl}
           anthropicModel={anthropicModel}
+          thirdPartyApiKey={thirdPartyApiKey}
+          thirdPartyBaseUrl={thirdPartyBaseUrl}
+          thirdPartyModel={thirdPartyModel}
+          thirdPartyThinking={thirdPartyThinking}
           onSave={(config) => {
             localStorage.setItem("custom_provider", config.customProvider);
             localStorage.setItem("custom_gemini_api_key", config.customApiKey);
@@ -943,6 +933,24 @@ export default function App() {
             localStorage.setItem("custom_anthropic_auth_token", config.anthropicAuthToken);
             localStorage.setItem("custom_anthropic_base_url", config.anthropicBaseUrl);
             localStorage.setItem("custom_anthropic_model", config.anthropicModel);
+            localStorage.setItem("custom_thirdparty_api_key", config.thirdPartyApiKey);
+            localStorage.setItem("custom_thirdparty_base_url", config.thirdPartyBaseUrl);
+            localStorage.setItem("custom_thirdparty_model", config.thirdPartyModel);
+            localStorage.setItem("custom_thirdparty_thinking", String(config.thirdPartyThinking));
+
+            saveSettings({
+              custom_provider: config.customProvider,
+              custom_gemini_api_key: config.customApiKey,
+              custom_gemini_base_url: config.customGeminiBaseUrl,
+              custom_gemini_model: config.selectedModel,
+              custom_anthropic_auth_token: config.anthropicAuthToken,
+              custom_anthropic_base_url: config.anthropicBaseUrl,
+              custom_anthropic_model: config.anthropicModel,
+              custom_thirdparty_api_key: config.thirdPartyApiKey,
+              custom_thirdparty_base_url: config.thirdPartyBaseUrl,
+              custom_thirdparty_model: config.thirdPartyModel,
+              custom_thirdparty_thinking: String(config.thirdPartyThinking),
+            });
 
             setCustomProvider(config.customProvider);
             setCustomApiKey(config.customApiKey);
@@ -951,6 +959,10 @@ export default function App() {
             setAnthropicAuthToken(config.anthropicAuthToken);
             setAnthropicBaseUrl(config.anthropicBaseUrl);
             setAnthropicModel(config.anthropicModel);
+            setThirdPartyApiKey(config.thirdPartyApiKey);
+            setThirdPartyBaseUrl(config.thirdPartyBaseUrl);
+            setThirdPartyModel(config.thirdPartyModel);
+            setThirdPartyThinking(config.thirdPartyThinking);
           }}
         />
       )}
@@ -983,7 +995,7 @@ export default function App() {
               </button>
 
               {/* Left Column: Picture */}
-              <div className="w-full md:w-3/5 aspect-square max-w-[420px] relative overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-inner rounded-xl group/zoomimage">
+              <div className="w-full md:w-3/5 aspect-square max-w-[420px] relative overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-inner rounded-xl">
                 <img
                   src={zoomedCard.imageUrl}
                   alt="Original Snippet View"
@@ -991,26 +1003,6 @@ export default function App() {
                   className="w-full h-full object-contain"
                 />
                 <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/5 pointer-events-none" />
-
-                {/* Left/Right Arrows inside zoomed image */}
-                {filteredCards.length > 1 && (
-                  <>
-                    <button
-                      onClick={handlePrevZoomedCard}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 z-20 bg-stone-950/70 hover:bg-amber-500 hover:scale-110 active:scale-95 text-white p-2.5 rounded-full shadow-lg border border-white/10 transition-all cursor-pointer opacity-80 hover:opacity-100"
-                      title="上一张 (ArrowLeft)"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                    <button
-                      onClick={handleNextZoomedCard}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 z-20 bg-stone-950/70 hover:bg-amber-500 hover:scale-110 active:scale-95 text-white p-2.5 rounded-full shadow-lg border border-white/10 transition-all cursor-pointer opacity-80 hover:opacity-100"
-                      title="下一张 (ArrowRight)"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                  </>
-                )}
               </div>
 
               {/* Right Column: Key Details, Tag lists, info */}
