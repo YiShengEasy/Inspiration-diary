@@ -277,39 +277,3 @@ export function subscribeAllCards(callback: CardCallback): () => void {
   }
 }
 
-/**
- * Loads AI settings from the database (Postgres mode only).
- * Falls back to empty object if not configured or Firestore mode.
- */
-export async function loadSettings(): Promise<Record<string, string>> {
-  if (!isPostgresMode) return {};
-  try {
-    const res = await fetch("/api/db/settings");
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (err) {
-    console.error("Failed to load settings from DB:", err);
-  }
-  return {};
-}
-
-/**
- * Persists AI settings to the database (Postgres mode only).
- */
-export async function saveSettings(settings: Record<string, string>): Promise<void> {
-  if (!isPostgresMode) return;
-  try {
-    const res = await fetch("/api/db/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    });
-    if (!res.ok) {
-      console.error("Failed to save settings to DB:", res.statusText);
-    }
-  } catch (err) {
-    console.error("Failed to save settings to DB:", err);
-  }
-}
-

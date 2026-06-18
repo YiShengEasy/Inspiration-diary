@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { ImageCard } from "../types";
-import { Plus, Image, Loader2, Sparkles, Clipboard, ArrowDownToLine } from "lucide-react";
+import { Plus, Image, Loader2, Sparkles, Clipboard, ArrowDownToLine, ChevronLeft, ChevronRight } from "lucide-react";
 import PolaroidCard from "./PolaroidCard";
 
 interface DaySlotProps {
@@ -31,6 +31,35 @@ export default function DaySlot({
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  const [activeStackIndex, setActiveStackIndex] = useState(0);
+
+  // Keep activeStackIndex within safe indices when cards array changes
+  useEffect(() => {
+    if (cards.length > 0) {
+      setActiveStackIndex((current) => {
+        if (current >= cards.length || current < 0) {
+          return cards.length - 1;
+        }
+        return current;
+      });
+    } else {
+      setActiveStackIndex(0);
+    }
+  }, [cards.length]);
+
+  const handlePrevCard = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (cards.length <= 1) return;
+    setActiveStackIndex((prev) => (prev - 1 + cards.length) % cards.length);
+  };
+
+  const handleNextCard = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (cards.length <= 1) return;
+    setActiveStackIndex((prev) => (prev + 1) % cards.length);
+  };
 
   // Resize and compress image using canvas
   const processImageFile = (file: File) => {
@@ -202,20 +231,92 @@ export default function DaySlot({
       </div>
 
       {/* List of uploaded Polaroids for this slot */}
-      <div className="flex-grow flex flex-col gap-3 py-1">
-        {cards.map((card) => (
-          <PolaroidCard
-            key={card.id}
-            card={card}
-            onDeleteCard={onDeleteCard}
-            onDeleteTerm={onDeleteTerm}
-            onZoom={onZoom}
-            onUpdateTerms={onUpdateTerms}
-          />
-        ))}
+      <div className={`flex-grow relative flex flex-col justify-center items-center ${cards.length > 0 ? "min-h-[250px] mb-2" : "min-h-[140px]"}`}>
+        {cards.length > 0 ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            {cards.map((card, index) => {
+              const isTopMost = index === activeStackIndex;
+              const isHovered = hoveredCardId === card.id;
+              
+              // Calculate slight offset stagger
+              const total = cards.length;
+              const progress = total > 1 ? index / (total - 1) : 0.5;
+              const xOffset = total > 1 ? (progress - 0.5) * 16 : 0;
+              const yOffset = total > 1 ? (progress - 0.5) * 8 : 0;
+              
+              const rotation = card.angle || ((progress - 0.5) * 12);
+              
+              let transformStr = `translate(-50%, -50%) rotate(${rotation}deg) translate(${xOffset}px, ${yOffset}px)`;
+              
+              if (isHovered) {
+                transformStr = `translate(-50%, -50%) rotate(${rotation * 0.3}deg) translate(${xOffset}px, ${yOffset - 22}px) scale(1.08)`;
+              } else if (isTopMost && total > 1) {
+                transformStr = `translate(-50%, -50%) rotate(${rotation}deg) translate(${xOffset}px, ${yOffset - 4}px) scale(1.02)`;
+              }
+
+              return (
+                <div
+                  key={card.id}
+                  onMouseEnter={() => setHoveredCardId(card.id)}
+                  onMouseLeave={() => setHoveredCardId(null)}
+                  className="absolute top-1/2 left-1/2 w-[140px] sm:w-[145px] transition-all duration-300 ease-out"
+                  style={{
+                    transform: transformStr,
+                    zIndex: isHovered ? 100 : (isTopMost ? 40 : index + 10),
+                  }}
+                >
+                  <PolaroidCard
+                    card={card}
+                    onDeleteCard={onDeleteCard}
+                    onDeleteTerm={onDeleteTerm}
+                    onZoom={onZoom}
+                    onUpdateTerms={onUpdateTerms}
+                  />
+                </div>
+              );
+            })}
+
+            {/* Left/Right Nav overlay shown on slot hover */}
+            {cards.length > 1 && (
+              <>
+                <button
+                  onClick={handlePrevCard}
+                  className="absolute left-1.5 top-1/2 -translate-y-1/2 z-[45] bg-stone-900/60 hover:bg-stone-900/80 hover:scale-110 active:scale-95 text-white p-1.5 rounded-full shadow backdrop-blur-sm opacity-0 group-hover/slot:opacity-100 transition-all duration-200 cursor-pointer"
+                  title="查看前一张灵感"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  onClick={handleNextCard}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 z-[45] bg-stone-900/60 hover:bg-stone-900/80 hover:scale-110 active:scale-95 text-white p-1.5 rounded-full shadow backdrop-blur-sm opacity-0 group-hover/slot:opacity-100 transition-all duration-200 cursor-pointer"
+                  title="查看后一张灵感"
+                >
+                  <ChevronRight size={16} />
+                </button>
+
+                {/* Micro dots indicator of stack size */}
+                <div className="absolute bottom-1 bg-stone-900/40 hover:bg-stone-900/60 backdrop-blur-sm px-2 py-0.5 rounded-full z-[45] flex items-center gap-1.5 opacity-0 group-hover/slot:opacity-100 transition-all duration-200">
+                  {cards.map((_, dotIdx) => (
+                    <button
+                      key={dotIdx}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveStackIndex(dotIdx);
+                      }}
+                      className={`w-1.5 h-1.5 rounded-full transition-all cursor-pointer ${
+                        dotIdx === activeStackIndex ? "bg-amber-400 scale-110" : "bg-white/50 hover:bg-white/80"
+                      }`}
+                      title={`切换到第 ${dotIdx + 1} 张`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        ) : null}
 
         {isUploading && (
-          <div className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-amber-500/30 rounded-xl bg-amber-500/5 animate-pulse min-h-[140px]" id={`analysing-loader-${dayIndex}`}>
+          <div className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-amber-500/30 rounded-xl bg-amber-500/5 animate-pulse min-h-[140px] w-full" id={`analysing-loader-${dayIndex}`}>
             <Loader2 size={24} className="animate-spin text-amber-600 dark:text-amber-400 mb-1.5" />
             <div className="text-[11px] font-handwritten font-bold text-amber-800 dark:text-amber-300">
               Gemini parsing aesthetic...
@@ -224,8 +325,8 @@ export default function DaySlot({
             {/* Visual breakdown of parameters sent for real analysis */}
             <div className="mt-3 p-2 bg-stone-100/60 dark:bg-stone-950/50 rounded-lg border border-stone-200/40 dark:border-white/5 text-[10px] text-stone-500 dark:text-stone-400 font-sans w-full text-left leading-relaxed">
               <span className="font-semibold text-amber-700 dark:text-amber-400 block mb-0.5">🚀 已发送 API 分析请求</span>
-              <p className="opacity-80">
-                <strong>发送提示词:</strong> "Analyze this image to extract evocative artistic inspirations, creative concepts, design styles, mood terms, color palettes, and visual keywords in Chinese... Return as JSON 'terms'."
+              <p className="opacity-80 text-[9px]">
+                <strong>发送提示词:</strong> "Analyze this image to extract evocative artistic inspirations..."
               </p>
             </div>
           </div>
@@ -235,7 +336,7 @@ export default function DaySlot({
         {!isUploading && cards.length === 0 && (
           <div
             onClick={triggerFileSelect}
-            className="flex-grow flex flex-col items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-stone-200 dark:border-stone-800 hover:border-amber-400 group/dropzone cursor-pointer bg-stone-50/40 dark:bg-stone-900/20 hover:bg-amber-50/10 transition-all text-center"
+            className="w-full flex-grow flex flex-col items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-stone-200 dark:border-stone-800 hover:border-amber-400 group/dropzone cursor-pointer bg-stone-50/40 dark:bg-stone-900/20 hover:bg-amber-50/10 transition-all text-center"
           >
             <div className="p-2 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 group-hover/dropzone:bg-amber-100 dark:group-hover/dropzone:bg-amber-950/40 group-hover/dropzone:text-amber-700 dark:group-hover/dropzone:text-amber-300 transition-colors">
               <Plus size={16} />
@@ -244,7 +345,7 @@ export default function DaySlot({
               Pin a clip
             </div>
             <p className="text-[10px] text-stone-400 dark:text-stone-500 max-w-[150px] mt-1 tracking-tight leading-normal">
-              Drop file, paste screenshot (Cmd+V), or click to choose.
+              Drop file, paste screenshot, or click to choose.
             </p>
           </div>
         )}

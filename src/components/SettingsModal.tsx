@@ -11,10 +11,6 @@ interface SettingsModalProps {
   anthropicAuthToken: string;
   anthropicBaseUrl: string;
   anthropicModel: string;
-  thirdPartyApiKey: string;
-  thirdPartyBaseUrl: string;
-  thirdPartyModel: string;
-  thirdPartyThinking: boolean;
   onSave: (config: {
     customApiKey: string;
     customGeminiBaseUrl: string;
@@ -23,10 +19,6 @@ interface SettingsModalProps {
     anthropicAuthToken: string;
     anthropicBaseUrl: string;
     anthropicModel: string;
-    thirdPartyApiKey: string;
-    thirdPartyBaseUrl: string;
-    thirdPartyModel: string;
-    thirdPartyThinking: boolean;
   }) => void;
 }
 
@@ -54,10 +46,6 @@ export default function SettingsModal({
   anthropicAuthToken,
   anthropicBaseUrl,
   anthropicModel,
-  thirdPartyApiKey,
-  thirdPartyBaseUrl,
-  thirdPartyModel,
-  thirdPartyThinking,
   onSave,
 }: SettingsModalProps) {
   const [provider, setProvider] = useState(customProvider || "gemini");
@@ -84,13 +72,6 @@ export default function SettingsModal({
     () => (ANTHROPIC_PRESET_MODELS.some((p) => p.value === anthropicModel) ? "" : anthropicModel)
   );
 
-  // Third-party / OpenAI-compatible states
-  const [thirdPartyKey, setThirdPartyKey] = useState(thirdPartyApiKey);
-  const [thirdPartyUrl, setThirdPartyUrl] = useState(thirdPartyBaseUrl);
-  const [thirdPartyModelName, setThirdPartyModelName] = useState(thirdPartyModel);
-  const [thinkingEnabled, setThinkingEnabled] = useState(thirdPartyThinking);
-  const [showThirdPartyKey, setShowThirdPartyKey] = useState(false);
-
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -116,34 +97,21 @@ export default function SettingsModal({
     const finalAnthropicModel = isCustomAnthropicModel ? customAnthropicModelName.trim() : anthropicSelModel;
 
     const currentProvider = provider;
-    const currentApiKey = currentProvider === "anthropic"
-      ? anthropicToken.trim()
-      : currentProvider === "thirdparty"
-        ? thirdPartyKey.trim()
-        : geminiApiKey.trim();
-    const currentModel = currentProvider === "anthropic"
-      ? finalAnthropicModel
-      : currentProvider === "thirdparty"
-        ? thirdPartyModelName.trim()
-        : finalGeminiModel;
+    const currentApiKey = currentProvider === "anthropic" ? anthropicToken.trim() : geminiApiKey.trim();
+    const currentModel = currentProvider === "anthropic" ? finalAnthropicModel : finalGeminiModel;
     const currentGeminiBaseUrl = geminiBaseUrl.trim();
     const currentAnthropicBaseUrl = anthropicUrl.trim();
 
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        "x-provider": currentProvider === "thirdparty" ? "gemini" : currentProvider,
+        "x-provider": currentProvider,
       };
 
       if (currentProvider === "anthropic") {
         if (currentApiKey) headers["x-api-key"] = currentApiKey;
         if (currentModel) headers["x-model-name"] = currentModel;
         if (currentAnthropicBaseUrl) headers["x-anthropic-base-url"] = currentAnthropicBaseUrl;
-      } else if (currentProvider === "thirdparty") {
-        if (currentApiKey) headers["x-api-key"] = currentApiKey;
-        if (currentModel) headers["x-model-name"] = currentModel;
-        if (thirdPartyUrl.trim()) headers["x-gemini-base-url"] = thirdPartyUrl.trim();
-        if (thinkingEnabled) headers["x-thinking-enabled"] = "true";
       } else {
         if (currentApiKey) headers["x-api-key"] = currentApiKey;
         if (currentModel) headers["x-model-name"] = currentModel;
@@ -184,10 +152,6 @@ export default function SettingsModal({
       anthropicAuthToken: anthropicToken.trim(),
       anthropicBaseUrl: anthropicUrl.trim() || "https://api.anthropic.com",
       anthropicModel: finalAnthropicModel || "claude-3-5-sonnet-latest",
-      thirdPartyApiKey: thirdPartyKey.trim(),
-      thirdPartyBaseUrl: thirdPartyUrl.trim(),
-      thirdPartyModel: thirdPartyModelName.trim(),
-      thirdPartyThinking: thinkingEnabled,
     });
 
     setIsSaved(true);
@@ -206,20 +170,19 @@ export default function SettingsModal({
       />
 
       {/* Settings Card dialogue */}
-      <div className="relative w-full max-w-lg bg-white dark:bg-stone-900 rounded-2xl border border-amber-900/10 dark:border-amber-100/10 shadow-2xl z-10 transform transition-all max-h-[90vh] flex flex-col">
+      <div className="relative w-full max-w-lg bg-white dark:bg-stone-900 rounded-2xl border border-amber-900/10 dark:border-amber-100/10 p-6 md:p-8 shadow-2xl z-10 transform transition-all">
         {/* Background decoration faint grid */}
         <div className="absolute inset-0 opacity-5 pointer-events-none rounded-2xl bg-[radial-gradient(#2d2319_1px,transparent_1px)] [background-size:16px_16px]" />
 
-        {/* Fixed Header */}
-        <div className="relative z-10 flex-shrink-0 px-6 pt-6 pb-0">
-          {/* Close Button */}
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors cursor-pointer"
-          >
-            <X size={18} />
-          </button>
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors cursor-pointer"
+        >
+          <X size={18} />
+        </button>
 
+        <div className="relative z-10">
           {/* Header */}
           <div className="flex items-center gap-2 mb-2">
             <Settings2 className="text-amber-800 dark:text-amber-400" size={18} />
@@ -227,12 +190,12 @@ export default function SettingsModal({
               AI Service Configuration
             </span>
           </div>
-          <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed mb-4">
+          <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed mb-6">
             Configure custom API keys, global models, and custom third-party base endpoints to classify and generate exquisite design terminology logs.
           </p>
 
           {/* Provider Tabs */}
-          <div className="flex border-b border-stone-200 dark:border-stone-800">
+          <div className="flex border-b border-stone-200 dark:border-stone-800 mb-5">
             <button
               type="button"
               onClick={() => setProvider("gemini")}
@@ -255,23 +218,9 @@ export default function SettingsModal({
             >
               Anthropic Claude
             </button>
-            <button
-              type="button"
-              onClick={() => setProvider("thirdparty")}
-              className={`flex-1 pb-2 text-xs font-semibold px-2 tracking-wide uppercase transition-colors border-b-2 text-center cursor-pointer ${
-                provider === "thirdparty"
-                  ? "border-amber-600 text-amber-700 dark:text-amber-400 dark:border-amber-500 font-bold"
-                  : "border-transparent text-stone-400 hover:text-stone-600 dark:text-stone-500 dark:hover:text-stone-300"
-              }`}
-            >
-              第三方 / OpenAI 兼容
-            </button>
           </div>
-        </div>
 
-        {/* Scrollable Content */}
-        <div className="relative z-10 flex-1 overflow-y-auto px-6 pb-6">
-          <form onSubmit={handleSave} className="space-y-4 pt-5">
+          <form onSubmit={handleSave} className="space-y-4">
             {provider === "gemini" ? (
               <>
                 {/* --- Gemini Section --- */}
@@ -374,7 +323,7 @@ export default function SettingsModal({
                   </div>
                 </div>
               </>
-            ) : provider === "anthropic" ? (
+            ) : (
               <>
                 {/* --- Anthropic Section --- */}
                 <div>
@@ -467,90 +416,6 @@ export default function SettingsModal({
                       </div>
                     )}
                   </div>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* --- Third-party / OpenAI-Compatible Section --- */}
-                <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/15 text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
-                  <strong>适用于：</strong>豆包 / 火山引擎 Ark、DeepSeek、通义千问等兼容 OpenAI Chat Completions 格式的接口。<br />
-                  Base URL 填写到 <code>/chat/completions</code> 上一级即可，系统会自动追加路径。
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300 mb-1.5 flex items-center justify-between">
-                    <span>API Key</span>
-                    <span className="text-[10px] font-normal text-stone-400 lowercase italic">saved locally</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showThirdPartyKey ? "text" : "password"}
-                      value={thirdPartyKey}
-                      onChange={(e) => setThirdPartyKey(e.target.value)}
-                      placeholder="Bearer token / API Key..."
-                      className="w-full px-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-900/10 dark:border-amber-100/10 rounded-xl focus:border-amber-500 focus:outline-none pr-10 font-mono text-stone-800 dark:text-stone-200"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowThirdPartyKey(!showThirdPartyKey)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer"
-                    >
-                      {showThirdPartyKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300 mb-1.5 flex items-center justify-between">
-                    <span>Base URL</span>
-                    <span className="text-[10px] font-normal text-stone-400 lowercase">不含 /chat/completions</span>
-                  </label>
-                  <div className="relative flex items-center">
-                    <Globe size={14} className="absolute left-3.5 text-stone-400" />
-                    <input
-                      type="text"
-                      value={thirdPartyUrl}
-                      onChange={(e) => setThirdPartyUrl(e.target.value)}
-                      placeholder="e.g. https://ark.cn-beijing.volces.com/api/coding/v3"
-                      className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-900/10 dark:border-amber-100/10 rounded-xl focus:border-amber-500 focus:outline-none font-mono text-stone-800 dark:text-stone-200"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300 mb-1.5">
-                    Model ID
-                  </label>
-                  <input
-                    type="text"
-                    value={thirdPartyModelName}
-                    onChange={(e) => setThirdPartyModelName(e.target.value)}
-                    placeholder="e.g. doubao-seed-2.0-code"
-                    className="w-full px-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-900/10 dark:border-amber-100/10 rounded-xl focus:border-amber-500 focus:outline-none font-mono text-stone-800 dark:text-stone-200"
-                  />
-                </div>
-
-                {/* Thinking toggle */}
-                <div className="flex items-center justify-between p-3 rounded-xl bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800">
-                  <div>
-                    <p className="text-xs font-semibold text-stone-700 dark:text-stone-200">深度思考模式 (Thinking)</p>
-                    <p className="text-[10px] text-stone-400 dark:text-stone-500 mt-0.5">
-                      开启后发送 <code className="bg-stone-100 dark:bg-stone-900 px-1 rounded">thinking: &#123;"type":"enabled"&#125;</code>，支持 doubao-seed-2.0-code 等推理模型
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setThinkingEnabled(!thinkingEnabled)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer flex-shrink-0 ml-4 ${
-                      thinkingEnabled ? "bg-amber-600" : "bg-stone-300 dark:bg-stone-700"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                        thinkingEnabled ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                  </button>
                 </div>
               </>
             )}
