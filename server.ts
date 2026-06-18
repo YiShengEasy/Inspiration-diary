@@ -51,7 +51,6 @@ app.post("/api/analyze-image", async (req, res) => {
     const customApiKey = req.headers["x-api-key"] as string | undefined;
     const customModelName = req.headers["x-model-name"] as string | undefined;
     const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
-    const thinkingEnabled = req.headers["x-thinking-enabled"] === "true";
 
     console.log("=== API LOG: Analyze Image Request ===");
     console.log("provider:", provider);
@@ -219,11 +218,11 @@ app.post("/api/analyze-image", async (req, res) => {
           };
         }
 
-        // Apply thinking mode based on user preference header
+        // Disable thinking for Volcano Engine (Ark)/Doubao/DeepSeek custom models to comply with requirements
         const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
         if (isArkOrDoubaoOrDeepseek && !isVolcengineResponsesFormat) {
           payload.thinking = {
-            type: thinkingEnabled ? "enabled" : "disabled"
+            enabled: false
           };
         }
 
@@ -465,7 +464,7 @@ app.post("/api/test-model", async (req, res) => {
               max_tokens: 50,
             };
             if (isArkOrDoubaoOrDeepseek) {
-              textPayload.thinking = { type: "disabled" };
+              textPayload.thinking = { enabled: false };
             }
           }
 
@@ -535,7 +534,7 @@ app.post("/api/test-model", async (req, res) => {
               max_tokens: 50,
             };
             if (isArkOrDoubaoOrDeepseek) {
-              visionPayload.thinking = { type: "disabled" };
+              visionPayload.thinking = { enabled: false };
             }
           }
 
@@ -669,13 +668,6 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
             deco_type VARCHAR(50),
             angle NUMERIC,
             created_at BIGINT
-          );
-        `);
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS settings (
-            key VARCHAR(100) PRIMARY KEY,
-            value TEXT,
-            updated_at BIGINT
           );
         `);
         console.log("PostgreSQL schema successfully verified/created.");
@@ -817,46 +809,6 @@ app.put("/api/db/cards/:id/terms", async (req, res) => {
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error executing update card tag terms query:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-// 7. Fetch all settings
-app.get("/api/db/settings", async (req, res) => {
-  if (!pgPool) {
-    return res.status(503).json({ error: "PostgreSQL is not configured." });
-  }
-  try {
-    const result = await pgPool.query("SELECT key, value FROM settings");
-    const settings: Record<string, string> = {};
-    result.rows.forEach((row) => {
-      settings[row.key] = row.value;
-    });
-    return res.json(settings);
-  } catch (err: any) {
-    console.error("Error fetching settings:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-// 8. Upsert settings (batch)
-app.post("/api/db/settings", async (req, res) => {
-  if (!pgPool) {
-    return res.status(503).json({ error: "PostgreSQL is not configured." });
-  }
-  try {
-    const entries = Object.entries(req.body as Record<string, string>);
-    const now = Date.now();
-    for (const [key, value] of entries) {
-      await pgPool.query(
-        `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
-        [key, value, now]
-      );
-    }
-    return res.json({ success: true });
-  } catch (err: any) {
-    console.error("Error saving settings:", err);
     return res.status(500).json({ error: err.message });
   }
 });
