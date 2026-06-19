@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "start": "NODE_ENV=production node dist/server.cjs",
+    "docker:prod": "docker compose up --build",
+    "docker:prod:detached": "docker compose up --build -d",
+    "docker:prod:down": "docker compose down --remove-orphans",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

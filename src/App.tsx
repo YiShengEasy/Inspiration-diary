@@ -21,6 +21,7 @@ import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 
 export default function App() {
+  const shouldShowMockTools = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK_TOOLS === "true";
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [weekId, setWeekId] = useState<string>("");
   const [cards, setCards] = useState<ImageCard[]>([]);
@@ -395,6 +396,7 @@ export default function App() {
   const [mockSuccessMessage, setMockSuccessMessage] = useState("");
 
   const handleInjectMockData = async () => {
+    if (!shouldShowMockTools) return;
     if (!weekId) return;
     setIsInjectingMock(true);
     setMockSuccessMessage("");
@@ -636,70 +638,71 @@ export default function App() {
           </div>
         </div>
 
-        {/* Mock Data Generator Panel */}
-        <div className="mb-6 px-2">
-          <div className="p-4 md:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 to-amber-700/[0.03] dark:from-amber-500/10 dark:to-transparent border border-amber-500/20 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-900 dark:text-amber-300 shadow-sm mt-0.5 animate-pulse">
-                <Wand2 size={18} />
+        {shouldShowMockTools && (
+          <div className="mb-6 px-2">
+            <div className="p-4 md:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 to-amber-700/[0.03] dark:from-amber-500/10 dark:to-transparent border border-amber-500/20 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-900 dark:text-amber-300 shadow-sm mt-0.5 animate-pulse">
+                  <Wand2 size={18} />
+                </div>
+                <div>
+                  <h4 className="font-serif font-bold text-sm text-stone-900 dark:text-stone-100 italic flex items-center gap-1.5 flex-wrap">
+                    <span>🪄 演示与款式调优工具 (Mock Data Center)</span>
+                    <span className="text-[10px] font-sans font-normal not-italic px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-350">
+                      无需任何 API 密钥一键生成
+                    </span>
+                  </h4>
+                  <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 max-w-2xl font-serif leading-relaxed">
+                    为了便于查看、测试各种精美的 <strong>Polaroid 相片排版组件、手写便签随笔</strong> 以及调整全套暗黑/明亮款式细节，您可以一键填满或清空本周演示内容。
+                  </p>
+                </div>
               </div>
-              <div>
-                <h4 className="font-serif font-bold text-sm text-stone-900 dark:text-stone-100 italic flex items-center gap-1.5 flex-wrap">
-                  <span>🪄 演示与款式调优工具 (Mock Data Center)</span>
-                  <span className="text-[10px] font-sans font-normal not-italic px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-350">
-                    无需任何 API 密钥一键生成
-                  </span>
-                </h4>
-                <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 max-w-2xl font-serif leading-relaxed">
-                  为了便于查看、测试各种精美的 <strong>Polaroid 相片排版组件、手写便签随笔</strong> 以及调整全套暗黑/明亮款式细节，您可以一键填满或清空本周演示内容。
-                </p>
+
+              <div className="flex flex-wrap items-center gap-2.5 self-stretch md:self-auto justify-end">
+                <button
+                  disabled={isInjectingMock}
+                  onClick={handleInjectMockData}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow hover:shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                >
+                  {isInjectingMock ? (
+                    <>
+                      <RefreshCw size={12} className="animate-spin" />
+                      <span>正在绘制相片...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 size={12} />
+                      <span>填满本周 Mock 数据</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleClearCurrentWeek}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-stone-800 dark:hover:text-stone-100 transition-all active:scale-95 border border-stone-200/40 dark:border-stone-700 cursor-pointer"
+                  title="清空本周的所有卡片与便签"
+                >
+                  <Trash size={12} />
+                  <span>清空本周</span>
+                </button>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5 self-stretch md:self-auto justify-end">
-              <button
-                disabled={isInjectingMock}
-                onClick={handleInjectMockData}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow hover:shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-              >
-                {isInjectingMock ? (
-                  <>
-                    <RefreshCw size={12} className="animate-spin" />
-                    <span>正在绘制相片...</span>
-                  </>
-                ) : (
-                  <>
-                    <Wand2 size={12} />
-                    <span>填满本周 Mock 数据</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={handleClearCurrentWeek}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-stone-800 dark:hover:text-stone-100 transition-all active:scale-95 border border-stone-200/40 dark:border-stone-700 cursor-pointer"
-                title="清空本周的所有卡片与便签"
-              >
-                <Trash size={12} />
-                <span>清空本周</span>
-              </button>
-            </div>
+            <AnimatePresence>
+              {mockSuccessMessage && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="mt-2.5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 text-xs font-serif italic border border-emerald-500/20 shadow-sm flex items-center gap-2"
+                >
+                  <span>✨</span>
+                  <span>{mockSuccessMessage}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-
-          <AnimatePresence>
-            {mockSuccessMessage && (
-              <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="mt-2.5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 text-xs font-serif italic border border-emerald-500/20 shadow-sm flex items-center gap-2"
-              >
-                <span>✨</span>
-                <span>{mockSuccessMessage}</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        )}
 
         {/* MAIN Content Grid / Multi-Week View */}
         <div className="mt-2">
