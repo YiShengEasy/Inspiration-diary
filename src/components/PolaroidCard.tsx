@@ -20,6 +20,12 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
     navigator.clipboard.writeText(term);
   };
 
+  const handleDeleteCard = () => {
+    const shouldDelete = window.confirm("确定删除这张灵感图片吗？此操作无法撤销。");
+    if (!shouldDelete) return;
+    onDeleteCard(card.id);
+  };
+
   const handleAddCustomTerm = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = newTermInput.trim();
@@ -99,7 +105,7 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
 
         {/* Delete button of entire Polaroid card */}
         <button
-          onClick={() => onDeleteCard(card.id)}
+          onClick={handleDeleteCard}
           className="absolute -top-1 -right-1 opacity-0 group-hover/card:opacity-100 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 transition-opacity cursor-pointer z-40 shadow-sm"
           title="删除这张相片卡"
         >

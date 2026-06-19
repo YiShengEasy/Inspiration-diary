@@ -281,42 +281,33 @@ export default function App() {
         }
       }
 
+      let extractedTerms: string[] = [];
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout limit
 
-      let response: Response;
       try {
-        response = await fetch("/api/analyze-image", {
+        const response = await fetch("/api/analyze-image", {
           method: "POST",
           headers,
           body: JSON.stringify({ imageBase64: base64Data }),
           signal: controller.signal,
         });
-      } catch (fetchErr: any) {
-        if (fetchErr.name === "AbortError") {
-          throw new Error("Request timed out (60s limit). Please check your AI endpoint / API key or try using a faster model like gemini-3.5-flash.");
+
+        if (!response.ok) {
+          const rawErrorText = await response.text();
+          console.warn("Image term extraction skipped:", rawErrorText || `status ${response.status}`);
+        } else {
+          const resParsed = await response.json();
+          extractedTerms = Array.isArray(resParsed.terms) ? resParsed.terms : [];
         }
-        throw fetchErr;
+      } catch (fetchErr: any) {
+        const message = fetchErr?.name === "AbortError"
+          ? "request timed out"
+          : fetchErr?.message || fetchErr;
+        console.warn("Image term extraction skipped:", message);
       } finally {
         clearTimeout(timeoutId);
       }
-
-      if (!response.ok) {
-        const rawErrorText = await response.text();
-        let displayError = rawErrorText;
-        try {
-          const parsedErr = JSON.parse(rawErrorText);
-          if (parsedErr.error) {
-            displayError = parsedErr.error;
-          }
-        } catch {
-          // Keep raw text if not valid JSON
-        }
-        throw new Error(displayError || `Server returned error status ${response.status}`);
-      }
-
-      const resParsed = await response.json();
-      const extractedTerms = resParsed.terms || [];
 
       // Decorator types cycle list
       const decoList: Array<"tape" | "pin" | "paperclip" | "washi"> = [
