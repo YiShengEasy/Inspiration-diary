@@ -281,34 +281,6 @@ export default function App() {
         }
       }
 
-      let extractedTerms: string[] = [];
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout limit
-
-      try {
-        const response = await fetch("/api/analyze-image", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ imageBase64: base64Data }),
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          const rawErrorText = await response.text();
-          console.warn("Image term extraction skipped:", rawErrorText || `status ${response.status}`);
-        } else {
-          const resParsed = await response.json();
-          extractedTerms = Array.isArray(resParsed.terms) ? resParsed.terms : [];
-        }
-      } catch (fetchErr: any) {
-        const message = fetchErr?.name === "AbortError"
-          ? "request timed out"
-          : fetchErr?.message || fetchErr;
-        console.warn("Image term extraction skipped:", message);
-      } finally {
-        clearTimeout(timeoutId);
-      }
-
       // Decorator types cycle list
       const decoList: Array<"tape" | "pin" | "paperclip" | "washi"> = [
         "tape",
@@ -337,13 +309,48 @@ export default function App() {
         weekId,
         dayIndex,
         imageUrl: base64Data,
-        terms: extractedTerms.length > 0 ? extractedTerms : selectedFallback,
+        terms: selectedFallback,
         decoType: randomDeco,
         angle: randomAngle,
         createdAt: Date.now(),
       };
 
       await saveCard(newCard);
+
+      const analyzeAndUpdateTerms = async () => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout limit
+
+        try {
+          const response = await fetch("/api/analyze-image", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ imageBase64: base64Data }),
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const rawErrorText = await response.text();
+            console.warn("Image term extraction skipped:", rawErrorText || `status ${response.status}`);
+            return;
+          }
+
+          const resParsed = await response.json();
+          const extractedTerms = Array.isArray(resParsed.terms) ? resParsed.terms : [];
+          if (extractedTerms.length > 0) {
+            await updateCardTerms(cardId, weekId, extractedTerms);
+          }
+        } catch (fetchErr: any) {
+          const message = fetchErr?.name === "AbortError"
+            ? "request timed out"
+            : fetchErr?.message || fetchErr;
+          console.warn("Image term extraction skipped:", message);
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      };
+
+      void analyzeAndUpdateTerms();
     } catch (error: any) {
       console.error("Aesthetic extracting terms error:", error);
       throw new Error(error.message || "Failed to parse terms with Gemini AI.");
