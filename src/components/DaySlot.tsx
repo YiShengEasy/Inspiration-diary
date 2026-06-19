@@ -164,7 +164,7 @@ export default function DaySlot({
     return () => {
       window.removeEventListener("paste", handlePaste);
     };
-  }, []);
+  });
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();

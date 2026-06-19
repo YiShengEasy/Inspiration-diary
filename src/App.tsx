@@ -248,6 +248,10 @@ export default function App() {
   // Upload card and proxy call AI analysis API server-side
   const handleUploadImage = async (dayIndex: number, base64Data: string) => {
     try {
+      if (!weekId) {
+        throw new Error("当前周信息还在加载，请稍后再粘贴图片。");
+      }
+
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "x-provider": customProvider || "gemini",
