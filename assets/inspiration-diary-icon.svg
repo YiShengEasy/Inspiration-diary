@@ -1,0 +1,71 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="172" y1="120" x2="858" y2="908" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F8FAF7"/>
+      <stop offset="0.52" stop-color="#EAF2EE"/>
+      <stop offset="1" stop-color="#D6E4EC"/>
+    </linearGradient>
+    <linearGradient id="bookCover" x1="322" y1="330" x2="724" y2="779" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5A6675"/>
+      <stop offset="1" stop-color="#2D3540"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="382" y1="306" x2="671" y2="715" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFDF5"/>
+      <stop offset="1" stop-color="#EFE7D6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(526 312) rotate(90) scale(195)">
+      <stop offset="0" stop-color="#FFE08B" stop-opacity="0.95"/>
+      <stop offset="0.48" stop-color="#FFD166" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#FFD166" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softShadow" x="188" y="222" width="670" height="660" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="34"/>
+      <feGaussianBlur stdDeviation="34"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.17 0 0 0 0 0.22 0 0 0 0 0.27 0 0 0 0.28 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1" result="shape"/>
+    </filter>
+    <filter id="sparkShadow" x="348" y="112" width="356" height="371" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="10"/>
+      <feGaussianBlur stdDeviation="16"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.93 0 0 0 0 0.55 0 0 0 0 0.08 0 0 0 0.28 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_2"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_2" result="shape"/>
+    </filter>
+    <clipPath id="iconClip">
+      <rect width="1024" height="1024" rx="228"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#iconClip)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <circle cx="526" cy="312" r="195" fill="url(#glow)"/>
+    <path d="M188 727C332 785 533 814 845 730V1024H188V727Z" fill="#C8DAE0" fill-opacity="0.32"/>
+    <path d="M114 91C236 150 430 180 693 116" stroke="white" stroke-opacity="0.32" stroke-width="30" stroke-linecap="round"/>
+
+    <g filter="url(#sparkShadow)">
+      <path d="M526 151C536 214 572 251 636 262C573 272 536 309 526 372C516 309 480 272 416 262C480 251 516 214 526 151Z" fill="#FFD166"/>
+      <path d="M641 173C647 209 668 230 704 236C668 242 647 263 641 299C635 263 614 242 578 236C614 230 635 209 641 173Z" fill="#8FD3FF" fill-opacity="0.92"/>
+      <path d="M406 229C411 259 429 277 459 282C429 287 411 305 406 335C401 305 383 287 353 282C383 277 401 259 406 229Z" fill="#FFF4BC"/>
+    </g>
+
+    <g filter="url(#softShadow)">
+      <path d="M274 390C273 359 300 336 330 343L505 386C523 390 536 407 536 426V784C536 806 516 823 495 818L314 774C291 768 274 748 274 724V390Z" fill="url(#bookCover)"/>
+      <path d="M750 390C751 359 724 336 694 343L519 386C501 390 488 407 488 426V784C488 806 508 823 529 818L710 774C733 768 750 748 750 724V390Z" fill="url(#bookCover)"/>
+      <path d="M322 354C322 326 347 306 374 313L500 345C518 350 530 366 530 384V727C530 749 510 766 489 761L355 728C336 723 322 706 322 686V354Z" fill="url(#paper)"/>
+      <path d="M702 354C702 326 677 306 650 313L524 345C506 350 494 366 494 384V727C494 749 514 766 535 761L669 728C688 723 702 706 702 686V354Z" fill="url(#paper)"/>
+      <path d="M512 384V746" stroke="#D8CEBC" stroke-width="14" stroke-linecap="round"/>
+      <path d="M382 438L463 459" stroke="#CFC4B1" stroke-width="12" stroke-linecap="round" opacity="0.8"/>
+      <path d="M382 502L463 523" stroke="#CFC4B1" stroke-width="12" stroke-linecap="round" opacity="0.58"/>
+      <path d="M642 438L561 459" stroke="#CFC4B1" stroke-width="12" stroke-linecap="round" opacity="0.8"/>
+      <path d="M642 502L561 523" stroke="#CFC4B1" stroke-width="12" stroke-linecap="round" opacity="0.58"/>
+      <path d="M304 400C367 433 435 452 510 456C589 452 659 433 720 400" stroke="white" stroke-opacity="0.28" stroke-width="18" stroke-linecap="round"/>
+    </g>
+
+    <path d="M308 828C405 860 576 872 720 826" stroke="white" stroke-opacity="0.44" stroke-width="18" stroke-linecap="round"/>
+  </g>
+</svg>
