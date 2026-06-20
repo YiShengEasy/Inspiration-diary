@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { X, Eye, EyeOff, Save, Key, Cpu, HelpCircle, Globe, Settings2, Loader2, CheckCircle2, AlertTriangle, PlayCircle } from "lucide-react";
+import { authFetch } from "../lib/authClient";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -150,7 +151,7 @@ export default function SettingsModal({
         if (currentGeminiBaseUrl) headers["x-gemini-base-url"] = currentGeminiBaseUrl;
       }
 
-      const res = await fetch("/api/test-model", {
+      const res = await authFetch("/api/test-model", {
         method: "POST",
         headers,
         body: JSON.stringify({}),
