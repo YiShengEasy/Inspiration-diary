@@ -5,6 +5,7 @@ export interface ImageCard {
   imageUrl: string; // Large PhotoPrism image URL
   thumbnailUrl?: string; // PhotoPrism thumbnail URL for board cards
   photoUid?: string; // PhotoPrism photo/file identifier used for traceability
+  photoHash?: string; // PhotoPrism content hash used by authenticated proxy routes
   terms: string[];
   decoType: "tape" | "pin" | "paperclip" | "washi";
   angle: number; // Random value from -3 to 3 for polaroid tilt styling
