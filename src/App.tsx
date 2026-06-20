@@ -16,12 +16,17 @@ import {
 import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
 import PolaroidCard from "./components/PolaroidCard";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw } from "lucide-react";
+import LoginScreen from "./components/LoginScreen";
+import { auth } from "./lib/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 
 export default function App() {
   const shouldShowMockTools = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK_TOOLS === "true";
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [authInitialized, setAuthInitialized] = useState<boolean>(false);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [weekId, setWeekId] = useState<string>("");
   const [cards, setCards] = useState<ImageCard[]>([]);
@@ -72,6 +77,15 @@ export default function App() {
 
   const dragStartRef = useRef<number | null>(null);
   const initialHeightRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsLoggedIn(!!user);
+      setAuthInitialized(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Calculate the week identifier (e.g., "2026-W25")
   const getWeekIdentifier = (date: Date): string => {
@@ -555,6 +569,18 @@ export default function App() {
     return card.terms.some((term) => term.toLowerCase().includes(q));
   });
 
+  if (!authInitialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-stone-950">
+        <Loader2 className="animate-spin text-stone-400" />
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col transition-colors duration-300">
       {/* Visual background lines representing analog journal grid */}
@@ -587,6 +613,14 @@ export default function App() {
               title="Toggle theme vibe"
             >
               {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+
+            <button
+              onClick={() => signOut(auth)}
+              className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-900 dark:text-red-300 transition-colors shadow-sm cursor-pointer border border-red-500/20 flex items-center justify-center"
+              title="Logout"
+            >
+              <LogOut size={15} />
             </button>
           </div>
         </div>
