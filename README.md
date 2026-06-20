@@ -56,6 +56,12 @@ The Docker app reads runtime configuration from `.env.production`. Mock data too
 
 If the configured PostgreSQL database is running on this Mac, use `host.docker.internal` as the database host in `.env.production` because `localhost` inside Docker points to the container itself.
 
+## Local Authentication
+
+The production app uses local PostgreSQL-backed users and server-side sessions. Register the first user from the login screen, or set `AUTH_BOOTSTRAP_EMAIL` and `AUTH_BOOTSTRAP_PASSWORD` before the first Docker start to create a local administrator account.
+
+All card, note, settings, AI, upload, and photo proxy APIs require login. Sessions are stored in PostgreSQL and sent to the browser as an `HttpOnly` cookie named `inspiration_session`.
+
 ## PhotoPrism Image Storage
 
 New image uploads are stored in PhotoPrism. PostgreSQL stores only URL metadata for each inspiration card.
