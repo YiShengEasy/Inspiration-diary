@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import pg from "pg";
+import { createAuthRouter } from "./src/server/auth";
 import { storeImageInPhotoPrism } from "./src/server/photoprism";
 
 dotenv.config();
@@ -667,6 +668,30 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
       const client = await pgPool!.connect();
       try {
         console.log("Initializing PostgreSQL database schema...");
+        await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto;");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS users (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            display_name TEXT,
+            role TEXT NOT NULL DEFAULT 'user',
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+          );
+        `);
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at BIGINT NOT NULL,
+            expires_at BIGINT NOT NULL,
+            last_seen_at BIGINT NOT NULL,
+            user_agent TEXT
+          );
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);");
         await client.query(`
           CREATE TABLE IF NOT EXISTS notes (
             week_id VARCHAR(50) PRIMARY KEY,
@@ -689,6 +714,16 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
         `);
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS photo_uid TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS terms_text TEXT;");
+        await client.query("UPDATE cards SET terms_text = array_to_string(terms, ' ') WHERE terms_text IS NULL OR terms_text = '';");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_created_at_desc ON cards (created_at DESC);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_week_created_at ON cards (week_id, created_at);");
+        try {
+          await client.query("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
+          await client.query("CREATE INDEX IF NOT EXISTS idx_cards_terms_text_trgm ON cards USING gin (terms_text gin_trgm_ops);");
+        } catch (indexErr) {
+          console.warn("PostgreSQL trigram index setup skipped:", indexErr);
+        }
         console.log("PostgreSQL schema successfully verified/created.");
         await client.query(`
           CREATE TABLE IF NOT EXISTS settings (
@@ -697,6 +732,38 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
             updated_at BIGINT
           );
         `);
+        await client.query("ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
+        await client.query("ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_created_at ON cards(user_id, created_at DESC);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_week_created_at ON cards(user_id, week_id, created_at);");
+        await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_user_week ON notes(user_id, week_id);");
+        await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_user_key ON settings(user_id, key);");
+        const userCount = await client.query("SELECT COUNT(*)::int AS count FROM users");
+        if (Number(userCount.rows[0]?.count || 0) === 0) {
+          const bootstrapEmail = process.env.AUTH_BOOTSTRAP_EMAIL || "local-admin@example.com";
+          const bootstrapPassword = process.env.AUTH_BOOTSTRAP_PASSWORD;
+          if (!bootstrapPassword) {
+            console.warn("AUTH_BOOTSTRAP_PASSWORD is not set. Existing data will be assigned after first registration.");
+          } else {
+            const bcrypt = await import("bcryptjs");
+            const passwordHash = await bcrypt.default.hash(bootstrapPassword, 12);
+            await client.query(
+              `INSERT INTO users (id, email, password_hash, display_name, role, created_at, updated_at)
+               VALUES (gen_random_uuid(), $1, $2, 'Local Admin', 'admin', $3, $3)
+               ON CONFLICT (email) DO NOTHING`,
+              [bootstrapEmail.trim().toLowerCase(), passwordHash, Date.now()]
+            );
+          }
+        }
+
+        const ownerResult = await client.query("SELECT id FROM users ORDER BY created_at ASC LIMIT 1");
+        const ownerId = ownerResult.rows[0]?.id;
+        if (ownerId) {
+          await client.query("UPDATE notes SET user_id = $1 WHERE user_id IS NULL", [ownerId]);
+          await client.query("UPDATE cards SET user_id = $1 WHERE user_id IS NULL", [ownerId]);
+          await client.query("UPDATE settings SET user_id = $1 WHERE user_id IS NULL", [ownerId]);
+        }
       } finally {
         client.release();
       }
@@ -705,6 +772,10 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
     }
   };
   initDb();
+}
+
+if (pgPool) {
+  app.use("/api/auth", createAuthRouter(pgPool));
 }
 
 // 1. Fetch weekly note
@@ -762,15 +833,7 @@ app.get("/api/db/cards", async (req, res) => {
   }
   try {
     const weekId = req.query.weekId as string;
-    const result = (weekId && weekId !== "all")
-      ? await pgPool.query(
-          "SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at FROM cards WHERE week_id = $1",
-          [weekId]
-        )
-      : await pgPool.query(
-          "SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at FROM cards ORDER BY created_at DESC"
-        );
-    const cards = result.rows.map((row) => ({
+    const mapCards = (rows: any[]) => rows.map((row) => ({
       id: row.id,
       weekId: row.week_id,
       dayIndex: row.day_index,
@@ -782,7 +845,57 @@ app.get("/api/db/cards", async (req, res) => {
       angle: Number(row.angle),
       createdAt: Number(row.created_at),
     }));
-    return res.json(cards);
+
+    if (weekId && weekId !== "all") {
+      const result = await pgPool.query(
+        "SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at FROM cards WHERE week_id = $1 ORDER BY day_index ASC, created_at ASC",
+        [weekId]
+      );
+      return res.json(mapCards(result.rows));
+    }
+
+    const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
+    const rawPageSize = Number.parseInt(String(req.query.pageSize || "12"), 10) || 12;
+    const pageSize = Math.min(60, Math.max(1, rawPageSize));
+    const offset = (page - 1) * pageSize;
+    const q = String(req.query.q || "").trim();
+
+    const whereClauses: string[] = [];
+    const values: Array<string | number> = [];
+    if (q) {
+      values.push(`%${q}%`);
+      whereClauses.push(`terms_text ILIKE $${values.length}`);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    const countResult = await pgPool.query(
+      `SELECT COUNT(*)::int AS total FROM cards ${whereSql}`,
+      values
+    );
+    const total = Number(countResult.rows[0]?.total || 0);
+
+    values.push(pageSize);
+    const limitParam = values.length;
+    values.push(offset);
+    const offsetParam = values.length;
+
+    const result = await pgPool.query(
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at
+       FROM cards
+       ${whereSql}
+       ORDER BY created_at DESC
+       LIMIT $${limitParam} OFFSET $${offsetParam}`,
+      values
+    );
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    return res.json({
+      cards: mapCards(result.rows),
+      total,
+      page,
+      pageSize,
+      totalPages,
+    });
   } catch (err: any) {
     console.error("Error executing fetch cards query:", err);
     return res.status(500).json({ error: err.message });
@@ -797,12 +910,12 @@ app.post("/api/db/cards", async (req, res) => {
   try {
     const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, terms, decoType, angle, createdAt } = req.body;
     await pgPool.query(
-      `INSERT INTO cards (id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+      `INSERT INTO cards (id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, terms_text, deco_type, angle, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, array_to_string($7::text[], ' '), $8, $9, $10) 
        ON CONFLICT (id) 
        DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, image_url = EXCLUDED.image_url, 
                      thumbnail_url = EXCLUDED.thumbnail_url, photo_uid = EXCLUDED.photo_uid,
-                     terms = EXCLUDED.terms, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle, 
+                     terms = EXCLUDED.terms, terms_text = EXCLUDED.terms_text, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle, 
                      created_at = EXCLUDED.created_at`,
       [id, weekId, dayIndex, imageUrl, thumbnailUrl || "", photoUid || "", terms, decoType, angle, createdAt || Date.now()]
     );
@@ -834,7 +947,7 @@ app.put("/api/db/cards/:id/terms", async (req, res) => {
   }
   try {
     const { terms } = req.body;
-    await pgPool.query("UPDATE cards SET terms = $1 WHERE id = $2", [terms, req.params.id]);
+    await pgPool.query("UPDATE cards SET terms = $1, terms_text = array_to_string($1::text[], ' ') WHERE id = $2", [terms, req.params.id]);
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error executing update card tag terms query:", err);
