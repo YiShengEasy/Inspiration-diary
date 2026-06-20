@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import pg from "pg";
+import { storeImageInPhotoPrism } from "./src/server/photoprism";
 
 dotenv.config();
 
@@ -312,6 +313,21 @@ app.post("/api/analyze-image", async (req, res) => {
   } catch (error: any) {
     console.error("Error analyzing image:", error);
     return res.status(500).json({ error: error.message || "An error occurred while analyzing the image." });
+  }
+});
+
+app.post("/api/store-image", async (req, res) => {
+  try {
+    const { imageBase64 } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: "Missing imageBase64 in request body." });
+    }
+
+    const stored = await storeImageInPhotoPrism(imageBase64);
+    return res.json(stored);
+  } catch (error: any) {
+    console.error("PhotoPrism image storage error:", error);
+    return res.status(500).json({ error: error.message || "PhotoPrism image storage failed." });
   }
 });
 
@@ -671,6 +687,8 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
             created_at BIGINT
           );
         `);
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS photo_uid TEXT;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;");
         console.log("PostgreSQL schema successfully verified/created.");
         await client.query(`
           CREATE TABLE IF NOT EXISTS settings (
@@ -746,17 +764,19 @@ app.get("/api/db/cards", async (req, res) => {
     const weekId = req.query.weekId as string;
     const result = (weekId && weekId !== "all")
       ? await pgPool.query(
-          "SELECT id, week_id, day_index, image_url, terms, deco_type, angle, created_at FROM cards WHERE week_id = $1",
+          "SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at FROM cards WHERE week_id = $1",
           [weekId]
         )
       : await pgPool.query(
-          "SELECT id, week_id, day_index, image_url, terms, deco_type, angle, created_at FROM cards ORDER BY created_at DESC"
+          "SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at FROM cards ORDER BY created_at DESC"
         );
     const cards = result.rows.map((row) => ({
       id: row.id,
       weekId: row.week_id,
       dayIndex: row.day_index,
       imageUrl: row.image_url,
+      thumbnailUrl: row.thumbnail_url || "",
+      photoUid: row.photo_uid || "",
       terms: row.terms || [],
       decoType: row.deco_type,
       angle: Number(row.angle),
@@ -775,15 +795,16 @@ app.post("/api/db/cards", async (req, res) => {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
-    const { id, weekId, dayIndex, imageUrl, terms, decoType, angle, createdAt } = req.body;
+    const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, terms, decoType, angle, createdAt } = req.body;
     await pgPool.query(
-      `INSERT INTO cards (id, week_id, day_index, image_url, terms, deco_type, angle, created_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+      `INSERT INTO cards (id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
        ON CONFLICT (id) 
        DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, image_url = EXCLUDED.image_url, 
+                     thumbnail_url = EXCLUDED.thumbnail_url, photo_uid = EXCLUDED.photo_uid,
                      terms = EXCLUDED.terms, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle, 
                      created_at = EXCLUDED.created_at`,
-      [id, weekId, dayIndex, imageUrl, terms, decoType, angle, createdAt || Date.now()]
+      [id, weekId, dayIndex, imageUrl, thumbnailUrl || "", photoUid || "", terms, decoType, angle, createdAt || Date.now()]
     );
     return res.json({ success: true });
   } catch (err: any) {
