@@ -5,7 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import pg from "pg";
 import { createAuthRouter, requireAuth, type AuthenticatedRequest } from "./src/server/auth";
-import { storeImageInPhotoPrism } from "./src/server/photoprism";
+import { fetchPhotoPrismImage, storeImageInPhotoPrism } from "./src/server/photoprism";
 
 dotenv.config();
 
@@ -107,6 +107,7 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
           );
         `);
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS photo_uid TEXT;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS photo_hash TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS terms_text TEXT;");
         await client.query("UPDATE cards SET terms_text = array_to_string(terms, ' ') WHERE terms_text IS NULL OR terms_text = '';");
@@ -157,6 +158,7 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
         `);
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_created_at ON cards(user_id, created_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_week_created_at ON cards(user_id, week_id, created_at);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_photo_uid ON cards(user_id, photo_uid);");
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_user_week ON notes(user_id, week_id);");
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_user_key ON settings(user_id, key);");
         const userCount = await client.query("SELECT COUNT(*)::int AS count FROM users");
@@ -875,6 +877,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
       imageUrl: row.image_url,
       thumbnailUrl: row.thumbnail_url || "",
       photoUid: row.photo_uid || "",
+      photoHash: row.photo_hash || "",
       terms: row.terms || [],
       decoType: row.deco_type,
       angle: Number(row.angle),
@@ -883,7 +886,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
 
     if (weekId && weekId !== "all") {
       const result = await pgPool.query(
-        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at
+        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at
          FROM cards
          WHERE user_id = $1 AND week_id = $2
          ORDER BY day_index ASC, created_at ASC`,
@@ -918,7 +921,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const offsetParam = values.length;
 
     const result = await pgPool.query(
-      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at
        FROM cards
        ${whereSql}
        ORDER BY created_at DESC
@@ -947,22 +950,54 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
   }
   try {
     const authReq = req as AuthenticatedRequest;
-    const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, terms, decoType, angle, createdAt } = req.body;
+    const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, photoHash, terms, decoType, angle, createdAt } = req.body;
     await pgPool.query(
-      `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, terms_text, deco_type, angle, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, array_to_string($8::text[], ' '), $9, $10, $11)
+      `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, array_to_string($9::text[], ' '), $10, $11, $12)
        ON CONFLICT (id)
        DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, image_url = EXCLUDED.image_url, 
-                     thumbnail_url = EXCLUDED.thumbnail_url, photo_uid = EXCLUDED.photo_uid,
+                     thumbnail_url = EXCLUDED.thumbnail_url, photo_uid = EXCLUDED.photo_uid, photo_hash = EXCLUDED.photo_hash,
                      terms = EXCLUDED.terms, terms_text = EXCLUDED.terms_text, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle, 
                      created_at = EXCLUDED.created_at
        WHERE cards.user_id = EXCLUDED.user_id`,
-      [id, authReq.user!.id, weekId, dayIndex, imageUrl, thumbnailUrl || "", photoUid || "", terms, decoType, angle, createdAt || Date.now()]
+      [id, authReq.user!.id, weekId, dayIndex, imageUrl, thumbnailUrl || "", photoUid || "", photoHash || "", terms, decoType, angle, createdAt || Date.now()]
     );
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error executing upsert card query:", err);
     return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/photos/:photoUid/:variant(thumb|full)", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const { photoUid, variant } = req.params;
+    const result = await pgPool.query(
+      `SELECT photo_hash
+       FROM cards
+       WHERE user_id = $1 AND photo_uid = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [authReq.user!.id, photoUid]
+    );
+    const photoHash = result.rows[0]?.photo_hash;
+
+    if (!photoHash) {
+      return res.status(404).json({ error: "Photo not found" });
+    }
+
+    const image = await fetchPhotoPrismImage(photoHash, variant as "thumb" | "full");
+    res.setHeader("Content-Type", image.contentType);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    return res.send(image.bytes);
+  } catch (err: any) {
+    console.error("Photo proxy error:", err);
+    return res.status(502).json({ error: err.message || "Photo proxy failed." });
   }
 });
 

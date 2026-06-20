@@ -2,8 +2,14 @@ import crypto from "crypto";
 
 export interface StoredPhotoPrismImage {
   photoUid: string;
+  photoHash: string;
   imageUrl: string;
   thumbnailUrl: string;
+}
+
+export interface PhotoPrismImageResponse {
+  bytes: Buffer;
+  contentType: string;
 }
 
 interface PhotoPrismSession {
@@ -16,6 +22,11 @@ interface PhotoPrismConfig {
   publicUrl: string;
   username: string;
   password: string;
+}
+
+interface PhotoPrismClientConfig {
+  previewToken: string;
+  downloadToken: string;
 }
 
 function trimTrailingSlash(value: string): string {
@@ -67,6 +78,7 @@ function generateUploadToken(): string {
 function buildHeaders(authToken: string): HeadersInit {
   return {
     "X-Auth-Token": authToken,
+    "X-Session-ID": authToken,
     "X-Client-Version": "inspiration-diary",
   };
 }
@@ -94,6 +106,65 @@ async function login(config: PhotoPrismConfig): Promise<PhotoPrismSession> {
   }
 
   return { authToken, userUid };
+}
+
+async function loadClientConfig(config: PhotoPrismConfig, session: PhotoPrismSession): Promise<PhotoPrismClientConfig> {
+  const response = await fetch(`${config.internalUrl}/api/v1/config`, {
+    headers: buildHeaders(session.authToken),
+  });
+
+  if (!response.ok) {
+    throw new Error(`PhotoPrism config failed with status ${response.status}.`);
+  }
+
+  const body: any = await response.json();
+  const previewToken = body.previewToken || body.PreviewToken;
+  const downloadToken = body.downloadToken || body.DownloadToken;
+
+  if (!previewToken || !downloadToken) {
+    throw new Error("PhotoPrism config did not return preview and download tokens.");
+  }
+
+  return { previewToken, downloadToken };
+}
+
+function buildPhotoUrls(baseUrl: string, clientConfig: PhotoPrismClientConfig, hash: string) {
+  return {
+    thumbnailUrl: `${baseUrl}/api/v1/t/${hash}/${clientConfig.previewToken}/fit_720`,
+    imageUrl: `${baseUrl}/api/v1/dl/${hash}?t=${clientConfig.downloadToken}`,
+  };
+}
+
+async function createReadContext() {
+  const config = getConfig();
+  const session = await login(config);
+  const clientConfig = await loadClientConfig(config, session);
+  return { config, clientConfig };
+}
+
+export async function resolvePhotoPrismImageUrls(photoHash: string) {
+  if (!photoHash) {
+    throw new Error("PhotoPrism photo hash is required.");
+  }
+
+  const { config, clientConfig } = await createReadContext();
+  return buildPhotoUrls(config.internalUrl, clientConfig, photoHash);
+}
+
+export async function fetchPhotoPrismImage(photoHash: string, variant: "thumb" | "full"): Promise<PhotoPrismImageResponse> {
+  const urls = await resolvePhotoPrismImageUrls(photoHash);
+  const url = variant === "thumb" ? urls.thumbnailUrl : urls.imageUrl;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`PhotoPrism image fetch failed with status ${response.status}.`);
+  }
+
+  const contentType = response.headers.get("content-type") || "application/octet-stream";
+  return {
+    bytes: Buffer.from(await response.arrayBuffer()),
+    contentType,
+  };
 }
 
 async function uploadFile(
@@ -171,6 +242,7 @@ async function findUploadedPhoto(config: PhotoPrismConfig, session: PhotoPrismSe
 export async function storeImageInPhotoPrism(imageBase64: string): Promise<StoredPhotoPrismImage> {
   const config = getConfig();
   const session = await login(config);
+  const clientConfig = await loadClientConfig(config, session);
   const decoded = decodeDataUrl(imageBase64);
   const imageHash = crypto.createHash("sha1").update(decoded.buffer).digest("hex");
   const uploadToken = generateUploadToken();
@@ -188,7 +260,7 @@ export async function storeImageInPhotoPrism(imageBase64: string): Promise<Store
 
   return {
     photoUid,
-    thumbnailUrl: `${config.publicUrl}/api/v1/t/${hash}/public/fit_720`,
-    imageUrl: `${config.publicUrl}/api/v1/dl/${hash}?t=public`,
+    photoHash: hash,
+    ...buildPhotoUrls(config.publicUrl, clientConfig, hash),
   };
 }
