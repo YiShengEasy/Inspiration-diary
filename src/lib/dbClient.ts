@@ -11,6 +11,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { ImageCard, WeeklyNote } from "../types";
+import { authFetch } from "./authClient";
 
 // Detect if we are in PostgreSQL Mode
 const isPostgresMode = (import.meta as any).env.VITE_DATABASE_TYPE === "postgres";
@@ -20,6 +21,14 @@ type CardCallback = (cards: ImageCard[]) => void;
 const cardListeners = new Map<string, Set<CardCallback>>();
 const activeWeekCardsMemory = new Map<string, ImageCard[]>();
 
+export interface PaginatedCardsResult {
+  cards: ImageCard[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 function notifyCardsSubscribers(weekId: string, cards: ImageCard[]) {
   const set = cardListeners.get(weekId);
   if (set) {
@@ -27,8 +36,64 @@ function notifyCardsSubscribers(weekId: string, cards: ImageCard[]) {
   }
 }
 
+function upsertCachedCard(card: ImageCard) {
+  const existing = activeWeekCardsMemory.get(card.weekId) || [];
+  const idx = existing.findIndex((c) => c.id === card.id);
+  const updated = [...existing];
+  if (idx >= 0) {
+    updated[idx] = card;
+  } else {
+    updated.push(card);
+  }
+  updated.sort((a, b) => a.createdAt - b.createdAt);
+  activeWeekCardsMemory.set(card.weekId, updated);
+  notifyCardsSubscribers(card.weekId, updated);
+
+  const allCards = activeWeekCardsMemory.get("all");
+  if (allCards) {
+    const allIdx = allCards.findIndex((c) => c.id === card.id);
+    const nextAllCards = [...allCards];
+    if (allIdx >= 0) {
+      nextAllCards[allIdx] = card;
+    } else {
+      nextAllCards.push(card);
+    }
+    nextAllCards.sort((a, b) => b.createdAt - a.createdAt);
+    activeWeekCardsMemory.set("all", nextAllCards);
+    notifyCardsSubscribers("all", nextAllCards);
+  }
+}
+
+function removeCachedCard(cardId: string, weekId: string) {
+  const existing = activeWeekCardsMemory.get(weekId) || [];
+  const updated = existing.filter((c) => c.id !== cardId);
+  activeWeekCardsMemory.set(weekId, updated);
+  notifyCardsSubscribers(weekId, updated);
+
+  const allCards = activeWeekCardsMemory.get("all");
+  if (allCards) {
+    const nextAllCards = allCards.filter((c) => c.id !== cardId);
+    activeWeekCardsMemory.set("all", nextAllCards);
+    notifyCardsSubscribers("all", nextAllCards);
+  }
+}
+
+function updateCachedCardTerms(cardId: string, weekId: string, terms: string[]) {
+  const existing = activeWeekCardsMemory.get(weekId) || [];
+  const updated = existing.map((c) => c.id === cardId ? { ...c, terms } : c);
+  activeWeekCardsMemory.set(weekId, updated);
+  notifyCardsSubscribers(weekId, updated);
+
+  const allCards = activeWeekCardsMemory.get("all");
+  if (allCards) {
+    const nextAllCards = allCards.map((c) => c.id === cardId ? { ...c, terms } : c);
+    activeWeekCardsMemory.set("all", nextAllCards);
+    notifyCardsSubscribers("all", nextAllCards);
+  }
+}
+
 /**
- * Real-time or polled subscription to image cards for a given week identifier.
+ * Real-time or locally notified subscription to image cards for a given week identifier.
  */
 export function subscribeCards(weekId: string, callback: CardCallback): () => void {
   if (isPostgresMode) {
@@ -44,20 +109,8 @@ export function subscribeCards(weekId: string, callback: CardCallback): () => vo
       callback(cards);
     });
 
-    // 3. Keep a 5-second poll active for external sync in Postgres mode
-    const interval = setInterval(() => {
-      fetchCardsFromApi(weekId).then((cards) => {
-        const cached = activeWeekCardsMemory.get(weekId) || [];
-        if (JSON.stringify(cached) !== JSON.stringify(cards)) {
-          activeWeekCardsMemory.set(weekId, cards);
-          callback(cards);
-        }
-      });
-    }, 5000);
-
     // Disposer of subscriber
     return () => {
-      clearInterval(interval);
       const set = cardListeners.get(weekId);
       if (set) {
         set.delete(callback);
@@ -75,6 +128,7 @@ export function subscribeCards(weekId: string, callback: CardCallback): () => vo
         fetchedCards.push({ id: doc.id, ...doc.data() } as ImageCard);
       });
       fetchedCards.sort((a, b) => a.createdAt - b.createdAt);
+      activeWeekCardsMemory.set(weekId, fetchedCards);
       callback(fetchedCards);
     }, (error) => {
       console.error("Firestore loading error for cards:", error);
@@ -87,10 +141,10 @@ export function subscribeCards(weekId: string, callback: CardCallback): () => vo
  */
 async function fetchCardsFromApi(weekId: string): Promise<ImageCard[]> {
   try {
-    const res = await fetch(`/api/db/cards?weekId=${encodeURIComponent(weekId)}`);
+    const res = await authFetch(`/api/db/cards?weekId=${encodeURIComponent(weekId)}`);
     if (res.ok) {
       const data = await res.json();
-      return data;
+      return Array.isArray(data) ? data : data.cards || [];
     }
   } catch (err) {
     console.error("Failed to query cards from API:", err);
@@ -99,12 +153,80 @@ async function fetchCardsFromApi(weekId: string): Promise<ImageCard[]> {
 }
 
 /**
+ * Loads a paginated slice of all historical cards from the backend.
+ */
+export async function loadAllCardsPage(params: {
+  page: number;
+  pageSize: number;
+  query?: string;
+}): Promise<PaginatedCardsResult> {
+  const page = Math.max(1, params.page);
+  const pageSize = Math.max(1, params.pageSize);
+
+  if (!isPostgresMode) {
+    const allCards = activeWeekCardsMemory.get("all") || [];
+    const q = (params.query || "").trim().toLowerCase();
+    const filtered = q
+      ? allCards.filter((card) => card.terms.some((term) => term.toLowerCase().includes(q)))
+      : allCards;
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * pageSize;
+    return {
+      cards: filtered.slice(start, start + pageSize),
+      total,
+      page: safePage,
+      pageSize,
+      totalPages,
+    };
+  }
+
+  try {
+    const searchParams = new URLSearchParams({
+      weekId: "all",
+      page: String(page),
+      pageSize: String(pageSize),
+    });
+    const query = (params.query || "").trim();
+    if (query) {
+      searchParams.set("q", query);
+    }
+
+    const res = await authFetch(`/api/db/cards?${searchParams.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      const cards = Array.isArray(data) ? data : data.cards || [];
+      const total = Number(data.total ?? cards.length);
+      const totalPages = Math.max(1, Number(data.totalPages ?? Math.ceil(total / pageSize)));
+      return {
+        cards,
+        total,
+        page: Number(data.page ?? page),
+        pageSize: Number(data.pageSize ?? pageSize),
+        totalPages,
+      };
+    }
+  } catch (err) {
+    console.error("Failed to query paginated cards from API:", err);
+  }
+
+  return {
+    cards: [],
+    total: 0,
+    page,
+    pageSize,
+    totalPages: 1,
+  };
+}
+
+/**
  * Loads the weekly note configuration
  */
 export async function loadNote(weekId: string): Promise<WeeklyNote | null> {
   if (isPostgresMode) {
     try {
-      const res = await fetch(`/api/db/notes/${encodeURIComponent(weekId)}`);
+      const res = await authFetch(`/api/db/notes/${encodeURIComponent(weekId)}`);
       if (res.ok) {
         const body = await res.json();
         return body;
@@ -128,7 +250,7 @@ export async function loadNote(weekId: string): Promise<WeeklyNote | null> {
  */
 export async function saveNote(weekId: string, note: string, height: number): Promise<void> {
   if (isPostgresMode) {
-    const res = await fetch(`/api/db/notes`, {
+    const res = await authFetch(`/api/db/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ weekId, note, height }),
@@ -166,7 +288,7 @@ export function createNewCardId(): string {
  */
 export async function saveCard(card: ImageCard): Promise<void> {
   if (isPostgresMode) {
-    const res = await fetch(`/api/db/cards`, {
+    const res = await authFetch(`/api/db/cards`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(card),
@@ -175,18 +297,7 @@ export async function saveCard(card: ImageCard): Promise<void> {
       throw new Error(`Failed to save card via local API: ${res.statusText}`);
     }
     
-    // Optimistic local sync
-    const existing = activeWeekCardsMemory.get(card.weekId) || [];
-    const idx = existing.findIndex((c) => c.id === card.id);
-    const updated = [...existing];
-    if (idx >= 0) {
-      updated[idx] = card;
-    } else {
-      updated.push(card);
-    }
-    updated.sort((a, b) => a.createdAt - b.createdAt);
-    activeWeekCardsMemory.set(card.weekId, updated);
-    notifyCardsSubscribers(card.weekId, updated);
+    upsertCachedCard(card);
   } else {
     // Initiate Firestore setDoc, let offline cache update the UI snappy
     setDoc(doc(db, "cards", card.id), card).catch((err) => {
@@ -200,18 +311,14 @@ export async function saveCard(card: ImageCard): Promise<void> {
  */
 export async function deleteCard(cardId: string, weekId: string): Promise<void> {
   if (isPostgresMode) {
-    const res = await fetch(`/api/db/cards/${encodeURIComponent(cardId)}`, {
+    const res = await authFetch(`/api/db/cards/${encodeURIComponent(cardId)}`, {
       method: "DELETE",
     });
     if (!res.ok) {
       throw new Error(`Failed to remove card via local API: ${res.statusText}`);
     }
 
-    // Refresh memory cache
-    const existing = activeWeekCardsMemory.get(weekId) || [];
-    const updated = existing.filter((c) => c.id !== cardId);
-    activeWeekCardsMemory.set(weekId, updated);
-    notifyCardsSubscribers(weekId, updated);
+    removeCachedCard(cardId, weekId);
   } else {
     deleteDoc(doc(db, "cards", cardId)).catch((err) => {
       console.error("Firestore deleteCard error:", err);
@@ -224,7 +331,7 @@ export async function deleteCard(cardId: string, weekId: string): Promise<void> 
  */
 export async function updateCardTerms(cardId: string, weekId: string, terms: string[]): Promise<void> {
   if (isPostgresMode) {
-    const res = await fetch(`/api/db/cards/${encodeURIComponent(cardId)}/terms`, {
+    const res = await authFetch(`/api/db/cards/${encodeURIComponent(cardId)}/terms`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ terms }),
@@ -233,11 +340,7 @@ export async function updateCardTerms(cardId: string, weekId: string, terms: str
       throw new Error(`Failed to update tags via API: ${res.statusText}`);
     }
 
-    // Notify memory cache
-    const existing = activeWeekCardsMemory.get(weekId) || [];
-    const updated = existing.map((c) => c.id === cardId ? { ...c, terms } : c);
-    activeWeekCardsMemory.set(weekId, updated);
-    notifyCardsSubscribers(weekId, updated);
+    updateCachedCardTerms(cardId, weekId, terms);
   } else {
     const cardRef = doc(db, "cards", cardId);
     updateDoc(cardRef, { terms }).catch((err) => {
@@ -251,15 +354,24 @@ export async function updateCardTerms(cardId: string, weekId: string, terms: str
  */
 export function subscribeAllCards(callback: CardCallback): () => void {
   if (isPostgresMode) {
-    const fetchAll = () => {
-      fetchCardsFromApi("all").then((cards) => {
-        callback(cards);
-      });
-    };
-    fetchAll();
-    const interval = setInterval(fetchAll, 5000);
+    if (!cardListeners.has("all")) {
+      cardListeners.set("all", new Set());
+    }
+    cardListeners.get("all")!.add(callback);
+
+    fetchCardsFromApi("all").then((cards) => {
+      activeWeekCardsMemory.set("all", cards);
+      callback(cards);
+    });
+
     return () => {
-      clearInterval(interval);
+      const set = cardListeners.get("all");
+      if (set) {
+        set.delete(callback);
+        if (set.size === 0) {
+          cardListeners.delete("all");
+        }
+      }
     };
   } else {
     // Firestore cards collection query for everything
@@ -270,11 +382,27 @@ export function subscribeAllCards(callback: CardCallback): () => void {
         fetchedCards.push({ id: doc.id, ...doc.data() } as ImageCard);
       });
       fetchedCards.sort((a, b) => b.createdAt - a.createdAt); // Order by creation absolute date desc
+      activeWeekCardsMemory.set("all", fetchedCards);
       callback(fetchedCards);
     }, (error) => {
       console.error("Firestore loading error for all cards:", error);
     });
   }
+}
+
+/**
+ * Manually reloads cards from the backend in PostgreSQL mode.
+ * Firestore mode relies on native snapshots, so this returns the current cache there.
+ */
+export async function refreshCards(weekId: string): Promise<ImageCard[]> {
+  if (!isPostgresMode) {
+    return activeWeekCardsMemory.get(weekId) || [];
+  }
+
+  const cards = await fetchCardsFromApi(weekId);
+  activeWeekCardsMemory.set(weekId, cards);
+  notifyCardsSubscribers(weekId, cards);
+  return cards;
 }
 
 /**
@@ -284,7 +412,7 @@ export function subscribeAllCards(callback: CardCallback): () => void {
 export async function loadSettings(): Promise<Record<string, string>> {
   if (!isPostgresMode) return {};
   try {
-    const res = await fetch("/api/db/settings");
+    const res = await authFetch("/api/db/settings");
     if (res.ok) {
       return await res.json();
     }
@@ -300,7 +428,7 @@ export async function loadSettings(): Promise<Record<string, string>> {
 export async function saveSettings(settings: Record<string, string>): Promise<void> {
   if (!isPostgresMode) return;
   try {
-    const res = await fetch("/api/db/settings", {
+    const res = await authFetch("/api/db/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings),
@@ -312,4 +440,3 @@ export async function saveSettings(settings: Record<string, string>): Promise<vo
     console.error("Failed to save settings to DB:", err);
   }
 }
-
