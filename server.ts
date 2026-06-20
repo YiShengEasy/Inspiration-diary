@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import pg from "pg";
-import { createAuthRouter } from "./src/server/auth";
+import { createAuthRouter, requireAuth, type AuthenticatedRequest } from "./src/server/auth";
 import { storeImageInPhotoPrism } from "./src/server/photoprism";
 
 dotenv.config();
@@ -42,7 +42,168 @@ if (apiKey) {
   console.warn("GEMINI_API_KEY environment variable is not defined!");
 }
 
-app.post("/api/analyze-image", async (req, res) => {
+// ==========================================
+// PostgreSQL Database Connection & CRUD routes
+// ==========================================
+const { Pool } = pg;
+const dbType = process.env.DATABASE_TYPE || "firestore";
+let pgPool: pg.Pool | null = null;
+
+if (dbType === "postgres" || process.env.DATABASE_URL) {
+  console.log("Configuring server database for local/remote PostgreSQL...");
+  pgPool = new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/notebook",
+    ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false
+  });
+
+  // Initialize Postgres relational tables asynchronously on boot
+  const initDb = async () => {
+    try {
+      const client = await pgPool!.connect();
+      try {
+        console.log("Initializing PostgreSQL database schema...");
+        await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto;");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS users (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            display_name TEXT,
+            role TEXT NOT NULL DEFAULT 'user',
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+          );
+        `);
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at BIGINT NOT NULL,
+            expires_at BIGINT NOT NULL,
+            last_seen_at BIGINT NOT NULL,
+            user_agent TEXT
+          );
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS notes (
+            week_id VARCHAR(50) PRIMARY KEY,
+            note TEXT,
+            height INTEGER,
+            updated_at BIGINT
+          );
+        `);
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS cards (
+            id VARCHAR(50) PRIMARY KEY,
+            week_id VARCHAR(50) NOT NULL,
+            day_index INTEGER NOT NULL,
+            image_url TEXT NOT NULL,
+            terms TEXT[] NOT NULL,
+            deco_type VARCHAR(50),
+            angle NUMERIC,
+            created_at BIGINT
+          );
+        `);
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS photo_uid TEXT;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS terms_text TEXT;");
+        await client.query("UPDATE cards SET terms_text = array_to_string(terms, ' ') WHERE terms_text IS NULL OR terms_text = '';");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_created_at_desc ON cards (created_at DESC);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_week_created_at ON cards (week_id, created_at);");
+        try {
+          await client.query("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
+          await client.query("CREATE INDEX IF NOT EXISTS idx_cards_terms_text_trgm ON cards USING gin (terms_text gin_trgm_ops);");
+        } catch (indexErr) {
+          console.warn("PostgreSQL trigram index setup skipped:", indexErr);
+        }
+        console.log("PostgreSQL schema successfully verified/created.");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS settings (
+            key VARCHAR(100) PRIMARY KEY,
+            value TEXT,
+            updated_at BIGINT
+          );
+        `);
+        await client.query("ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
+        await client.query("ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
+        await client.query(`
+          DO $$
+          BEGIN
+            IF EXISTS (
+              SELECT 1
+              FROM pg_constraint
+              WHERE conrelid = 'notes'::regclass
+                AND conname = 'notes_pkey'
+            ) THEN
+              ALTER TABLE notes DROP CONSTRAINT notes_pkey;
+            END IF;
+          END $$;
+        `);
+        await client.query(`
+          DO $$
+          BEGIN
+            IF EXISTS (
+              SELECT 1
+              FROM pg_constraint
+              WHERE conrelid = 'settings'::regclass
+                AND conname = 'settings_pkey'
+            ) THEN
+              ALTER TABLE settings DROP CONSTRAINT settings_pkey;
+            END IF;
+          END $$;
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_created_at ON cards(user_id, created_at DESC);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_week_created_at ON cards(user_id, week_id, created_at);");
+        await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_user_week ON notes(user_id, week_id);");
+        await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_user_key ON settings(user_id, key);");
+        const userCount = await client.query("SELECT COUNT(*)::int AS count FROM users");
+        if (Number(userCount.rows[0]?.count || 0) === 0) {
+          const bootstrapEmail = process.env.AUTH_BOOTSTRAP_EMAIL || "local-admin@example.com";
+          const bootstrapPassword = process.env.AUTH_BOOTSTRAP_PASSWORD;
+          if (!bootstrapPassword) {
+            console.warn("AUTH_BOOTSTRAP_PASSWORD is not set. Existing data will be assigned after first registration.");
+          } else {
+            const bcrypt = await import("bcryptjs");
+            const passwordHash = await bcrypt.default.hash(bootstrapPassword, 12);
+            await client.query(
+              `INSERT INTO users (id, email, password_hash, display_name, role, created_at, updated_at)
+               VALUES (gen_random_uuid(), $1, $2, 'Local Admin', 'admin', $3, $3)
+               ON CONFLICT (email) DO NOTHING`,
+              [bootstrapEmail.trim().toLowerCase(), passwordHash, Date.now()]
+            );
+          }
+        }
+
+        const ownerResult = await client.query("SELECT id FROM users ORDER BY created_at ASC LIMIT 1");
+        const ownerId = ownerResult.rows[0]?.id;
+        if (ownerId) {
+          await client.query("UPDATE notes SET user_id = $1 WHERE user_id IS NULL", [ownerId]);
+          await client.query("UPDATE cards SET user_id = $1 WHERE user_id IS NULL", [ownerId]);
+          await client.query("UPDATE settings SET user_id = $1 WHERE user_id IS NULL", [ownerId]);
+        }
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error("PostgreSQL database connection/init error:", err);
+    }
+  };
+  initDb();
+}
+
+if (pgPool) {
+  app.use("/api/auth", createAuthRouter(pgPool));
+}
+
+const requirePostgresAuth = (req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
+  if (!pgPool) return res.status(503).json({ error: "PostgreSQL is not configured." });
+  return requireAuth(pgPool)(req, res, next);
+};
+
+app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
   try {
     const { imageBase64, mimeType } = req.body;
     if (!imageBase64) {
@@ -317,7 +478,7 @@ app.post("/api/analyze-image", async (req, res) => {
   }
 });
 
-app.post("/api/store-image", async (req, res) => {
+app.post("/api/store-image", requirePostgresAuth, async (req, res) => {
   try {
     const { imageBase64 } = req.body;
     if (!imageBase64) {
@@ -332,7 +493,7 @@ app.post("/api/store-image", async (req, res) => {
   }
 });
 
-app.post("/api/test-model", async (req, res) => {
+app.post("/api/test-model", requirePostgresAuth, async (req, res) => {
   try {
     const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
     const customApiKey = req.headers["x-api-key"] as string | undefined;
@@ -648,171 +809,16 @@ app.post("/api/test-model", async (req, res) => {
   }
 });
 
-// ==========================================
-// PostgreSQL Database Connection & CRUD routes
-// ==========================================
-const { Pool } = pg;
-const dbType = process.env.DATABASE_TYPE || "firestore";
-let pgPool: pg.Pool | null = null;
-
-if (dbType === "postgres" || process.env.DATABASE_URL) {
-  console.log("Configuring server database for local/remote PostgreSQL...");
-  pgPool = new Pool({
-    connectionString: process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/notebook",
-    ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false
-  });
-
-  // Initialize Postgres relational tables asynchronously on boot
-  const initDb = async () => {
-    try {
-      const client = await pgPool!.connect();
-      try {
-        console.log("Initializing PostgreSQL database schema...");
-        await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto;");
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS users (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            email TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            display_name TEXT,
-            role TEXT NOT NULL DEFAULT 'user',
-            created_at BIGINT NOT NULL,
-            updated_at BIGINT NOT NULL
-          );
-        `);
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS sessions (
-            id TEXT PRIMARY KEY,
-            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            created_at BIGINT NOT NULL,
-            expires_at BIGINT NOT NULL,
-            last_seen_at BIGINT NOT NULL,
-            user_agent TEXT
-          );
-        `);
-        await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);");
-        await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);");
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS notes (
-            week_id VARCHAR(50) PRIMARY KEY,
-            note TEXT,
-            height INTEGER,
-            updated_at BIGINT
-          );
-        `);
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS cards (
-            id VARCHAR(50) PRIMARY KEY,
-            week_id VARCHAR(50) NOT NULL,
-            day_index INTEGER NOT NULL,
-            image_url TEXT NOT NULL,
-            terms TEXT[] NOT NULL,
-            deco_type VARCHAR(50),
-            angle NUMERIC,
-            created_at BIGINT
-          );
-        `);
-        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS photo_uid TEXT;");
-        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;");
-        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS terms_text TEXT;");
-        await client.query("UPDATE cards SET terms_text = array_to_string(terms, ' ') WHERE terms_text IS NULL OR terms_text = '';");
-        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_created_at_desc ON cards (created_at DESC);");
-        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_week_created_at ON cards (week_id, created_at);");
-        try {
-          await client.query("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
-          await client.query("CREATE INDEX IF NOT EXISTS idx_cards_terms_text_trgm ON cards USING gin (terms_text gin_trgm_ops);");
-        } catch (indexErr) {
-          console.warn("PostgreSQL trigram index setup skipped:", indexErr);
-        }
-        console.log("PostgreSQL schema successfully verified/created.");
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS settings (
-            key VARCHAR(100) PRIMARY KEY,
-            value TEXT,
-            updated_at BIGINT
-          );
-        `);
-        await client.query("ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
-        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
-        await client.query("ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
-        await client.query(`
-          DO $$
-          BEGIN
-            IF EXISTS (
-              SELECT 1
-              FROM pg_constraint
-              WHERE conrelid = 'notes'::regclass
-                AND conname = 'notes_pkey'
-            ) THEN
-              ALTER TABLE notes DROP CONSTRAINT notes_pkey;
-            END IF;
-          END $$;
-        `);
-        await client.query(`
-          DO $$
-          BEGIN
-            IF EXISTS (
-              SELECT 1
-              FROM pg_constraint
-              WHERE conrelid = 'settings'::regclass
-                AND conname = 'settings_pkey'
-            ) THEN
-              ALTER TABLE settings DROP CONSTRAINT settings_pkey;
-            END IF;
-          END $$;
-        `);
-        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_created_at ON cards(user_id, created_at DESC);");
-        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_week_created_at ON cards(user_id, week_id, created_at);");
-        await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_user_week ON notes(user_id, week_id);");
-        await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_user_key ON settings(user_id, key);");
-        const userCount = await client.query("SELECT COUNT(*)::int AS count FROM users");
-        if (Number(userCount.rows[0]?.count || 0) === 0) {
-          const bootstrapEmail = process.env.AUTH_BOOTSTRAP_EMAIL || "local-admin@example.com";
-          const bootstrapPassword = process.env.AUTH_BOOTSTRAP_PASSWORD;
-          if (!bootstrapPassword) {
-            console.warn("AUTH_BOOTSTRAP_PASSWORD is not set. Existing data will be assigned after first registration.");
-          } else {
-            const bcrypt = await import("bcryptjs");
-            const passwordHash = await bcrypt.default.hash(bootstrapPassword, 12);
-            await client.query(
-              `INSERT INTO users (id, email, password_hash, display_name, role, created_at, updated_at)
-               VALUES (gen_random_uuid(), $1, $2, 'Local Admin', 'admin', $3, $3)
-               ON CONFLICT (email) DO NOTHING`,
-              [bootstrapEmail.trim().toLowerCase(), passwordHash, Date.now()]
-            );
-          }
-        }
-
-        const ownerResult = await client.query("SELECT id FROM users ORDER BY created_at ASC LIMIT 1");
-        const ownerId = ownerResult.rows[0]?.id;
-        if (ownerId) {
-          await client.query("UPDATE notes SET user_id = $1 WHERE user_id IS NULL", [ownerId]);
-          await client.query("UPDATE cards SET user_id = $1 WHERE user_id IS NULL", [ownerId]);
-          await client.query("UPDATE settings SET user_id = $1 WHERE user_id IS NULL", [ownerId]);
-        }
-      } finally {
-        client.release();
-      }
-    } catch (err) {
-      console.error("PostgreSQL database connection/init error:", err);
-    }
-  };
-  initDb();
-}
-
-if (pgPool) {
-  app.use("/api/auth", createAuthRouter(pgPool));
-}
-
 // 1. Fetch weekly note
-app.get("/api/db/notes/:weekId", async (req, res) => {
+app.get("/api/db/notes/:weekId", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured. Specify DATABASE_TYPE=postgres" });
   }
   try {
+    const authReq = req as AuthenticatedRequest;
     const result = await pgPool.query(
-      "SELECT week_id, note, height, updated_at FROM notes WHERE week_id = $1",
-      [req.params.weekId]
+      "SELECT week_id, note, height, updated_at FROM notes WHERE user_id = $1 AND week_id = $2",
+      [authReq.user!.id, req.params.weekId]
     );
     if (result.rows.length > 0) {
       const row = result.rows[0];
@@ -832,18 +838,19 @@ app.get("/api/db/notes/:weekId", async (req, res) => {
 });
 
 // 2. Persist/update weekly note
-app.post("/api/db/notes", async (req, res) => {
+app.post("/api/db/notes", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
+    const authReq = req as AuthenticatedRequest;
     const { weekId, note, height } = req.body;
     await pgPool.query(
-      `INSERT INTO notes (week_id, note, height, updated_at) 
-       VALUES ($1, $2, $3, $4) 
-       ON CONFLICT (week_id) 
+      `INSERT INTO notes (user_id, week_id, note, height, updated_at)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, week_id)
        DO UPDATE SET note = EXCLUDED.note, height = EXCLUDED.height, updated_at = EXCLUDED.updated_at`,
-      [weekId, note, height, Date.now()]
+      [authReq.user!.id, weekId, note, height, Date.now()]
     );
     return res.json({ success: true });
   } catch (err: any) {
@@ -853,11 +860,13 @@ app.post("/api/db/notes", async (req, res) => {
 });
 
 // 3. Fetch image cards for week ID
-app.get("/api/db/cards", async (req, res) => {
+app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user!.id;
     const weekId = req.query.weekId as string;
     const mapCards = (rows: any[]) => rows.map((row) => ({
       id: row.id,
@@ -874,8 +883,11 @@ app.get("/api/db/cards", async (req, res) => {
 
     if (weekId && weekId !== "all") {
       const result = await pgPool.query(
-        "SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at FROM cards WHERE week_id = $1 ORDER BY day_index ASC, created_at ASC",
-        [weekId]
+        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, deco_type, angle, created_at
+         FROM cards
+         WHERE user_id = $1 AND week_id = $2
+         ORDER BY day_index ASC, created_at ASC`,
+        [userId, weekId]
       );
       return res.json(mapCards(result.rows));
     }
@@ -886,8 +898,8 @@ app.get("/api/db/cards", async (req, res) => {
     const offset = (page - 1) * pageSize;
     const q = String(req.query.q || "").trim();
 
-    const whereClauses: string[] = [];
-    const values: Array<string | number> = [];
+    const whereClauses: string[] = ["user_id = $1"];
+    const values: Array<string | number> = [userId];
     if (q) {
       values.push(`%${q}%`);
       whereClauses.push(`terms_text ILIKE $${values.length}`);
@@ -929,21 +941,23 @@ app.get("/api/db/cards", async (req, res) => {
 });
 
 // 4. Create or update image card
-app.post("/api/db/cards", async (req, res) => {
+app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
+    const authReq = req as AuthenticatedRequest;
     const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, terms, decoType, angle, createdAt } = req.body;
     await pgPool.query(
-      `INSERT INTO cards (id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, terms_text, deco_type, angle, created_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, array_to_string($7::text[], ' '), $8, $9, $10) 
-       ON CONFLICT (id) 
+      `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, terms, terms_text, deco_type, angle, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, array_to_string($8::text[], ' '), $9, $10, $11)
+       ON CONFLICT (id)
        DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, image_url = EXCLUDED.image_url, 
                      thumbnail_url = EXCLUDED.thumbnail_url, photo_uid = EXCLUDED.photo_uid,
                      terms = EXCLUDED.terms, terms_text = EXCLUDED.terms_text, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle, 
-                     created_at = EXCLUDED.created_at`,
-      [id, weekId, dayIndex, imageUrl, thumbnailUrl || "", photoUid || "", terms, decoType, angle, createdAt || Date.now()]
+                     created_at = EXCLUDED.created_at
+       WHERE cards.user_id = EXCLUDED.user_id`,
+      [id, authReq.user!.id, weekId, dayIndex, imageUrl, thumbnailUrl || "", photoUid || "", terms, decoType, angle, createdAt || Date.now()]
     );
     return res.json({ success: true });
   } catch (err: any) {
@@ -953,12 +967,13 @@ app.post("/api/db/cards", async (req, res) => {
 });
 
 // 5. Delete card
-app.delete("/api/db/cards/:id", async (req, res) => {
+app.delete("/api/db/cards/:id", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
-    await pgPool.query("DELETE FROM cards WHERE id = $1", [req.params.id]);
+    const authReq = req as AuthenticatedRequest;
+    await pgPool.query("DELETE FROM cards WHERE id = $1 AND user_id = $2", [req.params.id, authReq.user!.id]);
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error executing delete card query:", err);
@@ -967,13 +982,17 @@ app.delete("/api/db/cards/:id", async (req, res) => {
 });
 
 // 6. Inline card tag edit
-app.put("/api/db/cards/:id/terms", async (req, res) => {
+app.put("/api/db/cards/:id/terms", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
+    const authReq = req as AuthenticatedRequest;
     const { terms } = req.body;
-    await pgPool.query("UPDATE cards SET terms = $1, terms_text = array_to_string($1::text[], ' ') WHERE id = $2", [terms, req.params.id]);
+    await pgPool.query(
+      "UPDATE cards SET terms = $1, terms_text = array_to_string($1::text[], ' ') WHERE id = $2 AND user_id = $3",
+      [terms, req.params.id, authReq.user!.id]
+    );
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error executing update card tag terms query:", err);
@@ -982,12 +1001,13 @@ app.put("/api/db/cards/:id/terms", async (req, res) => {
 });
 
 // 7. Fetch all settings
-app.get("/api/db/settings", async (req, res) => {
+app.get("/api/db/settings", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
-    const result = await pgPool.query("SELECT key, value FROM settings");
+    const authReq = req as AuthenticatedRequest;
+    const result = await pgPool.query("SELECT key, value FROM settings WHERE user_id = $1", [authReq.user!.id]);
     const settings: Record<string, string> = {};
     result.rows.forEach((row) => {
       settings[row.key] = row.value;
@@ -1000,18 +1020,19 @@ app.get("/api/db/settings", async (req, res) => {
 });
 
 // 8. Upsert settings (batch)
-app.post("/api/db/settings", async (req, res) => {
+app.post("/api/db/settings", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
+    const authReq = req as AuthenticatedRequest;
     const entries = Object.entries(req.body as Record<string, string>);
     const now = Date.now();
     for (const [key, value] of entries) {
       await pgPool.query(
-        `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
-        [key, value, now]
+        `INSERT INTO settings (user_id, key, value, updated_at) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+        [authReq.user!.id, key, value, now]
       );
     }
     return res.json({ success: true });
