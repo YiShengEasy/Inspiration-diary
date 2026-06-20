@@ -18,9 +18,10 @@ import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
 import PolaroidCard from "./components/PolaroidCard";
 import LoginScreen from "./components/LoginScreen";
+import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
 import { auth } from "./lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut } from "lucide-react";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 
@@ -41,6 +42,8 @@ export default function App() {
   const [zoomedCard, setZoomedCard] = useState<ImageCard | null>(null);
   const [isRefreshingCards, setIsRefreshingCards] = useState<boolean>(false);
   const [showWeeklyPreview, setShowWeeklyPreview] = useState<boolean>(false);
+  const [cardToDelete, setCardToDelete] = useState<ImageCard | null>(null);
+  const [deletePhase, setDeletePhase] = useState<"prompt" | "animating">("prompt");
 
   // Custom AI parameter states
   const [customProvider, setCustomProvider] = useState<string>(() => {
@@ -413,12 +416,28 @@ export default function App() {
     }
   };
 
-  // Absolute deletion of card documents
-  const handleDeleteCard = async (cardId: string) => {
+  // Trigger deletion prompt before absolute card removal.
+  const handleDeleteCard = (cardId: string) => {
+    const card = cards.find((c) => c.id === cardId);
+    if (card) {
+      setCardToDelete(card);
+      setDeletePhase("prompt");
+    }
+  };
+
+  const confirmDeleteCard = async () => {
+    if (!cardToDelete) return;
+    setDeletePhase("animating");
+
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
     try {
-      await deleteCard(cardId, weekId);
+      await deleteCard(cardToDelete.id, cardToDelete.weekId);
     } catch (err) {
       console.error("Card removal error:", err);
+    } finally {
+      setCardToDelete(null);
+      setDeletePhase("prompt");
     }
   };
 
@@ -584,6 +603,53 @@ export default function App() {
     const q = searchQuery.toLowerCase().trim();
     return card.terms.some((term) => term.toLowerCase().includes(q));
   });
+
+  const handlePrevZoomedCard = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (filteredCards.length <= 1 || !zoomedCard) return;
+    const currentIdx = filteredCards.findIndex((c) => c.id === zoomedCard.id);
+    if (currentIdx === -1) return;
+    const prevIdx = (currentIdx - 1 + filteredCards.length) % filteredCards.length;
+    setZoomedCard(filteredCards[prevIdx]);
+  };
+
+  const handleNextZoomedCard = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (filteredCards.length <= 1 || !zoomedCard) return;
+    const currentIdx = filteredCards.findIndex((c) => c.id === zoomedCard.id);
+    if (currentIdx === -1) return;
+    const nextIdx = (currentIdx + 1) % filteredCards.length;
+    setZoomedCard(filteredCards[nextIdx]);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!zoomedCard || filteredCards.length <= 1) {
+        if (zoomedCard && e.key === "Escape") {
+          setZoomedCard(null);
+        }
+        return;
+      }
+
+      const currentIdx = filteredCards.findIndex((c) => c.id === zoomedCard.id);
+      if (currentIdx === -1) return;
+
+      if (e.key === "ArrowLeft") {
+        const prevIdx = (currentIdx - 1 + filteredCards.length) % filteredCards.length;
+        setZoomedCard(filteredCards[prevIdx]);
+      } else if (e.key === "ArrowRight") {
+        const nextIdx = (currentIdx + 1) % filteredCards.length;
+        setZoomedCard(filteredCards[nextIdx]);
+      } else if (e.key === "Escape") {
+        setZoomedCard(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [zoomedCard, filteredCards]);
 
   if (!authInitialized) {
     return (
@@ -1058,6 +1124,96 @@ export default function App() {
         />
       )}
 
+      {showWeeklyPreview && (
+        <WeeklyPreviewModal
+          cards={cards.filter((c) => c.weekId === weekId)}
+          weekRangeStr={weekId || "Current Week"}
+          onClose={() => setShowWeeklyPreview(false)}
+        />
+      )}
+
+      <AnimatePresence>
+        {cardToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => deletePhase === "prompt" && setCardToDelete(null)}
+              className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-sm bg-stone-100 dark:bg-stone-900 rounded-2xl shadow-xl overflow-hidden border border-stone-200 dark:border-stone-800 p-6 flex flex-col gap-4 text-center z-10"
+            >
+              <div className="relative mx-auto w-32 h-40 flex flex-col items-center justify-start overflow-hidden mb-2 pt-2">
+                <motion.div
+                  animate={
+                    deletePhase === "animating"
+                      ? { y: 120 }
+                      : { y: 0, rotate: [-1, 1, -1], transition: { repeat: Infinity, duration: 4, ease: "easeInOut" } }
+                  }
+                  transition={deletePhase === "animating" ? { duration: 0.7, ease: "anticipate" } : {}}
+                  className="z-10 w-24 h-28 bg-white p-1.5 shadow-sm flex flex-col border border-stone-200 dark:border-stone-700"
+                >
+                  <img
+                    src={cardToDelete.thumbnailUrl || cardToDelete.imageUrl}
+                    className="w-full h-16 object-cover bg-stone-200 dark:bg-stone-800"
+                    alt=""
+                  />
+                  <div className="flex-1 mt-1 bg-stone-50 dark:bg-stone-800 flex items-end p-1">
+                    <div className="h-1 flex-1 bg-stone-200 dark:bg-stone-700 rounded-full w-1/2 opacity-50" />
+                  </div>
+                </motion.div>
+
+                <div className="absolute bottom-6 w-full flex justify-center z-20">
+                  <div className="w-28 h-3 bg-stone-300 dark:bg-stone-800 rounded-sm border border-stone-400 dark:border-stone-700 shadow-inner flex items-center justify-center">
+                    <div className="w-[100px] h-1.5 bg-stone-800 dark:bg-black rounded-full" />
+                  </div>
+                </div>
+
+                <div className="absolute bottom-0 w-24 h-6 flex justify-between gap-[1px] z-0 px-0.5">
+                  {[...Array(6)].map((_, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ y: -24, opacity: 0 }}
+                      animate={deletePhase === "animating" ? { y: 24, opacity: [0, 1, 0] } : {}}
+                      transition={deletePhase === "animating" ? { duration: 0.6, delay: 0.4 + i * 0.05 } : {}}
+                      className="flex-1 bg-white border-x border-b border-stone-200 dark:border-stone-700 h-10 shadow-sm rounded-b-sm"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <h3 className="text-xl font-bold font-sans text-stone-800 dark:text-stone-100">Delete Photo?</h3>
+              <p className="text-sm text-stone-500 dark:text-stone-400 font-sans">
+                This photo will be permanently removed.<br />Are you sure you want to proceed?
+              </p>
+              <div className="flex gap-3 mt-2">
+                <button
+                  disabled={deletePhase === "animating"}
+                  onClick={() => setCardToDelete(null)}
+                  className="flex-1 py-2.5 rounded-xl font-medium text-stone-600 dark:text-stone-300 bg-stone-200 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 transition disabled:opacity-50"
+                  id="cancel-delete-card-btn"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={deletePhase === "animating"}
+                  onClick={confirmDeleteCard}
+                  className="flex-1 py-2.5 rounded-xl font-medium text-white bg-red-500 hover:bg-red-600 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                  id="confirm-delete-card-btn"
+                >
+                  {deletePhase === "animating" ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Zoomed Polaroid Image Modal overlay with backdrop-blur */}
       <AnimatePresence>
         {zoomedCard && (
@@ -1086,7 +1242,7 @@ export default function App() {
               </button>
 
               {/* Left Column: Picture */}
-              <div className="w-full md:w-3/5 aspect-square max-w-[420px] relative overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-inner rounded-xl">
+              <div className="w-full md:w-3/5 aspect-square max-w-[420px] relative overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-inner rounded-xl group/zoomimage">
                 <img
                   src={zoomedCard.imageUrl}
                   alt="Original Snippet View"
@@ -1094,6 +1250,24 @@ export default function App() {
                   className="w-full h-full object-contain"
                 />
                 <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/5 pointer-events-none" />
+                {filteredCards.length > 1 && (
+                  <>
+                    <button
+                      onClick={handlePrevZoomedCard}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 z-20 bg-stone-950/70 hover:bg-amber-500 hover:scale-110 active:scale-95 text-white p-2.5 rounded-full shadow-lg border border-white/10 transition-all cursor-pointer opacity-80 hover:opacity-100"
+                      title="上一张 (ArrowLeft)"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <button
+                      onClick={handleNextZoomedCard}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 z-20 bg-stone-950/70 hover:bg-amber-500 hover:scale-110 active:scale-95 text-white p-2.5 rounded-full shadow-lg border border-white/10 transition-all cursor-pointer opacity-80 hover:opacity-100"
+                      title="下一张 (ArrowRight)"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Right Column: Key Details, Tag lists, info */}
