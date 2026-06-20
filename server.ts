@@ -735,6 +735,32 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
         await client.query("ALTER TABLE notes ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
         await client.query("ALTER TABLE settings ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;");
+        await client.query(`
+          DO $$
+          BEGIN
+            IF EXISTS (
+              SELECT 1
+              FROM pg_constraint
+              WHERE conrelid = 'notes'::regclass
+                AND conname = 'notes_pkey'
+            ) THEN
+              ALTER TABLE notes DROP CONSTRAINT notes_pkey;
+            END IF;
+          END $$;
+        `);
+        await client.query(`
+          DO $$
+          BEGIN
+            IF EXISTS (
+              SELECT 1
+              FROM pg_constraint
+              WHERE conrelid = 'settings'::regclass
+                AND conname = 'settings_pkey'
+            ) THEN
+              ALTER TABLE settings DROP CONSTRAINT settings_pkey;
+            END IF;
+          END $$;
+        `);
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_created_at ON cards(user_id, created_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_week_created_at ON cards(user_id, week_id, created_at);");
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_user_week ON notes(user_id, week_id);");
