@@ -55,3 +55,24 @@ docker compose logs -f app
 The Docker app reads runtime configuration from `.env.production`. Mock data tools are disabled in the production Docker build by default.
 
 If the configured PostgreSQL database is running on this Mac, use `host.docker.internal` as the database host in `.env.production` because `localhost` inside Docker points to the container itself.
+
+## PhotoPrism Image Storage
+
+New image uploads are stored in PhotoPrism. PostgreSQL stores only URL metadata for each inspiration card.
+
+Required production environment variables in `.env.production`:
+
+```env
+PHOTOPRISM_INTERNAL_URL=http://host.docker.internal:2342
+PHOTOPRISM_PUBLIC_URL=http://localhost:2342
+PHOTOPRISM_USERNAME=admin
+PHOTOPRISM_PASSWORD=<server-side-secret>
+```
+
+`PHOTOPRISM_INTERNAL_URL` is used by the Docker app container to upload images. `PHOTOPRISM_PUBLIC_URL` is used in saved image URLs rendered by the browser.
+
+After changing PhotoPrism settings, rebuild the production container:
+
+```bash
+npm run docker:prod:detached
+```
