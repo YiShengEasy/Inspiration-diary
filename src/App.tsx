@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
-import { ImageCard, WeeklyNote } from "./types";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { ImageCard } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 import {
   subscribeCards,
-  subscribeAllCards,
   loadNote,
   saveNote,
   createNewCardId,
@@ -13,28 +12,29 @@ import {
   refreshCards,
   loadSettings,
   saveSettings,
+  loadAllCardsPage,
 } from "./lib/dbClient";
 import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
 import PolaroidCard from "./components/PolaroidCard";
 import LoginScreen from "./components/LoginScreen";
 import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
-import { auth } from "./lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
 import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
+import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
+
+const ALL_CARDS_PAGE_SIZE = 12;
 
 export default function App() {
   const shouldShowMockTools = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK_TOOLS === "true";
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [authInitialized, setAuthInitialized] = useState<boolean>(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [weekId, setWeekId] = useState<string>("");
   const [cards, setCards] = useState<ImageCard[]>([]);
   const [noteContent, setNoteContent] = useState<string>("");
   const [noteHeight, setNoteHeight] = useState<number>(220);
-  const [isSavingNote, setIsSavingNote] = useState<boolean>(false);
   const [dbSaveStatus, setDbSaveStatus] = useState<"clean" | "saving" | "error">("clean");
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -44,6 +44,11 @@ export default function App() {
   const [showWeeklyPreview, setShowWeeklyPreview] = useState<boolean>(false);
   const [cardToDelete, setCardToDelete] = useState<ImageCard | null>(null);
   const [deletePhase, setDeletePhase] = useState<"prompt" | "animating">("prompt");
+  const [allCardsPage, setAllCardsPage] = useState<number>(1);
+  const [allCardsPageCards, setAllCardsPageCards] = useState<ImageCard[]>([]);
+  const [allCardsTotal, setAllCardsTotal] = useState<number>(0);
+  const [allCardsTotalPages, setAllCardsTotalPages] = useState<number>(1);
+  const [isLoadingAllCards, setIsLoadingAllCards] = useState<boolean>(false);
 
   // Custom AI parameter states
   const [customProvider, setCustomProvider] = useState<string>(() => {
@@ -84,14 +89,40 @@ export default function App() {
   const dragStartRef = useRef<number | null>(null);
   const initialHeightRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsLoggedIn(!!user);
-      setAuthInitialized(true);
-    });
-
-    return () => unsubscribe();
+  const clearAuthenticatedState = useCallback(() => {
+    setAuthUser(null);
+    setCards([]);
+    setAllCardsPageCards([]);
+    setAllCardsTotal(0);
+    setAllCardsTotalPages(1);
+    setAllCardsPage(1);
+    setZoomedCard(null);
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    getCurrentUser()
+      .then((user) => {
+        if (alive) setAuthUser(user);
+      })
+      .finally(() => {
+        if (alive) setIsCheckingAuth(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      clearAuthenticatedState();
+    };
+
+    window.addEventListener("auth:required", handler);
+    return () => window.removeEventListener("auth:required", handler);
+  }, [clearAuthenticatedState]);
 
   // Calculate the week identifier (e.g., "2026-W25")
   const getWeekIdentifier = (date: Date): string => {
@@ -109,6 +140,8 @@ export default function App() {
 
   // Load AI settings from DB on startup (DB values take priority over localStorage)
   useEffect(() => {
+    if (!authUser) return;
+
     loadSettings().then((dbSettings) => {
       if (Object.keys(dbSettings).length === 0) return;
       if (dbSettings.custom_provider) { setCustomProvider(dbSettings.custom_provider); localStorage.setItem("custom_provider", dbSettings.custom_provider); }
@@ -123,7 +156,7 @@ export default function App() {
       if (dbSettings.custom_thirdparty_model !== undefined) { setThirdPartyModel(dbSettings.custom_thirdparty_model); localStorage.setItem("custom_thirdparty_model", dbSettings.custom_thirdparty_model); }
       if (dbSettings.custom_thirdparty_thinking !== undefined) { const v = dbSettings.custom_thirdparty_thinking === "true"; setThirdPartyThinking(v); localStorage.setItem("custom_thirdparty_thinking", String(v)); }
     }).catch((err) => console.error("Failed to load settings from DB:", err));
-  }, []);
+  }, [authUser]);
 
   // Handle Dark mode sync
   useEffect(() => {
@@ -136,24 +169,52 @@ export default function App() {
 
   // Real-time listener for image cards (either current week or globally across all weeks)
   useEffect(() => {
+    if (!authUser) return;
     if (!weekId) return;
+    if (searchScope === "all") return;
 
-    let unsubscribe: () => void;
-    if (searchScope === "all") {
-      unsubscribe = subscribeAllCards((fetchedCards) => {
-        setCards(fetchedCards);
-      });
-    } else {
-      unsubscribe = subscribeCards(weekId, (fetchedCards) => {
-        setCards(fetchedCards);
-      });
-    }
+    const unsubscribe = subscribeCards(weekId, (fetchedCards) => {
+      setCards(fetchedCards);
+    });
 
     return () => unsubscribe();
-  }, [weekId, searchScope]);
+  }, [authUser, weekId, searchScope]);
+
+  const loadHistoricalCardsPage = async (page = allCardsPage) => {
+    setIsLoadingAllCards(true);
+    try {
+      const result = await loadAllCardsPage({
+        page,
+        pageSize: ALL_CARDS_PAGE_SIZE,
+        query: searchQuery,
+      });
+      setAllCardsPageCards(result.cards);
+      setAllCardsTotal(result.total);
+      setAllCardsPage(result.page);
+      setAllCardsTotalPages(result.totalPages);
+    } catch (err) {
+      console.error("Failed to load historical cards page:", err);
+      setAllCardsPageCards([]);
+      setAllCardsTotal(0);
+      setAllCardsTotalPages(1);
+    } finally {
+      setIsLoadingAllCards(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!authUser) return;
+    if (searchScope !== "all") return;
+    void loadHistoricalCardsPage(allCardsPage);
+  }, [authUser, searchScope, allCardsPage, searchQuery]);
+
+  useEffect(() => {
+    setAllCardsPage(1);
+  }, [searchQuery, searchScope]);
 
   // Fetch / subscribe for notes of the current week
   useEffect(() => {
+    if (!authUser) return;
     if (!weekId) return;
 
     let isSubscribed = true;
@@ -179,10 +240,11 @@ export default function App() {
     return () => {
       isSubscribed = false;
     };
-  }, [weekId]);
+  }, [authUser, weekId]);
 
   // Debounced note & height auto-saving
   useEffect(() => {
+    if (!authUser) return;
     if (!weekId) return;
     
     // Skip saving initial empty state before note loads
@@ -198,7 +260,7 @@ export default function App() {
     }, 1200);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [noteContent, noteHeight, weekId]);
+  }, [authUser, noteContent, noteHeight, weekId]);
 
   // Shift current view week
   const handlePrevWeek = () => {
@@ -221,6 +283,10 @@ export default function App() {
     if (!weekId || isRefreshingCards) return;
     setIsRefreshingCards(true);
     try {
+      if (searchScope === "all") {
+        await loadHistoricalCardsPage(allCardsPage);
+        return;
+      }
       const refreshedCards = await refreshCards(searchScope === "all" ? "all" : weekId);
       setCards(refreshedCards);
     } catch (err) {
@@ -339,7 +405,7 @@ export default function App() {
       ];
 	      const selectedFallback = fallbackOptions[Math.floor(Math.random() * fallbackOptions.length)];
 
-	      const storeResponse = await fetch("/api/store-image", {
+	      const storeResponse = await authFetch("/api/store-image", {
 	        method: "POST",
 	        headers: { "Content-Type": "application/json" },
 	        body: JSON.stringify({ imageBase64: base64Data }),
@@ -381,7 +447,7 @@ export default function App() {
         const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout limit
 
         try {
-          const response = await fetch("/api/analyze-image", {
+          const response = await authFetch("/api/analyze-image", {
             method: "POST",
             headers,
             body: JSON.stringify({ imageBase64: base64Data }),
@@ -433,6 +499,9 @@ export default function App() {
 
     try {
       await deleteCard(cardToDelete.id, cardToDelete.weekId);
+      if (searchScope === "all") {
+        await loadHistoricalCardsPage(allCardsPage);
+      }
     } catch (err) {
       console.error("Card removal error:", err);
     } finally {
@@ -603,43 +672,44 @@ export default function App() {
     const q = searchQuery.toLowerCase().trim();
     return card.terms.some((term) => term.toLowerCase().includes(q));
   });
+  const visibleCards = searchScope === "all" ? allCardsPageCards : filteredCards;
 
   const handlePrevZoomedCard = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (filteredCards.length <= 1 || !zoomedCard) return;
-    const currentIdx = filteredCards.findIndex((c) => c.id === zoomedCard.id);
+    if (visibleCards.length <= 1 || !zoomedCard) return;
+    const currentIdx = visibleCards.findIndex((c) => c.id === zoomedCard.id);
     if (currentIdx === -1) return;
-    const prevIdx = (currentIdx - 1 + filteredCards.length) % filteredCards.length;
-    setZoomedCard(filteredCards[prevIdx]);
+    const prevIdx = (currentIdx - 1 + visibleCards.length) % visibleCards.length;
+    setZoomedCard(visibleCards[prevIdx]);
   };
 
   const handleNextZoomedCard = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (filteredCards.length <= 1 || !zoomedCard) return;
-    const currentIdx = filteredCards.findIndex((c) => c.id === zoomedCard.id);
+    if (visibleCards.length <= 1 || !zoomedCard) return;
+    const currentIdx = visibleCards.findIndex((c) => c.id === zoomedCard.id);
     if (currentIdx === -1) return;
-    const nextIdx = (currentIdx + 1) % filteredCards.length;
-    setZoomedCard(filteredCards[nextIdx]);
+    const nextIdx = (currentIdx + 1) % visibleCards.length;
+    setZoomedCard(visibleCards[nextIdx]);
   };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!zoomedCard || filteredCards.length <= 1) {
+      if (!zoomedCard || visibleCards.length <= 1) {
         if (zoomedCard && e.key === "Escape") {
           setZoomedCard(null);
         }
         return;
       }
 
-      const currentIdx = filteredCards.findIndex((c) => c.id === zoomedCard.id);
+      const currentIdx = visibleCards.findIndex((c) => c.id === zoomedCard.id);
       if (currentIdx === -1) return;
 
       if (e.key === "ArrowLeft") {
-        const prevIdx = (currentIdx - 1 + filteredCards.length) % filteredCards.length;
-        setZoomedCard(filteredCards[prevIdx]);
+        const prevIdx = (currentIdx - 1 + visibleCards.length) % visibleCards.length;
+        setZoomedCard(visibleCards[prevIdx]);
       } else if (e.key === "ArrowRight") {
-        const nextIdx = (currentIdx + 1) % filteredCards.length;
-        setZoomedCard(filteredCards[nextIdx]);
+        const nextIdx = (currentIdx + 1) % visibleCards.length;
+        setZoomedCard(visibleCards[nextIdx]);
       } else if (e.key === "Escape") {
         setZoomedCard(null);
       }
@@ -649,18 +719,30 @@ export default function App() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [zoomedCard, filteredCards]);
+  }, [zoomedCard, visibleCards]);
 
-  if (!authInitialized) {
+  if (isCheckingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-stone-950">
-        <Loader2 className="animate-spin text-stone-400" />
+      <div className="min-h-screen bg-stone-50 dark:bg-stone-950 flex items-center justify-center gap-2 text-stone-600 dark:text-stone-300">
+        <Loader2 className="animate-spin text-stone-400" size={18} />
+        <span className="text-sm font-serif">正在确认登录状态...</span>
       </div>
     );
   }
 
-  if (!isLoggedIn) {
-    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+  if (!authUser) {
+    return (
+      <LoginScreen
+        onLogin={async (email, password) => {
+          const user = await login(email, password);
+          setAuthUser(user);
+        }}
+        onRegister={async (email, password) => {
+          const user = await register(email, password);
+          setAuthUser(user);
+        }}
+      />
+    );
   }
 
   return (
@@ -701,7 +783,10 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => signOut(auth)}
+              onClick={async () => {
+                await logout();
+                clearAuthenticatedState();
+              }}
               className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-900 dark:text-red-300 transition-colors shadow-sm cursor-pointer border border-red-500/20 flex items-center justify-center"
               title="Logout"
             >
@@ -777,7 +862,7 @@ export default function App() {
                 }`}
               >
                 <Globe size={12} />
-                <span>所有历史周 ({searchScope === "all" ? cards.length : "检索"})</span>
+                <span>所有历史周 ({searchScope === "all" ? allCardsTotal : "检索"})</span>
               </button>
             </div>
 
@@ -785,7 +870,7 @@ export default function App() {
               <div className="text-xs text-stone-500 dark:text-stone-400 font-serif italic flex items-center gap-1 bg-amber-500/5 px-2.5 py-1.5 border border-amber-500/10 rounded-xl select-none">
                 <span>匹配：</span>
                 <strong className="text-amber-800 dark:text-amber-300 font-sans not-italic font-semibold bg-amber-500/10 px-1.5 py-0.5 rounded">
-                  {filteredCards.length}
+                  {searchScope === "all" ? allCardsTotal : filteredCards.length}
                 </strong>
               </div>
             )}
@@ -875,7 +960,7 @@ export default function App() {
                     <h3 className="font-serif font-bold text-base text-stone-900 dark:text-stone-100 italic flex items-center gap-2">
                       <span>🌍 跨周全局创意库</span>
                       <span className="text-xs font-sans not-italic font-normal bg-amber-500/15 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full font-semibold">
-                        共加载 {filteredCards.length} 张灵感快照
+                        共 {allCardsTotal} 张 · 第 {allCardsPage} / {allCardsTotalPages} 页
                       </span>
                     </h3>
                     <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 font-serif">
@@ -884,9 +969,17 @@ export default function App() {
                   </div>
                 </div>
 
-                {filteredCards.length > 0 ? (
+                {isLoadingAllCards ? (
+                  <div className="flex-grow flex flex-col items-center justify-center py-16 text-center">
+                    <Loader2 size={28} className="animate-spin text-amber-500/70 mb-3" />
+                    <p className="text-sm font-handwritten text-stone-400 dark:text-stone-500 italic">
+                      正在分页加载历史灵感...
+                    </p>
+                  </div>
+                ) : allCardsPageCards.length > 0 ? (
+                  <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 py-2">
-                    {filteredCards.map((card) => (
+                    {allCardsPageCards.map((card) => (
                       <div key={card.id} className="relative pt-6">
                         {/* Floating Week Banner */}
                         <div className="absolute top-1 left-4 bg-amber-800/95 dark:bg-amber-900/95 text-amber-100 text-[9px] font-mono tracking-wider px-2 py-0.5 rounded shadow-sm z-10 select-none uppercase">
@@ -902,6 +995,31 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+                  <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-stone-200/50 dark:border-stone-800/60 pt-4">
+                    <div className="text-xs text-stone-500 dark:text-stone-400 font-mono">
+                      每页 {ALL_CARDS_PAGE_SIZE} 张 · 共 {allCardsTotal} 张
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setAllCardsPage((page) => Math.max(1, page - 1))}
+                        disabled={allCardsPage <= 1 || isLoadingAllCards}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                      >
+                        上一页
+                      </button>
+                      <span className="text-xs font-mono text-stone-500 dark:text-stone-400 min-w-[72px] text-center">
+                        {allCardsPage} / {allCardsTotalPages}
+                      </span>
+                      <button
+                        onClick={() => setAllCardsPage((page) => Math.min(allCardsTotalPages, page + 1))}
+                        disabled={allCardsPage >= allCardsTotalPages || isLoadingAllCards}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                      >
+                        下一页
+                      </button>
+                    </div>
+                  </div>
+                  </>
                 ) : (
                   <div className="flex-grow flex flex-col items-center justify-center py-16 text-center">
                     <Sparkles size={32} className="text-amber-500/40 mb-3 animate-pulse" />
@@ -1250,7 +1368,7 @@ export default function App() {
                   className="w-full h-full object-contain"
                 />
                 <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/5 pointer-events-none" />
-                {filteredCards.length > 1 && (
+                {visibleCards.length > 1 && (
                   <>
                     <button
                       onClick={handlePrevZoomedCard}

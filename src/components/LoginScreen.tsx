@@ -1,52 +1,45 @@
 import { useState, type FormEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Feather, Camera, Loader2, Eye, EyeOff } from "lucide-react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import { Feather, Camera, Eye, EyeOff, Loader2 } from "lucide-react";
 import InkReveal from "./ui/ink-reveal";
 
 interface LoginScreenProps {
-  onLogin: () => void;
+  onLogin: (email: string, password: string) => Promise<void>;
+  onRegister: (email: string, password: string) => Promise<void>;
 }
 
-export default function LoginScreen({ onLogin }: LoginScreenProps) {
+export default function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError("请填写邮箱与密码 (Please fill in both)");
+    setError(null);
+
+    if (!email.trim()) {
+      setError("请输入邮箱");
       return;
     }
-    setLoading(true);
-    setError(null);
+    if (password.length < 8) {
+      setError("密码至少需要 8 位");
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       if (isLoginMode) {
-        await signInWithEmailAndPassword(auth, email, password);
+        await onLogin(email.trim(), password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        await onRegister(email.trim(), password);
       }
-      onLogin();
     } catch (err: any) {
-      console.error(err);
-      if (err.code === "auth/invalid-credential" || err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
-        setError("账号或密码不正确，或账户不存在 (Invalid credentials)");
-      } else if (err.code === "auth/email-already-in-use") {
-        setError("此邮箱已停泊在别处，尝试直接启程吧 (Email already in use)");
-      } else if (err.code === "auth/weak-password") {
-        setError("密码当如磐石，至少需要6个字符 (Password must be at least 6 characters)");
-      } else if (err.code === "auth/invalid-email") {
-        setError("邮箱格式不雅，请确认无误 (Invalid email address)");
-      } else {
-        setError(err.message || "云深不知处，请稍后再试 (An error occurred)");
-      }
+      setError(err.message || "操作失败");
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -197,11 +190,11 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={isSubmitting}
               className="w-full flex items-center justify-center gap-2 py-3.5 px-6 mt-2 rounded-2xl bg-stone-900/90 dark:bg-stone-100/90 backdrop-blur-sm text-stone-100 dark:text-stone-900 font-medium hover:bg-stone-800 dark:hover:bg-stone-200 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 border border-white/10 disabled:opacity-50 disabled:hover:translate-y-0 cursor-pointer"
             >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <Feather size={18} strokeWidth={2} />}
-              <span className="tracking-widest">{isLoginMode ? "启程" : "凝结"}</span>
+              {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Feather size={18} strokeWidth={2} />}
+              <span className="tracking-widest">{isSubmitting ? "请稍候" : isLoginMode ? "启程" : "凝结"}</span>
             </button>
             
             <button
