@@ -304,16 +304,38 @@ export default function App() {
         ["温柔色调", "温暖松弛"],
         ["视觉秩序", "构成美学"]
       ];
-      const selectedFallback = fallbackOptions[Math.floor(Math.random() * fallbackOptions.length)];
+	      const selectedFallback = fallbackOptions[Math.floor(Math.random() * fallbackOptions.length)];
 
-      // Generate a new doc in the cards collection
-      const cardId = createNewCardId();
-      const newCard: ImageCard = {
-        id: cardId,
-        weekId,
-        dayIndex,
-        imageUrl: base64Data,
-        terms: selectedFallback,
+	      const storeResponse = await fetch("/api/store-image", {
+	        method: "POST",
+	        headers: { "Content-Type": "application/json" },
+	        body: JSON.stringify({ imageBase64: base64Data }),
+	      });
+
+	      if (!storeResponse.ok) {
+	        const rawErrorText = await storeResponse.text();
+	        let message = rawErrorText;
+	        try {
+	          const parsed = JSON.parse(rawErrorText);
+	          message = parsed.error || message;
+	        } catch {
+	          // Keep raw response text.
+	        }
+	        throw new Error(message || `PhotoPrism upload failed with status ${storeResponse.status}`);
+	      }
+
+	      const storedImage = await storeResponse.json();
+
+	      // Generate a new doc in the cards collection
+	      const cardId = createNewCardId();
+	      const newCard: ImageCard = {
+	        id: cardId,
+	        weekId,
+	        dayIndex,
+	        imageUrl: storedImage.imageUrl,
+	        thumbnailUrl: storedImage.thumbnailUrl,
+	        photoUid: storedImage.photoUid,
+	        terms: selectedFallback,
         decoType: randomDeco,
         angle: randomAngle,
         createdAt: Date.now(),

@@ -95,7 +95,7 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
           title="点击放大查看原图"
         >
           <img
-            src={card.imageUrl}
+            src={card.thumbnailUrl || card.imageUrl}
             alt="Snippet Inspiration"
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover select-none pointer-events-none"
