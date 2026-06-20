@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 export interface StoredPhotoPrismImage {
   photoUid: string;
   imageUrl: string;
@@ -133,16 +135,28 @@ async function uploadFile(
   }
 }
 
-async function findUploadedPhoto(config: PhotoPrismConfig, session: PhotoPrismSession, filename: string): Promise<any> {
+async function findUploadedPhoto(config: PhotoPrismConfig, session: PhotoPrismSession, filename: string, hash: string): Promise<any> {
   const query = encodeURIComponent(filename);
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    const response = await fetch(`${config.internalUrl}/api/v1/photos?count=5&q=${query}`, {
+    const searchResponse = await fetch(`${config.internalUrl}/api/v1/photos?count=10&q=${query}`, {
       headers: buildHeaders(session.authToken),
     });
 
-    if (response.ok) {
-      const photos: any[] = await response.json();
-      const photo = photos.find((item) => item && (item.Name === filename || item.OriginalName === filename || item.PhotoUID || item.UID));
+    if (searchResponse.ok) {
+      const photos: any[] = await searchResponse.json();
+      const photo = photos.find((item) => item && (item.Name === filename || item.OriginalName === filename));
+      if (photo) {
+        return photo;
+      }
+    }
+
+    const recentResponse = await fetch(`${config.internalUrl}/api/v1/photos?count=20`, {
+      headers: buildHeaders(session.authToken),
+    });
+
+    if (recentResponse.ok) {
+      const photos: any[] = await recentResponse.json();
+      const photo = photos.find((item) => item && (item.OriginalName === filename || item.Hash === hash));
       if (photo) {
         return photo;
       }
@@ -158,12 +172,13 @@ export async function storeImageInPhotoPrism(imageBase64: string): Promise<Store
   const config = getConfig();
   const session = await login(config);
   const decoded = decodeDataUrl(imageBase64);
+  const imageHash = crypto.createHash("sha1").update(decoded.buffer).digest("hex");
   const uploadToken = generateUploadToken();
   const filename = `inspiration-${Date.now()}-${uploadToken}.${decoded.extension}`;
 
   await uploadFile(config, session, imageBase64, filename, uploadToken);
 
-  const photo = await findUploadedPhoto(config, session, filename);
+  const photo = await findUploadedPhoto(config, session, filename, imageHash);
   const hash = photo.Hash || photo.FileHash || photo.Files?.[0]?.Hash;
   const photoUid = photo.UID || photo.PhotoUID || photo.Files?.[0]?.PhotoUID || filename;
 
