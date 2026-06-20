@@ -1,7 +1,9 @@
 import React, { useRef, useState, useEffect } from "react";
 import { ImageCard } from "../types";
-import { Plus, Image, Loader2, Sparkles, Clipboard, ArrowDownToLine, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import PolaroidCard from "./PolaroidCard";
+import { motion } from "motion/react";
+import WeatherBackground from "./WeatherBackground";
 
 interface DaySlotProps {
   dayIndex: number;
@@ -28,12 +30,14 @@ export default function DaySlot({
 }: DaySlotProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [activeStackIndex, setActiveStackIndex] = useState(0);
+  const [flyOutState, setFlyOutState] = useState<{ id: string; dir: number } | null>(null);
 
   // Keep activeStackIndex within safe indices when cards array changes
   useEffect(() => {
@@ -164,7 +168,7 @@ export default function DaySlot({
     return () => {
       window.removeEventListener("paste", handlePaste);
     };
-  });
+  }, []);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -199,13 +203,15 @@ export default function DaySlot({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`group/slot relative min-h-[190px] flex flex-col p-4 rounded-2xl border transition-all duration-300 select-none ${
+      className={`group/slot relative min-h-[190px] flex flex-col p-4 rounded-2xl border transition-all duration-300 select-none overflow-hidden ${
         isDragOver
           ? "border-amber-500 bg-amber-500/5 shadow-[inset_0_2px_12px_rgba(245,158,11,0.08)] scale-[0.99]"
           : "border-amber-900/10 dark:border-amber-100/10 bg-white/50 dark:bg-stone-900/50 hover:bg-white dark:hover:bg-stone-900 shadow-sm"
       }`}
       id={`day-slot-${dayIndex}`}
     >
+      <WeatherBackground />
+
       {/* Invisible file input picker */}
       <input
         ref={fileInputRef}
@@ -216,13 +222,13 @@ export default function DaySlot({
       />
 
       {/* Grid Day Heading */}
-      <div className="flex items-center justify-between mb-3 border-b border-dashed border-amber-900/10 dark:border-amber-100/10 pb-1.5 select-none text-stone-800 dark:text-stone-200">
+      <div className="relative z-10 flex items-center justify-between mb-3 border-b border-dashed border-amber-900/10 dark:border-amber-100/10 pb-1.5 select-none text-stone-800 dark:text-stone-200">
         <span className="font-serif font-bold text-sm italic">{label}</span>
         <span className="font-handwritten text-xs text-amber-950/60 dark:text-amber-200/60 font-semibold">{subLabel}</span>
       </div>
 
       {/* Uploading or Error Feedback banner */}
-      <div className="empty:hidden">
+      <div className="relative z-10 empty:hidden">
         {uploadError && (
           <div className="mb-2 text-[11px] font-medium text-red-600 bg-red-100/60 dark:bg-red-950/20 px-2 py-1 rounded">
             ⚠️ {uploadError}
@@ -231,7 +237,7 @@ export default function DaySlot({
       </div>
 
       {/* List of uploaded Polaroids for this slot */}
-      <div className={`flex-grow relative flex flex-col justify-center items-center ${cards.length > 0 ? "min-h-[250px] mb-2" : "min-h-[140px]"}`}>
+      <div className={`relative z-10 flex-grow flex flex-col justify-center items-center ${cards.length > 0 ? "min-h-[250px] mb-2" : "min-h-[140px]"}`}>
         {cards.length > 0 ? (
           <div className="absolute inset-0 flex items-center justify-center">
             {cards.map((card, index) => {
@@ -246,32 +252,81 @@ export default function DaySlot({
               
               const rotation = card.angle || ((progress - 0.5) * 12);
               
-              let transformStr = `translate(-50%, -50%) rotate(${rotation}deg) translate(${xOffset}px, ${yOffset}px)`;
-              
-              if (isHovered) {
-                transformStr = `translate(-50%, -50%) rotate(${rotation * 0.3}deg) translate(${xOffset}px, ${yOffset - 22}px) scale(1.08)`;
+              let targetXOffset = xOffset;
+              let targetYOffset = yOffset;
+              let targetScale = 1;
+              let targetRotate = rotation;
+              let targetOpacity = 1;
+
+              const isFlyingOut = flyOutState?.id === card.id;
+              if (isFlyingOut && flyOutState) {
+                targetXOffset = flyOutState.dir * 300;
+                targetRotate = rotation + flyOutState.dir * 45;
+                targetOpacity = 0;
+              } else if (isHovered) {
+                targetRotate = rotation * 0.3;
+                targetYOffset = yOffset - 22;
+                targetScale = 1.08;
               } else if (isTopMost && total > 1) {
-                transformStr = `translate(-50%, -50%) rotate(${rotation}deg) translate(${xOffset}px, ${yOffset - 4}px) scale(1.02)`;
+                targetYOffset = yOffset - 4;
+                targetScale = 1.02;
               }
 
               return (
                 <div
                   key={card.id}
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140px] sm:w-[145px]"
+                  style={{ zIndex: isHovered || isFlyingOut ? 100 : isTopMost ? 40 : index + 10 }}
                   onMouseEnter={() => setHoveredCardId(card.id)}
                   onMouseLeave={() => setHoveredCardId(null)}
-                  className="absolute top-1/2 left-1/2 w-[140px] sm:w-[145px] transition-all duration-300 ease-out"
-                  style={{
-                    transform: transformStr,
-                    zIndex: isHovered ? 100 : (isTopMost ? 40 : index + 10),
-                  }}
                 >
-                  <PolaroidCard
-                    card={card}
-                    onDeleteCard={onDeleteCard}
-                    onDeleteTerm={onDeleteTerm}
-                    onZoom={onZoom}
-                    onUpdateTerms={onUpdateTerms}
-                  />
+                  <motion.div
+                    animate={{
+                      x: targetXOffset,
+                      y: targetYOffset,
+                      rotate: targetRotate,
+                      scale: targetScale,
+                      opacity: targetOpacity,
+                    }}
+                    whileDrag={{ scale: 1.05, cursor: "grabbing" }}
+                    drag={isTopMost && !isFlyingOut ? "x" : false}
+                    dragConstraints={{ left: 0, right: 0 }}
+                    dragElastic={0.8}
+                    onDragStart={() => {
+                      dragRef.current = true;
+                    }}
+                    onDragEnd={(_event, info) => {
+                      const swipeThreshold = 50;
+                      let dir = 0;
+                      if (info.offset.x < -swipeThreshold) dir = -1;
+                      else if (info.offset.x > swipeThreshold) dir = 1;
+
+                      if (dir !== 0 && cards.length > 1) {
+                        setFlyOutState({ id: card.id, dir });
+                        setTimeout(() => {
+                          setActiveStackIndex((prev) => (prev - dir + cards.length) % cards.length);
+                          setFlyOutState(null);
+                        }, 200);
+                      }
+
+                      setTimeout(() => {
+                        dragRef.current = false;
+                      }, 100);
+                    }}
+                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                    className={isTopMost ? "cursor-grab" : ""}
+                  >
+                    <PolaroidCard
+                      card={card}
+                      onDeleteCard={onDeleteCard}
+                      onDeleteTerm={onDeleteTerm}
+                      onZoom={(c) => {
+                        if (dragRef.current) return;
+                        onZoom(c);
+                      }}
+                      onUpdateTerms={onUpdateTerms}
+                    />
+                  </motion.div>
                 </div>
               );
             })}
@@ -338,11 +393,11 @@ export default function DaySlot({
             onClick={triggerFileSelect}
             className="w-full flex-grow flex flex-col items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-stone-200 dark:border-stone-800 hover:border-amber-400 group/dropzone cursor-pointer bg-stone-50/40 dark:bg-stone-900/20 hover:bg-amber-50/10 transition-all text-center"
           >
-            <div className="p-2 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 group-hover/dropzone:bg-amber-100 dark:group-hover/dropzone:bg-amber-950/40 group-hover/dropzone:text-amber-700 dark:group-hover/dropzone:text-amber-300 transition-colors">
-              <Plus size={16} />
+            <div className="p-2 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 group-hover/dropzone:bg-amber-100 dark:group-hover/dropzone:bg-amber-950/40 group-hover/dropzone:text-amber-700 dark:group-hover/dropzone:text-amber-300 transition-colors transform group-hover/dropzone:-rotate-6 scale-100 group-hover/dropzone:scale-110 duration-300">
+              <Sparkles size={16} strokeWidth={1.5} />
             </div>
-            <div className="mt-2 text-xs font-serif italic font-medium text-stone-500 group-hover/dropzone:text-stone-800 dark:group-hover/dropzone:text-stone-300">
-              Pin a clip
+            <div className="mt-3 text-xs font-serif italic font-medium text-stone-500 group-hover/dropzone:text-stone-800 dark:group-hover/dropzone:text-stone-300">
+              New Inspiration
             </div>
             <p className="text-[10px] text-stone-400 dark:text-stone-500 max-w-[150px] mt-1 tracking-tight leading-normal">
               Drop file, paste screenshot, or click to choose.
@@ -355,11 +410,11 @@ export default function DaySlot({
       {cards.length > 0 && !isUploading && (
         <button
           onClick={triggerFileSelect}
-          className="absolute bottom-2.5 right-2.5 w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center opacity-0 group-hover/slot:opacity-100 cursor-pointer shadow-md transform transition-all translate-y-1 hover:scale-105"
+          className="absolute bottom-2.5 right-2.5 w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center opacity-0 group-hover/slot:opacity-100 cursor-pointer shadow-md transform transition-all translate-y-1 hover:scale-110 hover:rotate-12 duration-300"
           id={`add-more-btn-${dayIndex}`}
           title="Add another snippet to this day"
         >
-          <Plus size={12} />
+          <Sparkles size={12} strokeWidth={2} />
         </button>
       )}
     </div>

@@ -1,11 +1,12 @@
 import React from "react";
-import { ChevronLeft, ChevronRight, Calendar, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Sparkles, LayoutGrid } from "lucide-react";
 
 interface TimelineHeaderProps {
   currentDate: Date;
   onPrevWeek: () => void;
   onNextWeek: () => void;
   onGoToday: () => void;
+  onPreviewWeek?: () => void;
   weekIdentifier: string;
 }
 
@@ -14,6 +15,7 @@ export default function TimelineHeader({
   onPrevWeek,
   onNextWeek,
   onGoToday,
+  onPreviewWeek,
   weekIdentifier,
 }: TimelineHeaderProps) {
   // Get date range for the current week (Monday to Sunday)
@@ -52,9 +54,9 @@ export default function TimelineHeader({
   const dateRangeStr = getWeekRangeDetails(currentDate);
 
   return (
-    <header className="relative flex flex-col md:flex-row items-center justify-between gap-4 p-4 md:p-6 mb-4 bg-white dark:bg-stone-900 border border-amber-900/10 dark:border-amber-100/10 rounded-2xl shadow-sm select-none">
+    <header className="relative flex flex-col md:flex-row items-center justify-between gap-4 p-4 md:p-6 mb-4 bg-white dark:bg-stone-900 border border-amber-900/10 dark:border-stone-700/50 rounded-2xl shadow-sm dark:shadow-md select-none">
       {/* Background decoration representing journal paper grid faintly */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none rounded-2xl bg-[radial-gradient(#2d2319_1px,transparent_1px)] [background-size:16px_16px]" />
+      <div className="absolute inset-0 pointer-events-none rounded-2xl bg-[radial-gradient(#2d2319_1px,transparent_1px)] dark:bg-[radial-gradient(#ffffff_1px,transparent_1px)] opacity-5 [background-size:16px_16px]" />
 
       {/* Main title of app */}
       <div className="flex items-center gap-3 relative z-10">
@@ -108,6 +110,16 @@ export default function TimelineHeader({
           >
             <ChevronRight size={16} />
           </button>
+
+          {onPreviewWeek && (
+            <button
+              onClick={onPreviewWeek}
+              className="p-1 px-2 rounded-lg hover:bg-white dark:hover:bg-stone-800 text-stone-600 hover:text-amber-950 dark:text-stone-300 dark:hover:text-amber-200 transition-all shadow-sm cursor-pointer"
+              title="Overview of The Week"
+            >
+              <LayoutGrid size={16} />
+            </button>
+          )}
         </div>
       </div>
     </header>

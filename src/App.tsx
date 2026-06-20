@@ -10,6 +10,7 @@ import {
   saveCard,
   deleteCard,
   updateCardTerms,
+  refreshCards,
   loadSettings,
   saveSettings,
 } from "./lib/dbClient";
@@ -38,6 +39,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchScope, setSearchScope] = useState<"current" | "all">("current");
   const [zoomedCard, setZoomedCard] = useState<ImageCard | null>(null);
+  const [isRefreshingCards, setIsRefreshingCards] = useState<boolean>(false);
+  const [showWeeklyPreview, setShowWeeklyPreview] = useState<boolean>(false);
 
   // Custom AI parameter states
   const [customProvider, setCustomProvider] = useState<string>(() => {
@@ -209,6 +212,19 @@ export default function App() {
 
   const handleGoToday = () => {
     setCurrentDate(new Date());
+  };
+
+  const handleRefreshCards = async () => {
+    if (!weekId || isRefreshingCards) return;
+    setIsRefreshingCards(true);
+    try {
+      const refreshedCards = await refreshCards(searchScope === "all" ? "all" : weekId);
+      setCards(refreshedCards);
+    } catch (err) {
+      console.error("Failed to refresh cards:", err);
+    } finally {
+      setIsRefreshingCards(false);
+    }
   };
 
   // Drag height of note pad resize operations
@@ -582,7 +598,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col transition-colors duration-300">
+    <div
+      className="min-h-screen flex flex-col transition-colors duration-300"
+      data-weekly-preview-open={showWeeklyPreview}
+    >
       {/* Visual background lines representing analog journal grid */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.03] dark:opacity-[0.02] bg-[linear-gradient(rgba(0,0,0,1)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,1)_1px,transparent_1px)] bg-[size:24px_24px]" />
 
@@ -631,6 +650,7 @@ export default function App() {
           onPrevWeek={handlePrevWeek}
           onNextWeek={handleNextWeek}
           onGoToday={handleGoToday}
+          onPreviewWeek={() => setShowWeeklyPreview(true)}
           weekIdentifier={weekId}
         />
 
@@ -659,6 +679,16 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 self-end md:self-auto flex-shrink-0">
+            <button
+              onClick={handleRefreshCards}
+              disabled={isRefreshingCards || !weekId}
+              className="p-2 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 transition-all active:scale-95 border border-stone-200/50 dark:border-stone-700 cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+              title="手动刷新图片列表"
+              aria-label="手动刷新图片列表"
+            >
+              <RefreshCw size={14} className={isRefreshingCards ? "animate-spin" : ""} />
+            </button>
+
             {/* Search Scope Switcher */}
             <div className="flex gap-1 items-center bg-stone-100 dark:bg-stone-800/80 p-1 rounded-xl border border-stone-200/50 dark:border-stone-800">
               <button

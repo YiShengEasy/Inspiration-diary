@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ImageCard } from "../types";
-import { Copy, Trash2, X, Plus } from "lucide-react";
+import { X, Plus } from "lucide-react";
 
 interface PolaroidCardProps {
   key?: React.Key;
@@ -18,12 +18,6 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
 
   const handleCopy = (term: string) => {
     navigator.clipboard.writeText(term);
-  };
-
-  const handleDeleteCard = () => {
-    const shouldDelete = window.confirm("确定删除这张灵感图片吗？此操作无法撤销。");
-    if (!shouldDelete) return;
-    onDeleteCard(card.id);
   };
 
   const handleAddCustomTerm = (e?: React.FormEvent) => {
@@ -84,7 +78,7 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        className="relative w-full max-w-[170px] bg-white dark:bg-stone-800 p-2.5 pb-2 shadow-[0_8px_20px_rgba(0,0,0,0.12)] border border-amber-900/5 dark:border-stone-700/50 select-none rounded-[2px] transition-transform duration-300 flex flex-col"
+        className="relative w-full max-w-[170px] bg-white dark:bg-stone-800 p-2.5 pb-2 shadow-[0_8px_20px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_25px_rgba(0,0,0,0.8)] border border-amber-900/5 dark:border-stone-600/70 select-none rounded-[2px] transition-transform duration-300 flex flex-col"
       >
         {renderDecoration()}
 
@@ -105,11 +99,11 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
 
         {/* Delete button of entire Polaroid card */}
         <button
-          onClick={handleDeleteCard}
-          className="absolute -top-1 -right-1 opacity-0 group-hover/card:opacity-100 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 transition-opacity cursor-pointer z-40 shadow-sm"
+          onClick={() => onDeleteCard(card.id)}
+          className="absolute -top-2 -right-2 opacity-0 group-hover/card:opacity-100 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-500 dark:text-stone-400 hover:text-red-500 dark:hover:text-red-400 rounded-full p-1.5 transition-all cursor-pointer z-40 shadow-sm border border-stone-200 dark:border-stone-700"
           title="删除这张相片卡"
         >
-          <Trash2 size={10} />
+          <X size={12} strokeWidth={2.5} />
         </button>
 
         {/* Polaroid Bottom Margin (Writable Area) with terms */}
