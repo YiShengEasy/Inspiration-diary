@@ -973,7 +973,10 @@ app.delete("/api/db/cards/:id", requirePostgresAuth, async (req, res) => {
   }
   try {
     const authReq = req as AuthenticatedRequest;
-    await pgPool.query("DELETE FROM cards WHERE id = $1 AND user_id = $2", [req.params.id, authReq.user!.id]);
+    const result = await pgPool.query("DELETE FROM cards WHERE id = $1 AND user_id = $2", [req.params.id, authReq.user!.id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Card not found" });
+    }
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error executing delete card query:", err);
@@ -989,10 +992,13 @@ app.put("/api/db/cards/:id/terms", requirePostgresAuth, async (req, res) => {
   try {
     const authReq = req as AuthenticatedRequest;
     const { terms } = req.body;
-    await pgPool.query(
+    const result = await pgPool.query(
       "UPDATE cards SET terms = $1, terms_text = array_to_string($1::text[], ' ') WHERE id = $2 AND user_id = $3",
       [terms, req.params.id, authReq.user!.id]
     );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Card not found" });
+    }
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error executing update card tag terms query:", err);
