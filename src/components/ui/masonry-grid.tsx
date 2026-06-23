@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { motion } from 'motion/react';
+import { motion, type Variants } from 'motion/react';
 import { cn } from '../../lib/utils';
 
 interface MasonryGridProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -14,7 +14,7 @@ const MasonryGrid = React.forwardRef<HTMLDivElement, MasonryGridProps>(
       columnGap: `${gap * 0.25}rem`,
     };
 
-    const cardVariants = {
+    const cardVariants: Variants = {
       hidden: { opacity: 0, y: 20 },
       visible: {
         opacity: 1,

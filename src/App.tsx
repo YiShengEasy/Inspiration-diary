@@ -23,6 +23,7 @@ import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, 
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
+import Markdown from "react-markdown";
 
 const ALL_CARDS_PAGE_SIZE = 12;
 
@@ -287,7 +288,7 @@ export default function App() {
         await loadHistoricalCardsPage(allCardsPage);
         return;
       }
-      const refreshedCards = await refreshCards(searchScope === "all" ? "all" : weekId);
+      const refreshedCards = await refreshCards(weekId);
       setCards(refreshedCards);
     } catch (err) {
       console.error("Failed to refresh cards:", err);
@@ -489,6 +490,80 @@ export default function App() {
     }
   };
 
+  const handleUploadMd = async (dayIndex: number, text: string, filename: string) => {
+    try {
+      if (!weekId) {
+        throw new Error("当前周信息还在加载，请稍后再上传手稿。");
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "x-provider": customProvider || "gemini",
+      };
+
+      if (customProvider === "anthropic") {
+        if (anthropicAuthToken) headers["x-api-key"] = anthropicAuthToken;
+        if (anthropicModel) headers["x-model-name"] = anthropicModel;
+        if (anthropicBaseUrl) headers["x-anthropic-base-url"] = anthropicBaseUrl;
+      } else if (customProvider === "thirdparty") {
+        headers["x-provider"] = "gemini";
+        if (thirdPartyApiKey) headers["x-api-key"] = thirdPartyApiKey;
+        if (thirdPartyModel) headers["x-model-name"] = thirdPartyModel;
+        if (thirdPartyBaseUrl) headers["x-gemini-base-url"] = thirdPartyBaseUrl;
+        if (thirdPartyThinking) headers["x-thinking-enabled"] = "true";
+      } else {
+        if (customApiKey) headers["x-api-key"] = customApiKey;
+        if (selectedModel) headers["x-model-name"] = selectedModel;
+        if (customGeminiBaseUrl) headers["x-gemini-base-url"] = customGeminiBaseUrl;
+      }
+
+      let mdSummary = text
+        .replace(/[#>*_`~\-[\]()]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 160);
+
+      try {
+        const response = await authFetch("/api/summarize-md", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ markdown: text }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (typeof data.summary === "string" && data.summary.trim()) {
+            mdSummary = data.summary.trim();
+          }
+        } else {
+          console.warn("Markdown summary skipped:", await response.text());
+        }
+      } catch (err) {
+        console.warn("Markdown summary skipped:", err);
+      }
+
+      const cardId = createNewCardId();
+      const newCard: ImageCard = {
+        id: cardId,
+        weekId,
+        dayIndex,
+        imageUrl: "",
+        terms: ["Document", "Markdown"],
+        decoType: "washi",
+        angle: parseFloat((Math.random() * 6 - 3).toFixed(1)),
+        createdAt: Date.now(),
+        type: "md",
+        mdContent: text,
+        mdSummary: mdSummary || "点击查看完整手稿。",
+        mdName: filename,
+      };
+
+      await saveCard(newCard);
+    } catch (error: any) {
+      console.error("Markdown upload error:", error);
+      throw new Error(error.message || "Failed to save Markdown document.");
+    }
+  };
+
   // Trigger deletion prompt before absolute card removal.
   const handleDeleteCard = (cardId: string) => {
     const card = cards.find((c) => c.id === cardId);
@@ -677,7 +752,13 @@ export default function App() {
   const filteredCards = cards.filter((card) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
-    return card.terms.some((term) => term.toLowerCase().includes(q));
+    if (card.terms.some((term) => term.toLowerCase().includes(q))) return true;
+    if (card.type === "md") {
+      if (card.mdName?.toLowerCase().includes(q)) return true;
+      if (card.mdSummary?.toLowerCase().includes(q)) return true;
+      if (card.mdContent?.toLowerCase().includes(q)) return true;
+    }
+    return false;
   });
   const visibleCards = searchScope === "all" ? allCardsPageCards : filteredCards;
 
@@ -1053,6 +1134,7 @@ export default function App() {
                     subLabel={getDayLabelForOffset(currentDate, 0)}
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 0)}
                     onUploadImage={handleUploadImage}
+                    onUploadMd={handleUploadMd}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1064,6 +1146,7 @@ export default function App() {
                     subLabel={getDayLabelForOffset(currentDate, 1)}
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 1)}
                     onUploadImage={handleUploadImage}
+                    onUploadMd={handleUploadMd}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1075,6 +1158,7 @@ export default function App() {
                     subLabel={getDayLabelForOffset(currentDate, 2)}
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 2)}
                     onUploadImage={handleUploadImage}
+                    onUploadMd={handleUploadMd}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1090,6 +1174,7 @@ export default function App() {
                     subLabel={getDayLabelForOffset(currentDate, 3)}
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 3)}
                     onUploadImage={handleUploadImage}
+                    onUploadMd={handleUploadMd}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1101,6 +1186,7 @@ export default function App() {
                     subLabel={getDayLabelForOffset(currentDate, 4)}
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 4)}
                     onUploadImage={handleUploadImage}
+                    onUploadMd={handleUploadMd}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1113,6 +1199,7 @@ export default function App() {
                     subLabel={getDayLabelForOffset(currentDate, 5)}
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 5)}
                     onUploadImage={handleUploadImage}
+                    onUploadMd={handleUploadMd}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1353,7 +1440,7 @@ export default function App() {
               initial={{ scale: 0.93, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.93, y: 15 }}
-              className="relative max-w-3xl w-full bg-white dark:bg-stone-850 p-4 md:p-6 pb-6 md:pb-8 shadow-[0_24px_50px_rgba(0,0,0,0.6)] border border-amber-900/10 dark:border-white/10 select-text rounded-2xl flex flex-col md:flex-row gap-6 items-center md:items-start"
+              className={`relative w-full bg-white dark:bg-stone-850 p-4 md:p-6 pb-6 md:pb-8 shadow-[0_24px_50px_rgba(0,0,0,0.6)] border border-amber-900/10 dark:border-white/10 select-text rounded-2xl flex flex-col md:flex-row gap-6 items-center md:items-start ${zoomedCard.type === "md" ? "max-w-5xl" : "max-w-3xl"}`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Close Button on top corner */}
@@ -1366,16 +1453,22 @@ export default function App() {
                 <X size={18} />
               </button>
 
-              {/* Left Column: Picture */}
-              <div className="w-full md:w-3/5 aspect-square max-w-[420px] relative overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-inner rounded-xl group/zoomimage">
-                <img
-                  src={zoomedCard.imageUrl}
-                  alt="Original Snippet View"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-contain"
-                />
+              {/* Left Column: Picture or Markdown document */}
+              <div className={`w-full relative overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-inner rounded-xl group/zoomimage ${zoomedCard.type === "md" ? "md:w-3/4 h-[70vh] max-h-[800px]" : "md:w-3/5 aspect-square max-w-[420px]"}`}>
+                {zoomedCard.type === "md" ? (
+                  <div className="w-full h-full overflow-y-auto p-6 md:p-10 bg-white dark:bg-stone-900 custom-scrollbar text-left text-sm md:text-base text-stone-800 dark:text-stone-100 shadow-inner break-words leading-relaxed [&_h1]:font-serif [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-stone-600 [&_a]:text-amber-600 [&_a]:underline [&_code]:rounded [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-amber-700 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-stone-950 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:text-stone-100 [&_img]:rounded-xl">
+                    <Markdown>{zoomedCard.mdContent || ""}</Markdown>
+                  </div>
+                ) : (
+                  <img
+                    src={zoomedCard.imageUrl}
+                    alt="Original Snippet View"
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-contain"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/5 pointer-events-none" />
-                {visibleCards.length > 1 && (
+                {zoomedCard.type !== "md" && visibleCards.length > 1 && (
                   <>
                     <button
                       onClick={handlePrevZoomedCard}
@@ -1396,7 +1489,7 @@ export default function App() {
               </div>
 
               {/* Right Column: Key Details, Tag lists, info */}
-              <div className="w-full md:w-2/5 flex flex-col h-full justify-between gap-5 self-stretch py-1">
+              <div className={`w-full flex flex-col h-full justify-between gap-5 self-stretch py-1 ${zoomedCard.type === "md" ? "md:w-1/4" : "md:w-2/5"}`}>
                 <div className="flex flex-col gap-4">
                   {/* Title / Mood heading */}
                   <div className="border-b border-dashed border-amber-900/15 dark:border-amber-100/10 pb-3">
@@ -1404,7 +1497,7 @@ export default function App() {
                       ★ Captured Inspiration ★
                     </span>
                     <h3 className="font-serif font-bold text-lg text-stone-900 dark:text-stone-100 italic leading-tight">
-                      {getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录
+                      {zoomedCard.type === "md" ? (zoomedCard.mdName || "Markdown 手稿") : `${getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录`}
                     </h3>
                     <p className="text-[10px] font-mono text-stone-400 dark:text-stone-500 mt-1.5">
                       记录时间： {new Date(zoomedCard.createdAt).toLocaleString()}

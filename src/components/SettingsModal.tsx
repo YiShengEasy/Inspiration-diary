@@ -104,6 +104,8 @@ export default function SettingsModal({
     model: string;
     textStatus: { ok: boolean; error: string; response: string };
     visionStatus: { ok: boolean; error: string; response: string };
+    sentImage?: string;
+    sentPrompt?: string;
   } | null>(null);
 
   if (!isOpen) return null;

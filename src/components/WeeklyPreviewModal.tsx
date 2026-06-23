@@ -73,12 +73,23 @@ export function WeeklyPreviewModal({ cards, onClose, weekRangeStr }: WeeklyPrevi
                     key={card.id}
                     className="relative rounded-2xl overflow-hidden bg-white dark:bg-stone-800 shadow-md transform transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1 hover:shadow-xl group"
                   >
-                    <img
-                      src={card.imageUrl}
-                      alt="Weekly memory"
-                      className="w-full h-auto object-cover"
-                      loading="lazy"
-                    />
+                    {card.type === "md" ? (
+                      <div className="min-h-48 p-5 bg-stone-50 dark:bg-stone-950 text-stone-700 dark:text-stone-200">
+                        <h3 className="font-serif font-bold text-base leading-tight mb-3">
+                          {card.mdName || "Markdown Note"}
+                        </h3>
+                        <p className="text-xs leading-relaxed text-stone-500 dark:text-stone-400">
+                          {card.mdSummary || card.mdContent || "点击卡片查看完整手稿。"}
+                        </p>
+                      </div>
+                    ) : (
+                      <img
+                        src={card.thumbnailUrl || card.imageUrl}
+                        alt="Weekly memory"
+                        className="w-full h-auto object-cover"
+                        loading="lazy"
+                      />
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
                       <div className="flex flex-wrap gap-1.5">
                         {card.terms?.slice(0, 4).map((t: string, i: number) => (

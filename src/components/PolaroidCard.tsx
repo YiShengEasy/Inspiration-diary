@@ -82,20 +82,44 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
       >
         {renderDecoration()}
 
-        {/* Polaroid Picture */}
-        <div
-          onClick={() => onZoom(card)}
-          className="relative aspect-square w-full overflow-hidden bg-stone-100 dark:bg-stone-900 border border-black/5 shadow-inner cursor-zoom-in hover:brightness-95 transition-all"
-          title="点击放大查看原图"
-        >
-          <img
-            src={card.thumbnailUrl || card.imageUrl}
-            alt="Snippet Inspiration"
-            referrerPolicy="no-referrer"
-            className="w-full h-full object-cover select-none pointer-events-none"
-          />
-          <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
-        </div>
+        {/* Polaroid Picture or Markdown clipping */}
+        {card.type === "md" ? (
+          <div
+            onClick={() => onZoom(card)}
+            className="relative aspect-square w-full overflow-hidden bg-stone-50 dark:bg-stone-900 border border-stone-200/50 dark:border-stone-700/50 shadow-inner cursor-zoom-in hover:bg-stone-100 dark:hover:bg-stone-800 transition-all flex flex-col p-2 select-none"
+            title="查看完整文档"
+          >
+            <div
+              className="flex-1 overflow-hidden"
+              style={{
+                maskImage: "linear-gradient(to bottom, black 52%, transparent 100%)",
+                WebkitMaskImage: "linear-gradient(to bottom, black 52%, transparent 100%)",
+              }}
+            >
+              <h4 className="text-[11px] font-semibold text-stone-800 dark:text-stone-200 mb-1 leading-tight break-words font-serif">
+                {card.mdName || "Markdown Note"}
+              </h4>
+              <p className="text-[9px] text-stone-500 dark:text-stone-400 font-sans leading-relaxed">
+                {card.mdSummary || card.mdContent || "点击查看完整手稿。"}
+              </p>
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
+          </div>
+        ) : (
+          <div
+            onClick={() => onZoom(card)}
+            className="relative aspect-square w-full overflow-hidden bg-stone-100 dark:bg-stone-900 border border-black/5 shadow-inner cursor-zoom-in hover:brightness-95 transition-all"
+            title="点击放大查看原图"
+          >
+            <img
+              src={card.thumbnailUrl || card.imageUrl}
+              alt="Snippet Inspiration"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover select-none pointer-events-none"
+            />
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
+          </div>
+        )}
 
         {/* Delete button of entire Polaroid card */}
         <button

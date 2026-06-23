@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { ImageCard } from "../types";
-import { Loader2, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { Clipboard, Image, Loader2, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import PolaroidCard from "./PolaroidCard";
 import { motion } from "motion/react";
 import WeatherBackground from "./WeatherBackground";
@@ -11,6 +11,7 @@ interface DaySlotProps {
   subLabel: string;
   cards: ImageCard[];
   onUploadImage: (dayIndex: number, base64Data: string) => Promise<void>;
+  onUploadMd?: (dayIndex: number, text: string, filename: string) => Promise<void>;
   onDeleteCard: (id: string) => void;
   onDeleteTerm: (cardId: string, termIndex: number) => void;
   onZoom: (card: ImageCard) => void;
@@ -23,12 +24,14 @@ export default function DaySlot({
   subLabel,
   cards,
   onUploadImage,
+  onUploadMd,
   onDeleteCard,
   onDeleteTerm,
   onZoom,
   onUpdateTerms,
 }: DaySlotProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mdInputRef = useRef<HTMLInputElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -63,6 +66,38 @@ export default function DaySlot({
     e.stopPropagation();
     if (cards.length <= 1) return;
     setActiveStackIndex((prev) => (prev + 1) % cards.length);
+  };
+
+  const processMdFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".md") && file.type !== "text/markdown") {
+      setUploadError("Please provide a valid markdown file.");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+    try {
+      const text = await file.text();
+      if (onUploadMd) {
+        await onUploadMd(dayIndex, text, file.name);
+      }
+    } catch (err: any) {
+      setUploadError(err.message || "Failed to process Markdown document.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleMdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      void processMdFile(e.target.files[0]);
+    }
+    if (mdInputRef.current) mdInputRef.current.value = "";
+  };
+
+  const triggerMdSelect = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    mdInputRef.current?.click();
   };
 
   // Resize and compress image using canvas
@@ -212,12 +247,19 @@ export default function DaySlot({
     >
       <WeatherBackground />
 
-      {/* Invisible file input picker */}
+      {/* Invisible file input pickers */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
         onChange={handleFileChange}
+        className="hidden"
+      />
+      <input
+        ref={mdInputRef}
+        type="file"
+        accept=".md,text/markdown"
+        onChange={handleMdChange}
         className="hidden"
       />
 
@@ -389,18 +431,36 @@ export default function DaySlot({
 
         {/* Empty placeholder slot with double support (Drag & Drop + Clipboard Paste + Click) */}
         {!isUploading && cards.length === 0 && (
-          <div
-            onClick={triggerFileSelect}
-            className="w-full flex-grow flex flex-col items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-stone-200 dark:border-stone-800 hover:border-amber-400 group/dropzone cursor-pointer bg-stone-50/40 dark:bg-stone-900/20 hover:bg-amber-50/10 transition-all text-center"
-          >
-            <div className="p-2 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 group-hover/dropzone:bg-amber-100 dark:group-hover/dropzone:bg-amber-950/40 group-hover/dropzone:text-amber-700 dark:group-hover/dropzone:text-amber-300 transition-colors transform group-hover/dropzone:-rotate-6 scale-100 group-hover/dropzone:scale-110 duration-300">
-              <Sparkles size={16} strokeWidth={1.5} />
-            </div>
-            <div className="mt-3 text-xs font-serif italic font-medium text-stone-500 group-hover/dropzone:text-stone-800 dark:group-hover/dropzone:text-stone-300">
-              New Inspiration
+          <div className="w-full flex-grow flex flex-col items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-stone-200 dark:border-stone-800 hover:border-amber-400 group/dropzone bg-stone-50/40 dark:bg-stone-900/20 hover:bg-amber-50/10 transition-all text-center">
+            <div className="flex gap-4 items-center">
+              <div
+                onClick={triggerFileSelect}
+                className="flex flex-col items-center cursor-pointer group/imgbtn p-2 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+              >
+                <div className="p-2 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 group-hover/imgbtn:bg-amber-100 dark:group-hover/imgbtn:bg-amber-950/40 group-hover/imgbtn:text-amber-700 dark:group-hover/imgbtn:text-amber-300 transition-colors transform group-hover/imgbtn:-rotate-6 scale-100 group-hover/imgbtn:scale-110 duration-300">
+                  <Image size={16} strokeWidth={1.5} />
+                </div>
+                <div className="mt-2 text-xs font-serif italic font-medium text-stone-500 group-hover/imgbtn:text-stone-800 dark:group-hover/imgbtn:text-stone-300">
+                  图片灵感
+                </div>
+              </div>
+
+              {onUploadMd && (
+                <div
+                  onClick={triggerMdSelect}
+                  className="flex flex-col items-center cursor-pointer group/mdbtn p-2 rounded-xl hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors"
+                >
+                  <div className="p-2 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 group-hover/mdbtn:bg-teal-100 dark:group-hover/mdbtn:bg-teal-950/40 group-hover/mdbtn:text-teal-700 dark:group-hover/mdbtn:text-teal-300 transition-colors transform group-hover/mdbtn:rotate-6 scale-100 group-hover/mdbtn:scale-110 duration-300">
+                    <Clipboard size={16} strokeWidth={1.5} />
+                  </div>
+                  <div className="mt-2 text-xs font-serif italic font-medium text-stone-500 group-hover/mdbtn:text-stone-800 dark:group-hover/mdbtn:text-stone-300">
+                    随附手稿
+                  </div>
+                </div>
+              )}
             </div>
             <p className="text-[10px] text-stone-400 dark:text-stone-500 max-w-[150px] mt-1 tracking-tight leading-normal">
-              Drop file, paste screenshot, or click to choose.
+              留存光影、长文笔记，或直接粘贴唤醒灵感。
             </p>
           </div>
         )}
@@ -408,14 +468,25 @@ export default function DaySlot({
 
       {/* Floating Plus button on slots with existing cards to allow stacking multiple inspirations */}
       {cards.length > 0 && !isUploading && (
-        <button
-          onClick={triggerFileSelect}
-          className="absolute bottom-2.5 right-2.5 w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center opacity-0 group-hover/slot:opacity-100 cursor-pointer shadow-md transform transition-all translate-y-1 hover:scale-110 hover:rotate-12 duration-300"
-          id={`add-more-btn-${dayIndex}`}
-          title="Add another snippet to this day"
-        >
-          <Sparkles size={12} strokeWidth={2} />
-        </button>
+        <div className="absolute bottom-2.5 right-2.5 flex flex-col gap-2 opacity-0 group-hover/slot:opacity-100 transition-all duration-300">
+          <button
+            onClick={triggerFileSelect}
+            className="w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center cursor-pointer shadow-md transform hover:scale-110 hover:rotate-12 transition-all"
+            id={`add-more-btn-${dayIndex}`}
+            title="添加图片"
+          >
+            <Image size={12} strokeWidth={2} />
+          </button>
+          {onUploadMd && (
+            <button
+              onClick={triggerMdSelect}
+              className="w-6 h-6 rounded-full bg-teal-500 hover:bg-teal-600 text-white flex items-center justify-center cursor-pointer shadow-md transform hover:scale-110 hover:-rotate-12 transition-all"
+              title="添加MD笔记"
+            >
+              <Clipboard size={12} strokeWidth={2} />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

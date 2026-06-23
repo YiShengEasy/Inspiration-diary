@@ -110,6 +110,10 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS photo_hash TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS terms_text TEXT;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'image';");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_content TEXT;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_summary TEXT;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_name VARCHAR(255);");
         await client.query("UPDATE cards SET terms_text = array_to_string(terms, ' ') WHERE terms_text IS NULL OR terms_text = '';");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_created_at_desc ON cards (created_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_week_created_at ON cards (week_id, created_at);");
@@ -492,6 +496,29 @@ app.post("/api/store-image", requirePostgresAuth, async (req, res) => {
   } catch (error: any) {
     console.error("PhotoPrism image storage error:", error);
     return res.status(500).json({ error: error.message || "PhotoPrism image storage failed." });
+  }
+});
+
+app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
+  try {
+    const { markdown } = req.body;
+    if (typeof markdown !== "string" || !markdown.trim()) {
+      return res.status(400).json({ error: "Missing markdown content." });
+    }
+
+    const summary = markdown
+      .split(/\r?\n/)
+      .map((line: string) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*+]\s+/, "").trim())
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .slice(0, 220);
+
+    return res.json({ summary: summary || "已保存 Markdown 手稿，点击卡片查看完整内容。" });
+  } catch (error: any) {
+    console.error("Markdown summary error:", error);
+    return res.status(500).json({ error: error.message || "Markdown summary failed." });
   }
 });
 
@@ -882,11 +909,15 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
       decoType: row.deco_type,
       angle: Number(row.angle),
       createdAt: Number(row.created_at),
+      type: row.type || "image",
+      mdContent: row.md_content || "",
+      mdSummary: row.md_summary || "",
+      mdName: row.md_name || "",
     }));
 
     if (weekId && weekId !== "all") {
       const result = await pgPool.query(
-        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at
+        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name
          FROM cards
          WHERE user_id = $1 AND week_id = $2
          ORDER BY day_index ASC, created_at ASC`,
@@ -921,7 +952,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const offsetParam = values.length;
 
     const result = await pgPool.query(
-      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name
        FROM cards
        ${whereSql}
        ORDER BY created_at DESC
@@ -950,17 +981,40 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
   }
   try {
     const authReq = req as AuthenticatedRequest;
-    const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, photoHash, terms, decoType, angle, createdAt } = req.body;
+    const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, photoHash, terms, decoType, angle, createdAt, type, mdContent, mdSummary, mdName } = req.body;
+    const safeTerms = Array.isArray(terms) ? terms : [];
+    const termsText = [...safeTerms, mdName, mdSummary]
+      .filter((value) => typeof value === "string" && value.trim())
+      .join(" ");
     await pgPool.query(
-      `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, array_to_string($9::text[], ' '), $10, $11, $12)
+      `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at, type, md_content, md_summary, md_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        ON CONFLICT (id)
        DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, image_url = EXCLUDED.image_url, 
                      thumbnail_url = EXCLUDED.thumbnail_url, photo_uid = EXCLUDED.photo_uid, photo_hash = EXCLUDED.photo_hash,
                      terms = EXCLUDED.terms, terms_text = EXCLUDED.terms_text, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle, 
-                     created_at = EXCLUDED.created_at
+                     created_at = EXCLUDED.created_at, type = EXCLUDED.type, md_content = EXCLUDED.md_content,
+                     md_summary = EXCLUDED.md_summary, md_name = EXCLUDED.md_name
        WHERE cards.user_id = EXCLUDED.user_id`,
-      [id, authReq.user!.id, weekId, dayIndex, imageUrl, thumbnailUrl || "", photoUid || "", photoHash || "", terms, decoType, angle, createdAt || Date.now()]
+      [
+        id,
+        authReq.user!.id,
+        weekId,
+        dayIndex,
+        imageUrl || "",
+        thumbnailUrl || "",
+        photoUid || "",
+        photoHash || "",
+        safeTerms,
+        termsText,
+        decoType,
+        angle,
+        createdAt || Date.now(),
+        type || "image",
+        mdContent || null,
+        mdSummary || null,
+        mdName || null,
+      ]
     );
     return res.json({ success: true });
   } catch (err: any) {
