@@ -1,11 +1,12 @@
 import React from "react";
-import { ChevronLeft, ChevronRight, Calendar, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Sparkles, LayoutGrid } from "lucide-react";
 
 interface TimelineHeaderProps {
   currentDate: Date;
   onPrevWeek: () => void;
   onNextWeek: () => void;
   onGoToday: () => void;
+  onPreviewWeek?: () => void;
   weekIdentifier: string;
 }
 
@@ -14,6 +15,7 @@ export default function TimelineHeader({
   onPrevWeek,
   onNextWeek,
   onGoToday,
+  onPreviewWeek,
   weekIdentifier,
 }: TimelineHeaderProps) {
   // Get date range for the current week (Monday to Sunday)
@@ -52,9 +54,9 @@ export default function TimelineHeader({
   const dateRangeStr = getWeekRangeDetails(currentDate);
 
   return (
-    <header className="relative flex flex-col md:flex-row items-center justify-between gap-4 p-4 md:p-6 mb-4 bg-white dark:bg-stone-900 border border-amber-900/10 dark:border-amber-100/10 rounded-2xl shadow-sm select-none">
+    <header className="relative flex flex-col md:flex-row items-center justify-between gap-4 p-4 md:p-6 mb-4 bg-white dark:bg-stone-900 border border-amber-900/10 dark:border-stone-700/50 rounded-2xl shadow-sm dark:shadow-md select-none">
       {/* Background decoration representing journal paper grid faintly */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none rounded-2xl bg-[radial-gradient(#2d2319_1px,transparent_1px)] [background-size:16px_16px]" />
+      <div className="absolute inset-0 pointer-events-none rounded-2xl bg-[radial-gradient(#2d2319_1px,transparent_1px)] dark:bg-[radial-gradient(#ffffff_1px,transparent_1px)] opacity-5 [background-size:16px_16px]" />
 
       {/* Main title of app */}
       <div className="flex items-center gap-3 relative z-10">
@@ -63,10 +65,10 @@ export default function TimelineHeader({
         </div>
         <div className="flex flex-col">
           <h1 className="text-xl md:text-2xl font-serif font-semibold tracking-tight text-stone-900 dark:text-stone-100 italic">
-            Inspiration Clippboard
+            光影拾记
           </h1>
           <p className="text-[10px] uppercase tracking-widest text-amber-800 dark:text-amber-300 font-medium leading-none mt-1">
-            Design Mood & Terminology board
+            灵感与设计的栖息地
           </p>
         </div>
       </div>
@@ -76,7 +78,7 @@ export default function TimelineHeader({
         {/* Date Range & Week Display */}
         <div className="text-right flex flex-col justify-center select-none mr-2 md:mr-4">
           <div className="text-xs font-mono font-medium text-amber-800 dark:text-amber-300 leading-none">
-            WEEK {weekNo} / {year}
+            岁时 · 第 {weekNo} 周 / {year}
           </div>
           <div className="text-sm font-handwritten font-bold text-stone-700 dark:text-stone-300 mt-1 leading-none">
             {dateRangeStr}
@@ -98,7 +100,7 @@ export default function TimelineHeader({
             className="px-2.5 py-1 text-xs font-medium rounded-lg hover:bg-white dark:hover:bg-stone-800 text-stone-600 hover:text-amber-950 dark:text-stone-300 dark:hover:text-amber-200 transition-all font-mono shadow-sm cursor-pointer"
             title="Jump to Current Week"
           >
-            Today
+            此刻
           </button>
 
           <button
@@ -108,6 +110,16 @@ export default function TimelineHeader({
           >
             <ChevronRight size={16} />
           </button>
+
+          {onPreviewWeek && (
+            <button
+              onClick={onPreviewWeek}
+              className="p-1 px-2 rounded-lg hover:bg-white dark:hover:bg-stone-800 text-stone-600 hover:text-amber-950 dark:text-stone-300 dark:hover:text-amber-200 transition-all shadow-sm cursor-pointer"
+              title="Overview of The Week"
+            >
+              <LayoutGrid size={16} />
+            </button>
+          )}
         </div>
       </div>
     </header>

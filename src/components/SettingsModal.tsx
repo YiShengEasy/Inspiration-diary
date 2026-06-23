@@ -11,10 +11,6 @@ interface SettingsModalProps {
   anthropicAuthToken: string;
   anthropicBaseUrl: string;
   anthropicModel: string;
-  thirdPartyApiKey: string;
-  thirdPartyBaseUrl: string;
-  thirdPartyModel: string;
-  thirdPartyThinking: boolean;
   onSave: (config: {
     customApiKey: string;
     customGeminiBaseUrl: string;
@@ -23,10 +19,6 @@ interface SettingsModalProps {
     anthropicAuthToken: string;
     anthropicBaseUrl: string;
     anthropicModel: string;
-    thirdPartyApiKey: string;
-    thirdPartyBaseUrl: string;
-    thirdPartyModel: string;
-    thirdPartyThinking: boolean;
   }) => void;
 }
 
@@ -54,10 +46,6 @@ export default function SettingsModal({
   anthropicAuthToken,
   anthropicBaseUrl,
   anthropicModel,
-  thirdPartyApiKey,
-  thirdPartyBaseUrl,
-  thirdPartyModel,
-  thirdPartyThinking,
   onSave,
 }: SettingsModalProps) {
   const [provider, setProvider] = useState(customProvider || "gemini");
@@ -84,13 +72,6 @@ export default function SettingsModal({
     () => (ANTHROPIC_PRESET_MODELS.some((p) => p.value === anthropicModel) ? "" : anthropicModel)
   );
 
-  // Third-party / OpenAI-compatible states
-  const [thirdPartyKey, setThirdPartyKey] = useState(thirdPartyApiKey);
-  const [thirdPartyUrl, setThirdPartyUrl] = useState(thirdPartyBaseUrl);
-  const [thirdPartyModelName, setThirdPartyModelName] = useState(thirdPartyModel);
-  const [thinkingEnabled, setThinkingEnabled] = useState(thirdPartyThinking);
-  const [showThirdPartyKey, setShowThirdPartyKey] = useState(false);
-
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -116,34 +97,21 @@ export default function SettingsModal({
     const finalAnthropicModel = isCustomAnthropicModel ? customAnthropicModelName.trim() : anthropicSelModel;
 
     const currentProvider = provider;
-    const currentApiKey = currentProvider === "anthropic"
-      ? anthropicToken.trim()
-      : currentProvider === "thirdparty"
-        ? thirdPartyKey.trim()
-        : geminiApiKey.trim();
-    const currentModel = currentProvider === "anthropic"
-      ? finalAnthropicModel
-      : currentProvider === "thirdparty"
-        ? thirdPartyModelName.trim()
-        : finalGeminiModel;
+    const currentApiKey = currentProvider === "anthropic" ? anthropicToken.trim() : geminiApiKey.trim();
+    const currentModel = currentProvider === "anthropic" ? finalAnthropicModel : finalGeminiModel;
     const currentGeminiBaseUrl = geminiBaseUrl.trim();
     const currentAnthropicBaseUrl = anthropicUrl.trim();
 
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        "x-provider": currentProvider === "thirdparty" ? "gemini" : currentProvider,
+        "x-provider": currentProvider,
       };
 
       if (currentProvider === "anthropic") {
         if (currentApiKey) headers["x-api-key"] = currentApiKey;
         if (currentModel) headers["x-model-name"] = currentModel;
         if (currentAnthropicBaseUrl) headers["x-anthropic-base-url"] = currentAnthropicBaseUrl;
-      } else if (currentProvider === "thirdparty") {
-        if (currentApiKey) headers["x-api-key"] = currentApiKey;
-        if (currentModel) headers["x-model-name"] = currentModel;
-        if (thirdPartyUrl.trim()) headers["x-gemini-base-url"] = thirdPartyUrl.trim();
-        if (thinkingEnabled) headers["x-thinking-enabled"] = "true";
       } else {
         if (currentApiKey) headers["x-api-key"] = currentApiKey;
         if (currentModel) headers["x-model-name"] = currentModel;
@@ -184,10 +152,6 @@ export default function SettingsModal({
       anthropicAuthToken: anthropicToken.trim(),
       anthropicBaseUrl: anthropicUrl.trim() || "https://api.anthropic.com",
       anthropicModel: finalAnthropicModel || "claude-3-5-sonnet-latest",
-      thirdPartyApiKey: thirdPartyKey.trim(),
-      thirdPartyBaseUrl: thirdPartyUrl.trim(),
-      thirdPartyModel: thirdPartyModelName.trim(),
-      thirdPartyThinking: thinkingEnabled,
     });
 
     setIsSaved(true);
@@ -206,20 +170,19 @@ export default function SettingsModal({
       />
 
       {/* Settings Card dialogue */}
-      <div className="relative w-full max-w-lg bg-white dark:bg-stone-900 rounded-2xl border border-amber-900/10 dark:border-amber-100/10 shadow-2xl z-10 transform transition-all max-h-[90vh] flex flex-col">
+      <div className="relative w-full max-w-lg bg-white dark:bg-stone-900 rounded-2xl border border-amber-900/10 dark:border-stone-700/50 p-6 md:p-8 shadow-2xl z-10 transform transition-all max-h-[90vh] flex flex-col">
         {/* Background decoration faint grid */}
-        <div className="absolute inset-0 opacity-5 pointer-events-none rounded-2xl bg-[radial-gradient(#2d2319_1px,transparent_1px)] [background-size:16px_16px]" />
+        <div className="absolute inset-0 pointer-events-none rounded-2xl bg-[radial-gradient(#2d2319_1px,transparent_1px)] dark:bg-[radial-gradient(#ffffff_1px,transparent_1px)] opacity-5 [background-size:16px_16px]" />
 
-        {/* Fixed Header */}
-        <div className="relative z-10 flex-shrink-0 px-6 pt-6 pb-0">
-          {/* Close Button */}
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors cursor-pointer"
-          >
-            <X size={18} />
-          </button>
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 transition-colors cursor-pointer z-50"
+        >
+          <X size={18} />
+        </button>
 
+        <div className="relative z-10 flex-1 overflow-y-auto pr-2 -mr-2">
           {/* Header */}
           <div className="flex items-center gap-2 mb-2">
             <Settings2 className="text-amber-800 dark:text-amber-400" size={18} />
@@ -227,12 +190,12 @@ export default function SettingsModal({
               AI Service Configuration
             </span>
           </div>
-          <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed mb-4">
+          <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed mb-6">
             Configure custom API keys, global models, and custom third-party base endpoints to classify and generate exquisite design terminology logs.
           </p>
 
           {/* Provider Tabs */}
-          <div className="flex border-b border-stone-200 dark:border-stone-800">
+          <div className="flex border-b border-stone-200 dark:border-stone-800 mb-5">
             <button
               type="button"
               onClick={() => setProvider("gemini")}
@@ -255,37 +218,23 @@ export default function SettingsModal({
             >
               Anthropic Claude
             </button>
-            <button
-              type="button"
-              onClick={() => setProvider("thirdparty")}
-              className={`flex-1 pb-2 text-xs font-semibold px-2 tracking-wide uppercase transition-colors border-b-2 text-center cursor-pointer ${
-                provider === "thirdparty"
-                  ? "border-amber-600 text-amber-700 dark:text-amber-400 dark:border-amber-500 font-bold"
-                  : "border-transparent text-stone-400 hover:text-stone-600 dark:text-stone-500 dark:hover:text-stone-300"
-              }`}
-            >
-              第三方 / OpenAI 兼容
-            </button>
           </div>
-        </div>
 
-        {/* Scrollable Content */}
-        <div className="relative z-10 flex-1 overflow-y-auto px-6 pb-6">
-          <form onSubmit={handleSave} className="space-y-4 pt-5">
+          <form onSubmit={handleSave} className="space-y-4">
             {provider === "gemini" ? (
               <>
                 {/* --- Gemini Section --- */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300 mb-1.5 flex items-center justify-between">
-                    <span>Google Gemini API Key</span>
-                    <span className="text-[10px] font-normal text-stone-400 lowercase italic">saved locally</span>
+                    <span>Google Gemini 灵感密钥</span>
+                    <span className="text-[10px] font-normal text-stone-400 lowercase italic">仅驻留在本地角落</span>
                   </label>
                   <div className="relative">
                     <input
                       type={showGeminiKey ? "text" : "password"}
                       value={geminiApiKey}
                       onChange={(e) => setGeminiApiKey(e.target.value)}
-                      placeholder="Paste your custom GEMINI_API_KEY..."
+                      placeholder="悄悄粘贴你的 GEMINI_API_KEY..."
                       className="w-full px-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-900/10 dark:border-amber-100/10 rounded-xl focus:border-amber-500 focus:outline-none pr-10 font-mono text-stone-800 dark:text-stone-200"
                     />
                     <button
@@ -298,7 +247,7 @@ export default function SettingsModal({
                   </div>
                   <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-700/80 dark:text-amber-400/80">
                     <HelpCircle size={12} />
-                    <span>Uses a free Gemini API key from Google AI Studio. Leave blank to fallback to Server default.</span>
+                    <span>留空则意味着让系统替您唤醒默认星辉。可前往 Google AI Studio 采摘免费密钥。</span>
                   </div>
                 </div>
 
@@ -357,7 +306,7 @@ export default function SettingsModal({
                           value={customGeminiModelName}
                           onChange={(e) => setCustomGeminiModelName(e.target.value)}
                           placeholder="e.g. gemini-2.0-pro-exp-02-05..."
-                          className="w-full px-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-500/55 rounded-xl focus:outline-none font-mono text-stone-850 dark:text-stone-150"
+                          className="w-full px-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-500/55 rounded-xl focus:outline-none font-mono text-stone-800 dark:text-stone-200"
                         />
                         <button
                           type="button"
@@ -374,7 +323,7 @@ export default function SettingsModal({
                   </div>
                 </div>
               </>
-            ) : provider === "anthropic" ? (
+            ) : (
               <>
                 {/* --- Anthropic Section --- */}
                 <div>
@@ -452,7 +401,7 @@ export default function SettingsModal({
                           value={customAnthropicModelName}
                           onChange={(e) => setCustomAnthropicModelName(e.target.value)}
                           placeholder="e.g. claude-3-opus-20240229..."
-                          className="w-full px-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-500/55 rounded-xl focus:outline-none font-mono text-stone-850 dark:text-stone-150"
+                          className="w-full px-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-500/55 rounded-xl focus:outline-none font-mono text-stone-800 dark:text-stone-200"
                         />
                         <button
                           type="button"
@@ -467,90 +416,6 @@ export default function SettingsModal({
                       </div>
                     )}
                   </div>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* --- Third-party / OpenAI-Compatible Section --- */}
-                <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/15 text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
-                  <strong>适用于：</strong>豆包 / 火山引擎 Ark、DeepSeek、通义千问等兼容 OpenAI Chat Completions 格式的接口。<br />
-                  Base URL 填写到 <code>/chat/completions</code> 上一级即可，系统会自动追加路径。
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300 mb-1.5 flex items-center justify-between">
-                    <span>API Key</span>
-                    <span className="text-[10px] font-normal text-stone-400 lowercase italic">saved locally</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showThirdPartyKey ? "text" : "password"}
-                      value={thirdPartyKey}
-                      onChange={(e) => setThirdPartyKey(e.target.value)}
-                      placeholder="Bearer token / API Key..."
-                      className="w-full px-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-900/10 dark:border-amber-100/10 rounded-xl focus:border-amber-500 focus:outline-none pr-10 font-mono text-stone-800 dark:text-stone-200"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowThirdPartyKey(!showThirdPartyKey)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer"
-                    >
-                      {showThirdPartyKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300 mb-1.5 flex items-center justify-between">
-                    <span>Base URL</span>
-                    <span className="text-[10px] font-normal text-stone-400 lowercase">不含 /chat/completions</span>
-                  </label>
-                  <div className="relative flex items-center">
-                    <Globe size={14} className="absolute left-3.5 text-stone-400" />
-                    <input
-                      type="text"
-                      value={thirdPartyUrl}
-                      onChange={(e) => setThirdPartyUrl(e.target.value)}
-                      placeholder="e.g. https://ark.cn-beijing.volces.com/api/coding/v3"
-                      className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-900/10 dark:border-amber-100/10 rounded-xl focus:border-amber-500 focus:outline-none font-mono text-stone-800 dark:text-stone-200"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300 mb-1.5">
-                    Model ID
-                  </label>
-                  <input
-                    type="text"
-                    value={thirdPartyModelName}
-                    onChange={(e) => setThirdPartyModelName(e.target.value)}
-                    placeholder="e.g. doubao-seed-2.0-code"
-                    className="w-full px-3.5 py-2.5 text-sm bg-stone-50 dark:bg-stone-950 border border-amber-900/10 dark:border-amber-100/10 rounded-xl focus:border-amber-500 focus:outline-none font-mono text-stone-800 dark:text-stone-200"
-                  />
-                </div>
-
-                {/* Thinking toggle */}
-                <div className="flex items-center justify-between p-3 rounded-xl bg-stone-50 dark:bg-stone-950 border border-stone-200 dark:border-stone-800">
-                  <div>
-                    <p className="text-xs font-semibold text-stone-700 dark:text-stone-200">深度思考模式 (Thinking)</p>
-                    <p className="text-[10px] text-stone-400 dark:text-stone-500 mt-0.5">
-                      开启后发送 <code className="bg-stone-100 dark:bg-stone-900 px-1 rounded">thinking: &#123;"type":"enabled"&#125;</code>，支持 doubao-seed-2.0-code 等推理模型
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setThinkingEnabled(!thinkingEnabled)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer flex-shrink-0 ml-4 ${
-                      thinkingEnabled ? "bg-amber-600" : "bg-stone-300 dark:bg-stone-700"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                        thinkingEnabled ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                  </button>
                 </div>
               </>
             )}
@@ -592,12 +457,12 @@ export default function SettingsModal({
 
               {isRunningTest && (
                 <div className="p-3 bg-amber-500/5 border border-dashed border-amber-500/20 rounded-xl my-3 text-xs animate-pulse text-left">
-                  <span className="font-serif font-bold text-amber-850 dark:text-amber-400 block mb-2 flex items-center gap-1.5">
+                  <span className="font-serif font-bold text-amber-800 dark:text-amber-400 block mb-2 flex items-center gap-1.5">
                     <Loader2 size={12} className="animate-spin text-amber-600" />
                     正在发送测试载荷 (Sending visual payload...)
                   </span>
                   <div className="grid grid-cols-3 gap-2.5 items-center">
-                    <div className="col-span-1 flex flex-col items-center justify-center p-1.5 bg-white/50 dark:bg-stone-900/50 border border-dashed border-stone-250 dark:border-stone-800 rounded">
+                    <div className="col-span-1 flex flex-col items-center justify-center p-1.5 bg-white/50 dark:bg-stone-900/50 border border-dashed border-stone-300 dark:border-stone-800 rounded">
                       <span className="text-[9px] text-stone-400 block mb-1">测试图片 (16x16)</span>
                       <img 
                         src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAALElEQVR42mNk+M9QDwOMjIxtbW3E6sGlhoGBgY8bVz0yGBUYoIEBCgYGBgC3DwscLgbvggAAAABJRU5ErkJggg==" 
@@ -618,7 +483,7 @@ export default function SettingsModal({
               {testResult && (
                 <div className="space-y-2 mt-2 font-sans text-left">
                   {/* Expose payloads */}
-                  <div className="p-3 bg-stone-100 dark:bg-stone-950 border border-stone-200 dark:border-stone-850 rounded-xl mb-3 text-xs">
+                  <div className="p-3 bg-stone-100 dark:bg-stone-950 border border-stone-200 dark:border-stone-800 rounded-xl mb-3 text-xs">
                     <span className="font-serif font-bold text-stone-805 dark:text-stone-200 block mb-2 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
                       已发送的测试参数
@@ -634,7 +499,7 @@ export default function SettingsModal({
                       </div>
                       <div className="col-span-2 space-y-1">
                         <span className="text-[9px] text-stone-400 block">系统测试提示词 (Test Prompt)</span>
-                        <code className="text-[11px] font-mono bg-stone-50 dark:bg-stone-904 text-amber-850 dark:text-amber-300 px-1.5 py-1 rounded block border border-amber-500/10 break-all">
+                        <code className="text-[11px] font-mono bg-stone-50 dark:bg-stone-900 text-amber-800 dark:text-amber-300 px-1.5 py-1 rounded block border border-amber-500/10 break-all">
                           "{testResult.sentPrompt || "Reply with exactly 'OK'"}"
                         </code>
                       </div>
@@ -702,7 +567,7 @@ export default function SettingsModal({
                         <p className="text-amber-600 dark:text-amber-500 font-mono break-all bg-amber-500/5 p-1.5 rounded">
                           {testResult.visionStatus.error}
                         </p>
-                        <div className="p-1.5 rounded bg-amber-800/10 text-amber-900 dark:text-amber-300 font-sans border border-amber-850/15 leading-relaxed text-left">
+                        <div className="p-1.5 rounded bg-amber-800/10 text-amber-900 dark:text-amber-300 font-sans border border-amber-800/15 leading-relaxed text-left">
                           💡 <strong>Notice:</strong> The selected model "{testResult.model}" only supports text prompts! Since we need to identify design motifs from photographs, please select a model with vision capabilities (such as <strong>Claude 3.5 Sonnet</strong> or <strong>Gemini 3.5 Flash</strong>). Claude 3.5 Haiku is only a text model.
                         </div>
                       </div>
@@ -725,17 +590,17 @@ export default function SettingsModal({
                 onClick={onClose}
                 className="px-4 py-2 text-xs font-semibold rounded-xl text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 cursor-pointer"
               >
-                Cancel
+                归去
               </button>
 
               <button
                 type="submit"
                 className="px-5 py-2 pb-2.5 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 shadow-md active:scale-95 transition-transform cursor-pointer"
               >
-                {isSaved ? "Saved! ✓" : (
+                {isSaved ? "已成行 ✓" : (
                   <>
                     <Save size={14} />
-                    <span>Apply configuration</span>
+                    <span>封存设定</span>
                   </>
                 )}
               </button>

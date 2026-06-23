@@ -126,12 +126,12 @@ export async function loadNote(weekId: string): Promise<WeeklyNote | null> {
 /**
  * Saves or updates a weekly note
  */
-export async function saveNote(weekId: string, note: string, height: number): Promise<void> {
+export async function saveNote(weekId: string, note: string, height: number, moodColor?: string, mdDocs?: any[]): Promise<void> {
   if (isPostgresMode) {
     const res = await fetch(`/api/db/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ weekId, note, height }),
+      body: JSON.stringify({ weekId, note, height, moodColor, mdDocs }),
     });
     if (!res.ok) {
       throw new Error(`Failed to save note via local API: ${res.statusText}`);
@@ -143,6 +143,8 @@ export async function saveNote(weekId: string, note: string, height: number): Pr
       weekId,
       note,
       height,
+      moodColor: moodColor || "",
+      ...(mdDocs && { mdDocs }),
       updatedAt: Date.now(),
     }, { merge: true }).catch((err) => {
       console.error("Firestore saveNote error:", err);
@@ -246,6 +248,52 @@ export async function updateCardTerms(cardId: string, weekId: string, terms: str
   }
 }
 
+export async function toggleCardPublic(cardId: string, weekId: string, isPublic: boolean): Promise<void> {
+  if (isPostgresMode) {
+    // skip for now or implement similar
+  } else {
+    const cardRef = doc(db, "cards", cardId);
+    updateDoc(cardRef, { isPublic }).catch((err) => {
+      console.error("Firestore togglePublic error:", err);
+    });
+  }
+}
+
+export async function likeCard(cardId: string, currentLikes: number): Promise<void> {
+  if (isPostgresMode) {
+    // skip
+  } else {
+    const cardRef = doc(db, "cards", cardId);
+    updateDoc(cardRef, { likes: (currentLikes || 0) + 1 }).catch((err) => {
+      console.error("Firestore likeCard error:", err);
+    });
+  }
+}
+
+export function subscribePublicCards(callback: CardCallback): () => void {
+  if (isPostgresMode) {
+    // mock or fetch public
+    const fetchPublic = () => {
+       fetchCardsFromApi("all").then(cards => callback(cards.filter(c => c.isPublic)));
+    };
+    fetchPublic();
+    const interval = setInterval(fetchPublic, 5000);
+    return () => clearInterval(interval);
+  } else {
+    const cardsQuery = query(collection(db, "cards"), where("isPublic", "==", true));
+    return onSnapshot(cardsQuery, (snapshot) => {
+      const fetchedCards: ImageCard[] = [];
+      snapshot.forEach((doc) => {
+        fetchedCards.push({ id: doc.id, ...doc.data() } as ImageCard);
+      });
+      fetchedCards.sort((a, b) => b.createdAt - a.createdAt);
+      callback(fetchedCards);
+    }, (error) => {
+      console.error("Firestore error public cards:", error);
+    });
+  }
+}
+
 /**
  * Real-time stream subscription to ALL cards in the entire database (cross-week/global view)
  */
@@ -274,42 +322,6 @@ export function subscribeAllCards(callback: CardCallback): () => void {
     }, (error) => {
       console.error("Firestore loading error for all cards:", error);
     });
-  }
-}
-
-/**
- * Loads AI settings from the database (Postgres mode only).
- * Falls back to empty object if not configured or Firestore mode.
- */
-export async function loadSettings(): Promise<Record<string, string>> {
-  if (!isPostgresMode) return {};
-  try {
-    const res = await fetch("/api/db/settings");
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (err) {
-    console.error("Failed to load settings from DB:", err);
-  }
-  return {};
-}
-
-/**
- * Persists AI settings to the database (Postgres mode only).
- */
-export async function saveSettings(settings: Record<string, string>): Promise<void> {
-  if (!isPostgresMode) return;
-  try {
-    const res = await fetch("/api/db/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    });
-    if (!res.ok) {
-      console.error("Failed to save settings to DB:", res.statusText);
-    }
-  } catch (err) {
-    console.error("Failed to save settings to DB:", err);
   }
 }
 

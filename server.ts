@@ -51,7 +51,6 @@ app.post("/api/analyze-image", async (req, res) => {
     const customApiKey = req.headers["x-api-key"] as string | undefined;
     const customModelName = req.headers["x-model-name"] as string | undefined;
     const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
-    const thinkingEnabled = req.headers["x-thinking-enabled"] === "true";
 
     console.log("=== API LOG: Analyze Image Request ===");
     console.log("provider:", provider);
@@ -219,11 +218,11 @@ app.post("/api/analyze-image", async (req, res) => {
           };
         }
 
-        // Apply thinking mode based on user preference header
+        // Disable thinking for Volcano Engine (Ark)/Doubao/DeepSeek custom models to comply with requirements
         const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
         if (isArkOrDoubaoOrDeepseek && !isVolcengineResponsesFormat) {
           payload.thinking = {
-            type: thinkingEnabled ? "enabled" : "disabled"
+            enabled: false
           };
         }
 
@@ -312,6 +311,201 @@ app.post("/api/analyze-image", async (req, res) => {
   } catch (error: any) {
     console.error("Error analyzing image:", error);
     return res.status(500).json({ error: error.message || "An error occurred while analyzing the image." });
+  }
+});
+
+app.post("/api/summarize-week", async (req, res) => {
+  try {
+    const { terms } = req.body;
+    if (!terms || !Array.isArray(terms) || terms.length === 0) {
+      return res.status(400).json({ error: "Missing or empty terms in request body." });
+    }
+
+    const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
+    const customApiKey = req.headers["x-api-key"] as string | undefined;
+    const customModelName = req.headers["x-model-name"] as string | undefined;
+    const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
+
+    const summaryPrompt = `You are a creative design assistant. Based on the following collected design terms from the user's inspiration board this week, write a cohesive, professional 2-3 sentence summary (in Chinese) exploring the artistic themes and visual directions. Also, determine a 'moodColor' (a lush, highly-saturated CSS hex color code or valid CSS color like 'rgba(120, 40, 200, 0.8)') that best represents this week's creative mood.\n\nCollected terms: ${terms.join(", ")}\n\nYou MUST return a JSON object with strictly two keys: "summary" (string) and "moodColor" (string). Do not format as markdown.`;
+
+    const parseAIResponse = (text: string) => {
+      let summary = "";
+      let moodColor = "#78716c"; // default stone-500
+      try {
+        const cleanedText = text.replace(/```json\s*/g, "").replace(/```\s*$/g, "").trim();
+        const parsed = JSON.parse(cleanedText);
+        summary = parsed.summary || "";
+        if (parsed.moodColor) moodColor = parsed.moodColor;
+      } catch (e) {
+        summary = text.trim();
+      }
+      return { summary, moodColor };
+    };
+
+    if (provider === "anthropic") {
+      const anthropicApiKey = customApiKey || process.env.ANTHROPIC_AUTH_TOKEN;
+      if (!anthropicApiKey) return res.status(400).json({ error: "Anthropic API Key is not configured." });
+
+      const customBaseUrl = (req.headers["x-anthropic-base-url"] as string | undefined) || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+      let anthropicUrl = customBaseUrl;
+      if (!anthropicUrl.endsWith("/messages") && !anthropicUrl.endsWith("/messages/")) anthropicUrl += anthropicUrl.endsWith("/") ? "v1/messages" : "/v1/messages";
+
+      const anthropicResponse = await fetch(anthropicUrl, {
+        method: "POST",
+        headers: { "x-api-key": anthropicApiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({
+          model: customModelName || "claude-3-5-sonnet-20241022",
+          max_tokens: 500,
+          messages: [{ role: "user", content: summaryPrompt }]
+        })
+      });
+
+      if (!anthropicResponse.ok) return res.status(anthropicResponse.status).json({ error: await anthropicResponse.text() });
+      const responseDoc: any = await anthropicResponse.json();
+      const responseText = responseDoc.content?.[0]?.text?.trim() || "";
+      return res.json(parseAIResponse(responseText));
+
+    } else {
+      const isThirdParty = customGeminiBaseUrl && (!customGeminiBaseUrl.toLowerCase().includes("googleapis.com") && !customGeminiBaseUrl.toLowerCase().includes("google.com"));
+
+      if (isThirdParty) {
+        const activeApiKey = (customApiKey || apiKey || "").trim();
+        if (!activeApiKey) return res.status(400).json({ error: "API key is not defined." });
+
+        const completionsUrl = getCompletionsUrl(customGeminiBaseUrl);
+        const selectedModel = (customModelName || "doubao-seed-2.0-code").trim();
+        const isVolcengine = completionsUrl.includes("/responses");
+
+        let payload: any = isVolcengine 
+          ? { model: selectedModel, input: [{ role: "user", content: [{ type: "input_text", text: summaryPrompt }] }] }
+          : { model: selectedModel, messages: [{ role: "user", content: summaryPrompt }] };
+
+        if (!isVolcengine && (/doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl))) {
+          payload.thinking = { enabled: false };
+        }
+
+        const thirdPartyResponse = await fetch(completionsUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${activeApiKey}` },
+          body: JSON.stringify(payload),
+        });
+
+        if (!thirdPartyResponse.ok) return res.status(thirdPartyResponse.status).json({ error: await thirdPartyResponse.text() });
+        const responseDoc: any = await thirdPartyResponse.json();
+        const responseText = responseDoc.choices?.[0]?.message?.content || responseDoc.choices?.[0]?.text || responseDoc.output || "";
+        return res.json(parseAIResponse(responseText));
+      } else {
+        const activeApiKey = customApiKey || apiKey;
+        if (!activeApiKey) return res.status(500).json({ error: "Gemini API key is not defined." });
+
+        const activeAiOptions: any = { apiKey: activeApiKey };
+        if (customGeminiBaseUrl) {
+          activeAiOptions.baseURL = customGeminiBaseUrl;
+          activeAiOptions.httpOptions = { baseUrl: customGeminiBaseUrl };
+        }
+        const activeAi = new GoogleGenAI(activeAiOptions);
+        const response = await activeAi.models.generateContent({
+          model: customModelName || "gemini-3.5-flash",
+          contents: summaryPrompt
+        });
+        const responseText = response.text?.trim() || "";
+        return res.json(parseAIResponse(responseText));
+      }
+    }
+  } catch (error: any) {
+    console.error("Error summarizing week:", error);
+    return res.status(500).json({ error: error.message || "An error occurred." });
+  }
+});
+
+app.post("/api/summarize-md", async (req, res) => {
+  try {
+    const { markdown } = req.body;
+    if (!markdown) {
+      return res.status(400).json({ error: "Missing markdown content." });
+    }
+
+    const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
+    const customApiKey = req.headers["x-api-key"] as string | undefined;
+    const customModelName = req.headers["x-model-name"] as string | undefined;
+    const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
+
+    const summaryPrompt = `You are a professional assistant. Please provide a concise summary (around 3 to 4 sentences, in Chinese) of the following markdown document. Focus only on the core themes and conclusions.\n\nDocument snippet (truncated if too long):\n\n${markdown.substring(0, 10000)}`;
+
+    if (provider === "anthropic") {
+      const anthropicApiKey = customApiKey || process.env.ANTHROPIC_AUTH_TOKEN;
+      if (!anthropicApiKey) return res.status(500).json({ error: "Anthropic API key is not defined." });
+
+      const customBaseUrl = req.headers["x-anthropic-base-url"] as string | undefined || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+      let anthropicUrl = customBaseUrl;
+      if (!anthropicUrl.endsWith("/messages") && !anthropicUrl.endsWith("/messages/")) {
+        anthropicUrl = anthropicUrl.endsWith("/") ? anthropicUrl + "v1/messages" : anthropicUrl + "/v1/messages";
+      }
+
+      const anthropicResponse = await fetch(anthropicUrl, {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicApiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+          "anthropic-dangerously-allow-browser": "true",
+        },
+        body: JSON.stringify({
+          model: customModelName || "claude-3-5-sonnet-20240620",
+          max_tokens: 500,
+          messages: [{ role: "user", content: summaryPrompt }],
+        }),
+      });
+
+      if (!anthropicResponse.ok) return res.status(anthropicResponse.status).json({ error: await anthropicResponse.text() });
+      const responseDoc: any = await anthropicResponse.json();
+      const responseText = responseDoc.content?.[0]?.text?.trim() || "";
+      return res.json({ summary: responseText });
+
+    } else {
+      const isThirdParty = customGeminiBaseUrl && (!customGeminiBaseUrl.toLowerCase().includes("googleapis.com") && !customGeminiBaseUrl.toLowerCase().includes("google.com"));
+      if (isThirdParty) {
+        const activeApiKey = customApiKey || process.env.GEMINI_API_KEY;
+        if (!activeApiKey) return res.status(500).json({ error: "API key is not defined." });
+
+        let completionsUrl = customGeminiBaseUrl;
+        if (!completionsUrl.endsWith("/chat/completions")) {
+           completionsUrl = completionsUrl.endsWith("/") ? completionsUrl + "v1/chat/completions" : completionsUrl + "/v1/chat/completions";
+        }
+        const selectedModel = customModelName || "gemini-3.5-flash";
+        
+        let payload: any = { model: selectedModel, messages: [{ role: "user", content: summaryPrompt }] };
+        const thirdPartyResponse = await fetch(completionsUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${activeApiKey}` },
+          body: JSON.stringify(payload),
+        });
+
+        if (!thirdPartyResponse.ok) return res.status(thirdPartyResponse.status).json({ error: await thirdPartyResponse.text() });
+        const responseDoc: any = await thirdPartyResponse.json();
+        const responseText = responseDoc.choices?.[0]?.message?.content || responseDoc.choices?.[0]?.text || responseDoc.output || "";
+        return res.json({ summary: responseText });
+      } else {
+        const activeApiKey = customApiKey || apiKey;
+        if (!activeApiKey) return res.status(500).json({ error: "Gemini API key is not defined." });
+
+        const activeAiOptions: any = { apiKey: activeApiKey };
+        if (customGeminiBaseUrl) {
+          activeAiOptions.baseURL = customGeminiBaseUrl;
+          activeAiOptions.httpOptions = { baseUrl: customGeminiBaseUrl };
+        }
+        const activeAi = new GoogleGenAI(activeAiOptions);
+        const response = await activeAi.models.generateContent({
+          model: customModelName || "gemini-3.5-flash",
+          contents: summaryPrompt
+        });
+        const responseText = response.text?.trim() || "";
+        return res.json({ summary: responseText });
+      }
+    }
+  } catch (error: any) {
+    console.error("Error summarizing md:", error);
+    return res.status(500).json({ error: error.message || "An error occurred." });
   }
 });
 
@@ -465,7 +659,7 @@ app.post("/api/test-model", async (req, res) => {
               max_tokens: 50,
             };
             if (isArkOrDoubaoOrDeepseek) {
-              textPayload.thinking = { type: "disabled" };
+              textPayload.thinking = { enabled: false };
             }
           }
 
@@ -535,7 +729,7 @@ app.post("/api/test-model", async (req, res) => {
               max_tokens: 50,
             };
             if (isArkOrDoubaoOrDeepseek) {
-              visionPayload.thinking = { type: "disabled" };
+              visionPayload.thinking = { enabled: false };
             }
           }
 
@@ -660,6 +854,14 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
           );
         `);
         await client.query(`
+          ALTER TABLE notes ADD COLUMN IF NOT EXISTS mood_color VARCHAR(50);
+        `).catch(() => {}); // Gracefully fail if syntax not supported on very old versions
+
+        await client.query(`
+          ALTER TABLE notes ADD COLUMN IF NOT EXISTS md_docs TEXT;
+        `).catch(() => {});
+
+        await client.query(`
           CREATE TABLE IF NOT EXISTS cards (
             id VARCHAR(50) PRIMARY KEY,
             week_id VARCHAR(50) NOT NULL,
@@ -671,14 +873,20 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
             created_at BIGINT
           );
         `);
-        console.log("PostgreSQL schema successfully verified/created.");
         await client.query(`
-          CREATE TABLE IF NOT EXISTS settings (
-            key VARCHAR(100) PRIMARY KEY,
-            value TEXT,
-            updated_at BIGINT
-          );
-        `);
+          ALTER TABLE cards ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'image';
+        `).catch(() => {});
+        await client.query(`
+          ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_content TEXT;
+        `).catch(() => {});
+        await client.query(`
+          ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_summary TEXT;
+        `).catch(() => {});
+        await client.query(`
+          ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_name VARCHAR(255);
+        `).catch(() => {});
+
+        console.log("PostgreSQL schema successfully verified/created.");
       } finally {
         client.release();
       }
@@ -696,7 +904,7 @@ app.get("/api/db/notes/:weekId", async (req, res) => {
   }
   try {
     const result = await pgPool.query(
-      "SELECT week_id, note, height, updated_at FROM notes WHERE week_id = $1",
+      "SELECT week_id, note, height, mood_color, md_docs, updated_at FROM notes WHERE week_id = $1",
       [req.params.weekId]
     );
     if (result.rows.length > 0) {
@@ -705,6 +913,8 @@ app.get("/api/db/notes/:weekId", async (req, res) => {
         weekId: row.week_id,
         note: row.note,
         height: row.height,
+        moodColor: row.mood_color,
+        mdDocs: row.md_docs ? JSON.parse(row.md_docs) : [],
         updatedAt: Number(row.updated_at),
       });
     } else {
@@ -722,13 +932,13 @@ app.post("/api/db/notes", async (req, res) => {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
-    const { weekId, note, height } = req.body;
+    const { weekId, note, height, moodColor, mdDocs } = req.body;
     await pgPool.query(
-      `INSERT INTO notes (week_id, note, height, updated_at) 
-       VALUES ($1, $2, $3, $4) 
+      `INSERT INTO notes (week_id, note, height, mood_color, md_docs, updated_at) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
        ON CONFLICT (week_id) 
-       DO UPDATE SET note = EXCLUDED.note, height = EXCLUDED.height, updated_at = EXCLUDED.updated_at`,
-      [weekId, note, height, Date.now()]
+       DO UPDATE SET note = EXCLUDED.note, height = EXCLUDED.height, mood_color = EXCLUDED.mood_color, md_docs = EXCLUDED.md_docs, updated_at = EXCLUDED.updated_at`,
+      [weekId, note, height, moodColor || null, mdDocs ? JSON.stringify(mdDocs) : null, Date.now()]
     );
     return res.json({ success: true });
   } catch (err: any) {
@@ -746,11 +956,11 @@ app.get("/api/db/cards", async (req, res) => {
     const weekId = req.query.weekId as string;
     const result = (weekId && weekId !== "all")
       ? await pgPool.query(
-          "SELECT id, week_id, day_index, image_url, terms, deco_type, angle, created_at FROM cards WHERE week_id = $1",
+          "SELECT id, week_id, day_index, image_url, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name FROM cards WHERE week_id = $1",
           [weekId]
         )
       : await pgPool.query(
-          "SELECT id, week_id, day_index, image_url, terms, deco_type, angle, created_at FROM cards ORDER BY created_at DESC"
+          "SELECT id, week_id, day_index, image_url, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name FROM cards ORDER BY created_at DESC"
         );
     const cards = result.rows.map((row) => ({
       id: row.id,
@@ -761,6 +971,10 @@ app.get("/api/db/cards", async (req, res) => {
       decoType: row.deco_type,
       angle: Number(row.angle),
       createdAt: Number(row.created_at),
+      type: row.type || "image",
+      mdContent: row.md_content,
+      mdSummary: row.md_summary,
+      mdName: row.md_name,
     }));
     return res.json(cards);
   } catch (err: any) {
@@ -775,15 +989,16 @@ app.post("/api/db/cards", async (req, res) => {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
-    const { id, weekId, dayIndex, imageUrl, terms, decoType, angle, createdAt } = req.body;
+    const { id, weekId, dayIndex, imageUrl, terms, decoType, angle, createdAt, type, mdContent, mdSummary, mdName } = req.body;
     await pgPool.query(
-      `INSERT INTO cards (id, week_id, day_index, image_url, terms, deco_type, angle, created_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+      `INSERT INTO cards (id, week_id, day_index, image_url, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
        ON CONFLICT (id) 
        DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, image_url = EXCLUDED.image_url, 
                      terms = EXCLUDED.terms, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle, 
-                     created_at = EXCLUDED.created_at`,
-      [id, weekId, dayIndex, imageUrl, terms, decoType, angle, createdAt || Date.now()]
+                     created_at = EXCLUDED.created_at, type = EXCLUDED.type, md_content = EXCLUDED.md_content,
+                     md_summary = EXCLUDED.md_summary, md_name = EXCLUDED.md_name`,
+      [id, weekId, dayIndex, imageUrl, terms, decoType, angle, createdAt || Date.now(), type || 'image', mdContent || null, mdSummary || null, mdName || null]
     );
     return res.json({ success: true });
   } catch (err: any) {
@@ -817,46 +1032,6 @@ app.put("/api/db/cards/:id/terms", async (req, res) => {
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error executing update card tag terms query:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-// 7. Fetch all settings
-app.get("/api/db/settings", async (req, res) => {
-  if (!pgPool) {
-    return res.status(503).json({ error: "PostgreSQL is not configured." });
-  }
-  try {
-    const result = await pgPool.query("SELECT key, value FROM settings");
-    const settings: Record<string, string> = {};
-    result.rows.forEach((row) => {
-      settings[row.key] = row.value;
-    });
-    return res.json(settings);
-  } catch (err: any) {
-    console.error("Error fetching settings:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-// 8. Upsert settings (batch)
-app.post("/api/db/settings", async (req, res) => {
-  if (!pgPool) {
-    return res.status(503).json({ error: "PostgreSQL is not configured." });
-  }
-  try {
-    const entries = Object.entries(req.body as Record<string, string>);
-    const now = Date.now();
-    for (const [key, value] of entries) {
-      await pgPool.query(
-        `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
-        [key, value, now]
-      );
-    }
-    return res.json({ success: true });
-  } catch (err: any) {
-    console.error("Error saving settings:", err);
     return res.status(500).json({ error: err.message });
   }
 });

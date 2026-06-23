@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ImageCard } from "../types";
-import { Copy, Trash2, X, Plus } from "lucide-react";
+import { Copy, Trash2, X, Plus, Globe, Lock } from "lucide-react";
 
 interface PolaroidCardProps {
   key?: React.Key;
@@ -9,9 +9,10 @@ interface PolaroidCardProps {
   onDeleteTerm: (cardId: string, termIndex: number) => void;
   onZoom: (card: ImageCard) => void;
   onUpdateTerms: (cardId: string, terms: string[]) => void;
+  onTogglePublic?: (card: ImageCard) => void;
 }
 
-export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom, onUpdateTerms }: PolaroidCardProps) {
+export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom, onUpdateTerms, onTogglePublic }: PolaroidCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isAddingTerm, setIsAddingTerm] = useState(false);
   const [newTermInput, setNewTermInput] = useState("");
@@ -54,7 +55,7 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
         return (
           <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-3.5 z-30 pointer-events-none rotate-[2deg] shadow-sm select-none">
             <div className="px-5 py-1 bg-gradient-to-r from-teal-200/60 to-emerald-200/60 backdrop-blur-[0.5px] border-x border-dashed border-teal-300 text-[8px] font-handwritten tracking-wider text-teal-800 uppercase select-none">
-              ★ journaling ★
+              ★ 岁月拾零 ★
             </div>
           </div>
         );
@@ -78,33 +79,69 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        className="relative w-full max-w-[170px] bg-white dark:bg-stone-800 p-2.5 pb-2 shadow-[0_8px_20px_rgba(0,0,0,0.12)] border border-amber-900/5 dark:border-stone-700/50 select-none rounded-[2px] transition-transform duration-300 flex flex-col"
+        className="relative w-full max-w-[170px] bg-white dark:bg-stone-800 p-2.5 pb-2 shadow-[0_8px_20px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_25px_rgba(0,0,0,0.8)] border border-amber-900/5 dark:border-stone-600/70 select-none rounded-[2px] transition-transform duration-300 flex flex-col"
       >
         {renderDecoration()}
 
-        {/* Polaroid Picture */}
-        <div
-          onClick={() => onZoom(card)}
-          className="relative aspect-square w-full overflow-hidden bg-stone-100 dark:bg-stone-900 border border-black/5 shadow-inner cursor-zoom-in hover:brightness-95 transition-all"
-          title="点击放大查看原图"
-        >
-          <img
-            src={card.imageUrl}
-            alt="Snippet Inspiration"
-            referrerPolicy="no-referrer"
-            className="w-full h-full object-cover select-none pointer-events-none"
-          />
-          <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
-        </div>
+        {/* Media or Text Container */}
+        {card.type === 'md' ? (
+          <div
+            onClick={() => onZoom(card)}
+            className="relative aspect-square w-full overflow-hidden bg-stone-50 dark:bg-stone-900 border border-stone-200/50 dark:border-stone-700/50 cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-800 transition-all flex flex-col p-2 select-none"
+            title="查看完整文档"
+          >
+            <div className="flex-1 overflow-hidden" style={{ maskImage: "linear-gradient(to bottom, black 50%, transparent 100%)", WebkitMaskImage: "linear-gradient(to bottom, black 50%, transparent 100%)" }}>
+              <h4 className="text-[11px] font-semibold text-stone-800 dark:text-stone-200 mb-1 leading-tight break-words font-serif">{card.mdName}</h4>
+              <p className="text-[9px] text-stone-500 dark:text-stone-400 font-sans leading-relaxed">{card.mdSummary}</p>
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
+          </div>
+        ) : (
+          <div
+            onClick={() => onZoom(card)}
+            className="relative aspect-square w-full overflow-hidden bg-stone-100 dark:bg-stone-900 border border-black/5 shadow-inner cursor-zoom-in hover:brightness-95 transition-all"
+            title="点击放大查看原图"
+          >
+            <img
+              src={card.imageUrl}
+              alt="Snippet Inspiration"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover select-none pointer-events-none"
+            />
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
+          </div>
+        )}
 
         {/* Delete button of entire Polaroid card */}
-        <button
-          onClick={() => onDeleteCard(card.id)}
-          className="absolute -top-1 -right-1 opacity-0 group-hover/card:opacity-100 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 transition-opacity cursor-pointer z-40 shadow-sm"
-          title="删除这张相片卡"
-        >
-          <Trash2 size={10} />
-        </button>
+        <div className="absolute -top-2 -right-2 flex flex-col gap-1 z-40">
+          <button
+            onClick={() => onDeleteCard(card.id)}
+            className="opacity-0 group-hover/card:opacity-100 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-500 dark:text-stone-400 hover:text-red-500 dark:hover:text-red-400 rounded-full p-1.5 transition-all cursor-pointer shadow-sm border border-stone-200 dark:border-stone-700"
+            title="删除这张相片卡"
+          >
+            <X size={12} strokeWidth={2.5} />
+          </button>
+          {onTogglePublic && (
+            <button
+              onClick={() => onTogglePublic(card)}
+              className={`opacity-0 group-hover/card:opacity-100 rounded-full p-1.5 transition-all cursor-pointer shadow-sm border border-stone-200 dark:border-stone-700 ${
+                card.isPublic 
+                  ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-500" 
+                  : "bg-stone-100 dark:bg-stone-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-stone-400 hover:text-emerald-600 dark:hover:text-emerald-400"
+              }`}
+              title={card.isPublic ? "已公开设为私有" : "设为公开启发他人"}
+            >
+              {card.isPublic ? <Globe size={12} strokeWidth={2.5} /> : <Lock size={12} strokeWidth={2.5} />}
+            </button>
+          )}
+        </div>
+        
+        {/* Status Indicators */}
+        {card.isPublic && !isHovered && (
+          <div className="absolute -top-1 -right-1 z-30 opacity-70 pointer-events-none">
+            <Globe className="text-emerald-500 drop-shadow-md" size={14} />
+          </div>
+        )}
 
         {/* Polaroid Bottom Margin (Writable Area) with terms */}
         <div className="mt-2.5 min-h-[40px] flex flex-col w-full relative z-20 bg-white/50 dark:bg-stone-800/50">
