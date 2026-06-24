@@ -21,3 +21,29 @@ export interface WeeklyNote {
   note: string;
   height: number;
 }
+
+export interface InspirationBook {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+  cardCount: number;
+  coverCard: ImageCard | null;
+}
+
+export interface CardBookMembership {
+  id: string;
+  title: string;
+  description: string;
+  cardCount: number;
+  containsCard: boolean;
+}
+
+export interface PaginatedBookCardsResult {
+  cards: ImageCard[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
