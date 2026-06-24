@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ImageCard } from "../types";
-import { X, Plus } from "lucide-react";
+import { BookOpen, X, Plus } from "lucide-react";
+import CardBookPopover from "./CardBookPopover";
 
 interface PolaroidCardProps {
   key?: React.Key;
@@ -9,12 +10,23 @@ interface PolaroidCardProps {
   onDeleteTerm: (cardId: string, termIndex: number) => void;
   onZoom: (card: ImageCard) => void;
   onUpdateTerms: (cardId: string, terms: string[]) => void;
+  onBookMembershipChanged?: () => void;
+  deleteCardTitle?: string;
 }
 
-export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom, onUpdateTerms }: PolaroidCardProps) {
+export default function PolaroidCard({
+  card,
+  onDeleteCard,
+  onDeleteTerm,
+  onZoom,
+  onUpdateTerms,
+  onBookMembershipChanged,
+  deleteCardTitle,
+}: PolaroidCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isAddingTerm, setIsAddingTerm] = useState(false);
   const [newTermInput, setNewTermInput] = useState("");
+  const [isBookPopoverOpen, setIsBookPopoverOpen] = useState(false);
 
   const handleCopy = (term: string) => {
     navigator.clipboard.writeText(term);
@@ -125,10 +137,35 @@ export default function PolaroidCard({ card, onDeleteCard, onDeleteTerm, onZoom,
         <button
           onClick={() => onDeleteCard(card.id)}
           className="absolute -top-2 -right-2 opacity-0 group-hover/card:opacity-100 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-500 dark:text-stone-400 hover:text-red-500 dark:hover:text-red-400 rounded-full p-1.5 transition-all cursor-pointer z-40 shadow-sm border border-stone-200 dark:border-stone-700"
-          title="删除这张相片卡"
+          title={deleteCardTitle || "删除这张相片卡"}
         >
           <X size={12} strokeWidth={2.5} />
         </button>
+
+        <div className="absolute -top-2 right-6 z-40">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsBookPopoverOpen((current) => !current);
+            }}
+            className={`p-1.5 rounded-full border shadow-sm cursor-pointer transition-all ${
+              isBookPopoverOpen
+                ? "opacity-100 border-amber-200/60 bg-stone-950 text-amber-200 shadow-[0_0_24px_rgba(252,211,77,0.2)]"
+                : "opacity-0 group-hover/card:opacity-100 border-stone-200 bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-amber-600 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-amber-300"
+            }`}
+            title="收录到灵感册"
+          >
+            <BookOpen size={12} strokeWidth={2.4} />
+          </button>
+          {isBookPopoverOpen ? (
+            <CardBookPopover
+              cardId={card.id}
+              onClose={() => setIsBookPopoverOpen(false)}
+              onChanged={onBookMembershipChanged}
+            />
+          ) : null}
+        </div>
 
         {/* Polaroid Bottom Margin (Writable Area) with terms */}
         <div className="mt-2.5 min-h-[40px] flex flex-col w-full relative z-20 bg-white/50 dark:bg-stone-800/50">
