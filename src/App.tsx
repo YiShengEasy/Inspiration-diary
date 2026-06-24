@@ -19,7 +19,7 @@ import DaySlot from "./components/DaySlot";
 import PolaroidCard from "./components/PolaroidCard";
 import LoginScreen from "./components/LoginScreen";
 import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
@@ -346,7 +346,7 @@ export default function App() {
   };
 
   // Upload card and proxy call AI analysis API server-side
-  const handleUploadImage = async (dayIndex: number, base64Data: string) => {
+  const handleUploadImage = async (dayIndex: number, base64Data: string, analysisBase64Data = base64Data) => {
     try {
       if (!weekId) {
         throw new Error("当前周信息还在加载，请稍后再粘贴图片。");
@@ -458,7 +458,7 @@ export default function App() {
           const response = await authFetch("/api/analyze-image", {
             method: "POST",
             headers,
-            body: JSON.stringify({ imageBase64: base64Data }),
+            body: JSON.stringify({ imageBase64: analysisBase64Data }),
             signal: controller.signal,
           });
 
@@ -522,6 +522,7 @@ export default function App() {
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 160);
+      let mdTerms = ["文档手稿", "Markdown"];
 
       try {
         const response = await authFetch("/api/summarize-md", {
@@ -533,6 +534,15 @@ export default function App() {
           const data = await response.json();
           if (typeof data.summary === "string" && data.summary.trim()) {
             mdSummary = data.summary.trim();
+          }
+          if (Array.isArray(data.terms)) {
+            const terms = data.terms
+              .filter((term: unknown): term is string => typeof term === "string" && term.trim().length > 0)
+              .map((term: string) => term.trim())
+              .slice(0, 10);
+            if (terms.length > 0) {
+              mdTerms = terms;
+            }
           }
         } else {
           console.warn("Markdown summary skipped:", await response.text());
@@ -547,7 +557,7 @@ export default function App() {
         weekId,
         dayIndex,
         imageUrl: "",
-        terms: ["Document", "Markdown"],
+        terms: mdTerms,
         decoType: "washi",
         angle: parseFloat((Math.random() * 6 - 3).toFixed(1)),
         createdAt: Date.now(),
@@ -566,7 +576,9 @@ export default function App() {
 
   // Trigger deletion prompt before absolute card removal.
   const handleDeleteCard = (cardId: string) => {
-    const card = cards.find((c) => c.id === cardId);
+    const card = cards.find((c) => c.id === cardId)
+      || allCardsPageCards.find((c) => c.id === cardId)
+      || (zoomedCard?.id === cardId ? zoomedCard : null);
     if (card) {
       setCardToDelete(card);
       setDeletePhase("prompt");
@@ -778,6 +790,52 @@ export default function App() {
     if (currentIdx === -1) return;
     const nextIdx = (currentIdx + 1) % visibleCards.length;
     setZoomedCard(visibleCards[nextIdx]);
+  };
+
+  const sanitizeDownloadName = (name: string) => {
+    return name
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, " ")
+      .slice(0, 120) || "inspiration";
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadCard = async (card: ImageCard) => {
+    if (card.type === "md") {
+      const filename = sanitizeDownloadName(card.mdName || `${card.weekId}-${getDayLabelForDayIndex(card.dayIndex)}.md`);
+      const safeFilename = filename.toLowerCase().endsWith(".md") ? filename : `${filename}.md`;
+      downloadBlob(new Blob([card.mdContent || ""], { type: "text/markdown;charset=utf-8" }), safeFilename);
+      return;
+    }
+
+    const response = card.imageUrl.startsWith("data:")
+      ? await fetch(card.imageUrl)
+      : await authFetch(card.imageUrl);
+    if (!response.ok) {
+      throw new Error("图片下载失败，请稍后重试。");
+    }
+    const blob = await response.blob();
+    const contentType = blob.type || response.headers.get("content-type") || "";
+    const extension = contentType.includes("png")
+      ? "png"
+      : contentType.includes("webp")
+        ? "webp"
+        : contentType.includes("gif")
+          ? "gif"
+          : "jpg";
+    const filename = sanitizeDownloadName(`${card.weekId}-${getDayLabelForDayIndex(card.dayIndex)}-${card.id}.${extension}`);
+    downloadBlob(blob, filename);
   };
 
   useEffect(() => {
@@ -1534,6 +1592,33 @@ export default function App() {
 
                 {/* Footer instructions */}
                 <div className="mt-auto pt-4 border-t border-dashed border-amber-900/15 dark:border-amber-100/10 text-[11px] text-stone-400 dark:text-stone-500 leading-normal">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleDownloadCard(zoomedCard).catch((err) => {
+                        console.error("Download failed:", err);
+                        alert(err.message || "下载失败，请稍后重试。");
+                      });
+                    }}
+                    className="mb-3 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 text-xs font-semibold shadow-sm transition-all active:scale-95 cursor-pointer"
+                    title={zoomedCard.type === "md" ? "下载 Markdown 文件" : "下载原图"}
+                  >
+                    <Download size={13} />
+                    <span>{zoomedCard.type === "md" ? "下载 Markdown" : "下载图片"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetCard = zoomedCard;
+                      setZoomedCard(null);
+                      handleDeleteCard(targetCard.id);
+                    }}
+                    className="mb-3 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-red-500/90 hover:bg-red-600 text-white px-3 py-2 text-xs font-semibold shadow-sm transition-all active:scale-95 cursor-pointer"
+                    title="删除当前记录"
+                  >
+                    <Trash size={13} />
+                    <span>删除记录</span>
+                  </button>
                   <span className="font-handwritten text-xs block text-stone-500 dark:text-stone-400 mb-1">提示：</span>
                   在主页面悬停在 Polaroid 灵感相片右侧，可对关键词进行<strong>自定义新增</strong>或<strong>删除</strong>管理。
                 </div>

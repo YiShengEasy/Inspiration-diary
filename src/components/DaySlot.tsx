@@ -10,7 +10,7 @@ interface DaySlotProps {
   label: string;
   subLabel: string;
   cards: ImageCard[];
-  onUploadImage: (dayIndex: number, base64Data: string) => Promise<void>;
+  onUploadImage: (dayIndex: number, originalBase64Data: string, analysisBase64Data?: string) => Promise<void>;
   onUploadMd?: (dayIndex: number, text: string, filename: string) => Promise<void>;
   onDeleteCard: (id: string) => void;
   onDeleteTerm: (cardId: string, termIndex: number) => void;
@@ -47,9 +47,9 @@ export default function DaySlot({
     if (cards.length > 0) {
       setActiveStackIndex((current) => {
         if (current >= cards.length || current < 0) {
-          return cards.length - 1;
+          return 0;
         }
-        return current;
+        return 0;
       });
     } else {
       setActiveStackIndex(0);
@@ -100,7 +100,7 @@ export default function DaySlot({
     mdInputRef.current?.click();
   };
 
-  // Resize and compress image using canvas
+  // Store the original image, but keep a smaller copy for AI analysis payloads.
   const processImageFile = (file: File) => {
     if (!file.type.startsWith("image/")) {
       setUploadError("Please provide a valid image file.");
@@ -112,6 +112,7 @@ export default function DaySlot({
 
     const reader = new FileReader();
     reader.onload = (event) => {
+      const originalBase64 = event.target?.result as string;
       const img = new window.Image();
       img.onload = async () => {
         // Create canvas for compression
@@ -143,15 +144,20 @@ export default function DaySlot({
           // Compress to JPEG with 0.8 quality
           const compressedBase64 = canvas.toDataURL("image/jpeg", 0.82);
           try {
-            await onUploadImage(dayIndex, compressedBase64);
+            await onUploadImage(dayIndex, originalBase64, compressedBase64);
           } catch (err: any) {
             setUploadError(err.message || "Failed to analyze image terms.");
           } finally {
             setIsUploading(false);
           }
         } else {
-          setIsUploading(false);
-          setUploadError("Image compression helper failure.");
+          try {
+            await onUploadImage(dayIndex, originalBase64);
+          } catch (err: any) {
+            setUploadError(err.message || "Failed to analyze image terms.");
+          } finally {
+            setIsUploading(false);
+          }
         }
       };
       
@@ -160,7 +166,7 @@ export default function DaySlot({
         setUploadError("Could not load image reference.");
       };
 
-      img.src = event.target?.result as string;
+      img.src = originalBase64;
     };
 
     reader.onerror = () => {
@@ -226,6 +232,7 @@ export default function DaySlot({
     if (e.target.files && e.target.files.length > 0) {
       processImageFile(e.target.files[0]);
     }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const triggerFileSelect = () => {
@@ -238,7 +245,7 @@ export default function DaySlot({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`group/slot relative min-h-[190px] flex flex-col p-4 rounded-2xl border transition-all duration-300 select-none overflow-hidden ${
+      className={`group/slot relative min-h-[190px] flex flex-col p-4 rounded-2xl border transition-all duration-300 select-none overflow-visible ${
         isDragOver
           ? "border-amber-500 bg-amber-500/5 shadow-[inset_0_2px_12px_rgba(245,158,11,0.08)] scale-[0.99]"
           : "border-amber-900/10 dark:border-amber-100/10 bg-white/50 dark:bg-stone-900/50 hover:bg-white dark:hover:bg-stone-900 shadow-sm"
@@ -468,7 +475,7 @@ export default function DaySlot({
 
       {/* Floating Plus button on slots with existing cards to allow stacking multiple inspirations */}
       {cards.length > 0 && !isUploading && (
-        <div className="absolute bottom-2.5 right-2.5 flex flex-col gap-2 opacity-0 group-hover/slot:opacity-100 transition-all duration-300">
+        <div className="absolute bottom-2.5 right-2.5 z-[130] flex flex-col gap-2 opacity-0 group-hover/slot:opacity-100 transition-all duration-300 pointer-events-auto">
           <button
             onClick={triggerFileSelect}
             className="w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center cursor-pointer shadow-md transform hover:scale-110 hover:rotate-12 transition-all"

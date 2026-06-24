@@ -24,6 +24,19 @@ function getCompletionsUrl(baseUrl: string): string {
   return url;
 }
 
+function cleanJsonText(raw: string): string {
+  let cleaned = raw.trim();
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.substring(7);
+  } else if (cleaned.startsWith("```")) {
+    cleaned = cleaned.substring(3);
+  }
+  if (cleaned.endsWith("```")) {
+    cleaned = cleaned.substring(0, cleaned.length - 3);
+  }
+  return cleaned.trim();
+}
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -240,20 +253,6 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
         actualMimeType = match[1];
       }
     }
-
-    // JSON code blocks cleaning helper to prevent any parsing errors
-    const cleanJsonText = (raw: string): string => {
-      let cleaned = raw.trim();
-      if (cleaned.startsWith("```json")) {
-        cleaned = cleaned.substring(7);
-      } else if (cleaned.startsWith("```")) {
-        cleaned = cleaned.substring(3);
-      }
-      if (cleaned.endsWith("```")) {
-        cleaned = cleaned.substring(0, cleaned.length - 3);
-      }
-      return cleaned.trim();
-    };
 
     if (provider === "anthropic") {
       const anthropicApiKey = customApiKey || process.env.ANTHROPIC_AUTH_TOKEN;
@@ -506,7 +505,7 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
       return res.status(400).json({ error: "Missing markdown content." });
     }
 
-    const summary = markdown
+    const fallbackSummary = markdown
       .split(/\r?\n/)
       .map((line: string) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*+]\s+/, "").trim())
       .filter(Boolean)
@@ -515,7 +514,137 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
       .replace(/\s+/g, " ")
       .slice(0, 220);
 
-    return res.json({ summary: summary || "已保存 Markdown 手稿，点击卡片查看完整内容。" });
+    const fallback = {
+      summary: fallbackSummary || "已保存 Markdown 手稿，点击卡片查看完整内容。",
+      terms: ["文档手稿", "Markdown"],
+    };
+
+    const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
+    const customApiKey = req.headers["x-api-key"] as string | undefined;
+    const customModelName = req.headers["x-model-name"] as string | undefined;
+    const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
+    const thinkingEnabled = req.headers["x-thinking-enabled"] === "true";
+
+    const prompt = [
+      "你是一个文档整理与知识标签助手，不要按图片视觉风格分析。",
+      "请阅读下面的 Markdown 文档，提炼文档的核心主题、结论、行动方向、项目线索和知识领域。",
+      "输出必须是严格 JSON：{\"summary\":\"中文摘要，2到3句话\",\"terms\":[\"标签1\",\"标签2\",...]}。",
+      "terms 需要 5 到 10 个，优先使用中文短标签；标签应描述文档内容，不要使用“光影、色彩、构图、视觉风格”等图片分析词，除非文档本身明确讨论这些主题。",
+      "",
+      "Markdown 内容：",
+      markdown.slice(0, 12000),
+    ].join("\n");
+
+    const normalizeResult = (rawText: string) => {
+      const parsed = JSON.parse(cleanJsonText(rawText) || "{}");
+      const summary = typeof parsed.summary === "string" && parsed.summary.trim()
+        ? parsed.summary.trim()
+        : fallback.summary;
+      const terms = Array.isArray(parsed.terms)
+        ? parsed.terms
+            .filter((term: unknown): term is string => typeof term === "string" && term.trim().length > 0)
+            .map((term: string) => term.trim())
+            .slice(0, 10)
+        : fallback.terms;
+      return { summary, terms: terms.length > 0 ? terms : fallback.terms };
+    };
+
+    try {
+      if (provider === "anthropic") {
+        const anthropicApiKey = customApiKey || process.env.ANTHROPIC_AUTH_TOKEN;
+        if (!anthropicApiKey) return res.json(fallback);
+
+        const customBaseUrl = (req.headers["x-anthropic-base-url"] as string | undefined) || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+        let anthropicUrl = customBaseUrl;
+        if (!anthropicUrl.endsWith("/messages") && !anthropicUrl.endsWith("/messages/")) {
+          anthropicUrl = anthropicUrl.endsWith("/") ? anthropicUrl + "v1/messages" : anthropicUrl + "/v1/messages";
+        }
+
+        const anthropicResponse = await fetch(anthropicUrl, {
+          method: "POST",
+          headers: {
+            "x-api-key": anthropicApiKey,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: customModelName || "claude-3-5-sonnet-20241022",
+            max_tokens: 1200,
+            messages: [{ role: "user", content: prompt }],
+          }),
+        });
+
+        if (!anthropicResponse.ok) return res.json(fallback);
+        const doc: any = await anthropicResponse.json();
+        return res.json(normalizeResult(doc.content?.[0]?.text || "{}"));
+      }
+
+      const isThirdParty = customGeminiBaseUrl &&
+        (!customGeminiBaseUrl.toLowerCase().includes("googleapis.com") && !customGeminiBaseUrl.toLowerCase().includes("google.com"));
+
+      if (isThirdParty) {
+        const activeApiKey = (customApiKey || apiKey || "").trim();
+        if (!activeApiKey) return res.json(fallback);
+
+        const completionsUrl = getCompletionsUrl(customGeminiBaseUrl);
+        const selectedModel = (customModelName || "doubao-seed-2.0-code").trim();
+        const payload: any = {
+          model: selectedModel,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 1200,
+        };
+        const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
+        if (isArkOrDoubaoOrDeepseek) {
+          payload.thinking = { type: thinkingEnabled ? "enabled" : "disabled" };
+        }
+
+        const thirdPartyResponse = await fetch(completionsUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${activeApiKey}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!thirdPartyResponse.ok) return res.json(fallback);
+        const doc: any = await thirdPartyResponse.json();
+        return res.json(normalizeResult(doc.choices?.[0]?.message?.content || doc.choices?.[0]?.text || "{}"));
+      }
+
+      const activeApiKey = customApiKey || apiKey;
+      if (!activeApiKey) return res.json(fallback);
+
+      const activeAi = new GoogleGenAI({
+        apiKey: activeApiKey,
+        ...(customGeminiBaseUrl ? { baseURL: customGeminiBaseUrl } : {}),
+        httpOptions: { headers: { "User-Agent": "aistudio-build-custom" } },
+      } as any);
+
+      const response = await activeAi.models.generateContent({
+        model: customModelName || "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              summary: { type: Type.STRING },
+              terms: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+            },
+            required: ["summary", "terms"],
+          },
+        },
+      });
+
+      return res.json(normalizeResult(response.text || "{}"));
+    } catch (aiError) {
+      console.warn("Markdown AI summary skipped:", aiError);
+      return res.json(fallback);
+    }
   } catch (error: any) {
     console.error("Markdown summary error:", error);
     return res.status(500).json({ error: error.message || "Markdown summary failed." });
@@ -920,7 +1049,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
         `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name
          FROM cards
          WHERE user_id = $1 AND week_id = $2
-         ORDER BY day_index ASC, created_at ASC`,
+         ORDER BY day_index ASC, created_at DESC`,
         [userId, weekId]
       );
       return res.json(mapCards(result.rows));

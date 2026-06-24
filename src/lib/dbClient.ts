@@ -45,7 +45,7 @@ function upsertCachedCard(card: ImageCard) {
   } else {
     updated.push(card);
   }
-  updated.sort((a, b) => a.createdAt - b.createdAt);
+  updated.sort((a, b) => b.createdAt - a.createdAt);
   activeWeekCardsMemory.set(card.weekId, updated);
   notifyCardsSubscribers(card.weekId, updated);
 
@@ -127,7 +127,7 @@ export function subscribeCards(weekId: string, callback: CardCallback): () => vo
       snapshot.forEach((doc) => {
         fetchedCards.push({ id: doc.id, ...doc.data() } as ImageCard);
       });
-      fetchedCards.sort((a, b) => a.createdAt - b.createdAt);
+      fetchedCards.sort((a, b) => b.createdAt - a.createdAt);
       activeWeekCardsMemory.set(weekId, fetchedCards);
       callback(fetchedCards);
     }, (error) => {
