@@ -491,7 +491,11 @@ app.post("/api/store-image", requirePostgresAuth, async (req, res) => {
     }
 
     const stored = await storeImageInPhotoPrism(imageBase64);
-    return res.json(stored);
+    const encodedHash = encodeURIComponent(stored.photoHash);
+    return res.json({
+      imageUrl: `/api/photos/hash/${encodedHash}/full`,
+      thumbnailUrl: `/api/photos/hash/${encodedHash}/thumb`,
+    });
   } catch (error: any) {
     console.error("PhotoPrism image storage error:", error);
     return res.status(500).json({ error: error.message || "PhotoPrism image storage failed." });
@@ -1172,6 +1176,23 @@ app.get("/api/photos/:photoUid/:variant(thumb|full)", requirePostgresAuth, async
 
     if (!photoHash) {
       return res.status(404).json({ error: "Photo not found" });
+    }
+
+    const image = await fetchPhotoPrismImage(photoHash, variant as "thumb" | "full");
+    res.setHeader("Content-Type", image.contentType);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    return res.send(image.bytes);
+  } catch (err: any) {
+    console.error("Photo proxy error:", err);
+    return res.status(502).json({ error: err.message || "Photo proxy failed." });
+  }
+});
+
+app.get("/api/photos/hash/:photoHash/:variant(thumb|full)", requirePostgresAuth, async (req, res) => {
+  try {
+    const { photoHash, variant } = req.params;
+    if (!/^[a-f0-9]{40}$/i.test(photoHash)) {
+      return res.status(400).json({ error: "Invalid photo hash." });
     }
 
     const image = await fetchPhotoPrismImage(photoHash, variant as "thumb" | "full");

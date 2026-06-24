@@ -425,12 +425,8 @@ export default function App() {
 	      }
 
 	      const storedImage = await storeResponse.json();
-      const imageUrl = storedImage.photoUid
-        ? `/api/photos/${encodeURIComponent(storedImage.photoUid)}/full`
-        : storedImage.imageUrl;
-      const thumbnailUrl = storedImage.photoUid
-        ? `/api/photos/${encodeURIComponent(storedImage.photoUid)}/thumb`
-        : storedImage.thumbnailUrl;
+      const imageUrl = storedImage.imageUrl || "";
+      const thumbnailUrl = storedImage.thumbnailUrl || "";
 
 	      // Generate a new doc in the cards collection
 	      const cardId = createNewCardId();
@@ -440,8 +436,8 @@ export default function App() {
 	        dayIndex,
 	        imageUrl,
 	        thumbnailUrl,
-	        photoUid: storedImage.photoUid || "",
-          photoHash: storedImage.photoHash || "",
+	        photoUid: "",
+          photoHash: "",
 	        terms: selectedFallback,
         decoType: randomDeco,
         angle: randomAngle,
