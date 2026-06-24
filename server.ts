@@ -37,6 +37,50 @@ function cleanJsonText(raw: string): string {
   return cleaned.trim();
 }
 
+function limitTermsResponse(parsedData: any): { terms: string[] } {
+  const terms = Array.isArray(parsedData?.terms)
+    ? parsedData.terms
+        .filter((term: unknown): term is string => typeof term === "string")
+        .map((term: string) => term.trim())
+        .filter(Boolean)
+        .slice(0, 5)
+    : [];
+
+  return { terms };
+}
+
+function mapCardRows(rows: any[]) {
+  return rows.map((row) => ({
+    id: row.id,
+    weekId: row.week_id,
+    dayIndex: row.day_index,
+    imageUrl: row.image_url,
+    thumbnailUrl: row.thumbnail_url || "",
+    photoUid: row.photo_uid || "",
+    photoHash: row.photo_hash || "",
+    terms: row.terms || [],
+    decoType: row.deco_type,
+    angle: Number(row.angle),
+    createdAt: Number(row.created_at),
+    type: row.type || "image",
+    mdContent: row.md_content || "",
+    mdSummary: row.md_summary || "",
+    mdName: row.md_name || "",
+  }));
+}
+
+function mapBookRow(row: any) {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description || "",
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+    cardCount: Number(row.card_count || 0),
+    coverCard: row.cover_card ? mapCardRows([row.cover_card])[0] : null,
+  };
+}
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -178,6 +222,28 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_photo_uid ON cards(user_id, photo_uid);");
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_user_week ON notes(user_id, week_id);");
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_user_key ON settings(user_id, key);");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS inspiration_books (
+            id TEXT PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            description TEXT,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+          );
+        `);
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS inspiration_book_cards (
+            book_id TEXT NOT NULL REFERENCES inspiration_books(id) ON DELETE CASCADE,
+            card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            added_at BIGINT NOT NULL
+          );
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_inspiration_books_user_updated_at ON inspiration_books(user_id, updated_at DESC);");
+        await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_inspiration_book_cards_unique ON inspiration_book_cards(user_id, book_id, card_id);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_inspiration_book_cards_user_book_added_at ON inspiration_book_cards(user_id, book_id, added_at DESC);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_inspiration_book_cards_user_card ON inspiration_book_cards(user_id, card_id);");
         const userCount = await client.query("SELECT COUNT(*)::int AS count FROM users");
         if (Number(userCount.rows[0]?.count || 0) === 0) {
           const bootstrapEmail = process.env.AUTH_BOOTSTRAP_EMAIL || "local-admin@example.com";
@@ -299,7 +365,7 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
                 {
                   type: "text",
                   text: "You are a creative inspiration research assistant. Analyze this uploaded image to extract evocative artistic inspirations, creative concepts, design styles, mood terms, color palettes, and visual keywords (e.g. '复古工业风', '赛博朋克色调', '温柔莫兰迪色', '温暖松弛感', 'Wabi-Sabi 侘寂', 'Mid-century Modern', etc.). " +
-                        "Provide a list of 5 to 10 highly relevant, inspirational, and creative keywords in Chinese (or standard English hybrid terms if highly descriptive) to help the user catalog their visual inspiration. " +
+                        "Provide exactly 5 highly relevant, inspirational, and creative keywords in Chinese (or standard English hybrid terms if highly descriptive) to help the user catalog their visual inspiration. " +
                         "Reply ONLY with a raw JSON object of the format: {\"terms\": [\"term1\", \"term2\", ...]} without any markdown code backticks or other text."
                 }
               ]
@@ -318,7 +384,7 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
       const rawText = responseDoc.content?.[0]?.text || "{}";
       const cleanedText = cleanJsonText(rawText);
       const parsedData = JSON.parse(cleanedText || '{"terms": []}');
-      return res.json(parsedData);
+      return res.json(limitTermsResponse(parsedData));
 
     } else {
       // Check if custom base url is a third-party non-Google gateway
@@ -354,7 +420,7 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
                     type: "input_text",
                     text: "You are a creative inspiration research assistant. Analyze this uploaded screenshot or design reference image. " +
                           "Extract evocative artistic inspirations, creative concepts, design styles, mood terms, color palettes, and visual keywords (e.g., '复古工业风', '赛博朋克色调', '温柔莫兰迪色', '温暖松弛感', 'Wabi-Sabi 侘寂', 'Mid-century Modern'). " +
-                          "Return a list of 5 to 10 highly relevant and imaginative keywords in Chinese (or standard English descriptors) as a JSON list in the key 'terms' to capture the visual inspiration. " +
+                          "Return exactly 5 highly relevant and imaginative keywords in Chinese (or standard English descriptors) as a JSON list in the key 'terms' to capture the visual inspiration. " +
                           "Respond ONLY with a raw JSON object of the format: {\"terms\": [\"term1\", \"term2\", ...]} without any markdown code backticks or other text."
                   }
                 ]
@@ -372,7 +438,7 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
                     type: "text",
                     text: "You are a creative inspiration research assistant. Analyze this uploaded screenshot or design reference image. " +
                           "Extract evocative artistic inspirations, creative concepts, design styles, mood terms, color palettes, and visual keywords (e.g., '复古工业风', '赛博朋克色调', '温柔莫兰迪色', '温暖松弛感', 'Wabi-Sabi 侘寂', 'Mid-century Modern'). " +
-                          "Return a list of 5 to 10 highly relevant and imaginative keywords in Chinese (or standard English descriptors) as a JSON list in the key 'terms' to capture the visual inspiration. " +
+                          "Return exactly 5 highly relevant and imaginative keywords in Chinese (or standard English descriptors) as a JSON list in the key 'terms' to capture the visual inspiration. " +
                           "Respond ONLY with a raw JSON object of the format: {\"terms\": [\"term1\", \"term2\", ...]} without any markdown code backticks or other text."
                   },
                   {
@@ -414,7 +480,7 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
         const rawText = responseDoc.choices?.[0]?.message?.content || responseDoc.choices?.[0]?.text || responseDoc.output || "{}";
         const cleanedText = cleanJsonText(rawText);
         const parsedData = JSON.parse(cleanedText || '{"terms": []}');
-        return res.json(parsedData);
+        return res.json(limitTermsResponse(parsedData));
 
       } else {
         // Default: Google Gemini API Flow
@@ -450,7 +516,7 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
         const textPart = {
           text: "You are a creative inspiration research assistant. Analyze this uploaded screenshot or design reference image. " +
                 "Extract evocative artistic inspirations, creative concepts, design styles, mood terms, color palettes, and visual keywords (e.g., '复古工业风', '赛博朋克色调', '温柔莫兰迪色', '温暖松弛感', 'Wabi-Sabi 侘寂', 'Mid-century Modern'). " +
-                "Return a list of 5 to 10 highly relevant and imaginative keywords in Chinese (or standard English descriptors) as a JSON list in the key 'terms' to capture the visual inspiration."
+                "Return exactly 5 highly relevant and imaginative keywords in Chinese (or standard English descriptors) as a JSON list in the key 'terms' to capture the visual inspiration."
         };
 
         const response = await activeAi.models.generateContent({
@@ -464,7 +530,7 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
                 terms: {
                   type: Type.ARRAY,
                   items: { type: Type.STRING },
-                  description: "A list of 5 to 10 professional design terminology keywords inspired by the image."
+                  description: "Exactly 5 professional design terminology keywords inspired by the image."
                 }
               },
               required: ["terms"]
@@ -474,7 +540,7 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
 
         const cleanedText = cleanJsonText(response.text || '{"terms": []}');
         const parsedData = JSON.parse(cleanedText);
-        return res.json(parsedData);
+        return res.json(limitTermsResponse(parsedData));
       }
     }
   } catch (error: any) {
@@ -533,7 +599,7 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
       "你是一个文档整理与知识标签助手，不要按图片视觉风格分析。",
       "请阅读下面的 Markdown 文档，提炼文档的核心主题、结论、行动方向、项目线索和知识领域。",
       "输出必须是严格 JSON：{\"summary\":\"中文摘要，2到3句话\",\"terms\":[\"标签1\",\"标签2\",...]}。",
-      "terms 需要 5 到 10 个，优先使用中文短标签；标签应描述文档内容，不要使用“光影、色彩、构图、视觉风格”等图片分析词，除非文档本身明确讨论这些主题。",
+      "terms 必须正好 5 个，优先使用中文短标签；标签应描述文档内容，不要使用“光影、色彩、构图、视觉风格”等图片分析词，除非文档本身明确讨论这些主题。",
       "",
       "Markdown 内容：",
       markdown.slice(0, 12000),
@@ -548,7 +614,7 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
         ? parsed.terms
             .filter((term: unknown): term is string => typeof term === "string" && term.trim().length > 0)
             .map((term: string) => term.trim())
-            .slice(0, 10)
+            .slice(0, 5)
         : fallback.terms;
       return { summary, terms: terms.length > 0 ? terms : fallback.terms };
     };
@@ -1022,6 +1088,240 @@ app.post("/api/db/notes", requirePostgresAuth, async (req, res) => {
 });
 
 // 3. Fetch image cards for week ID
+app.get("/api/db/books", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const result = await pgPool.query(
+      `SELECT
+         b.id,
+         b.title,
+         b.description,
+         b.created_at,
+         b.updated_at,
+         COUNT(bc.card_id)::int AS card_count,
+         (
+           SELECT row_to_json(c)
+           FROM (
+             SELECT c2.id, c2.week_id, c2.day_index, c2.image_url, c2.thumbnail_url, c2.photo_uid, c2.photo_hash,
+                    c2.terms, c2.deco_type, c2.angle, c2.created_at, c2.type, c2.md_content, c2.md_summary, c2.md_name
+             FROM inspiration_book_cards bc2
+             INNER JOIN cards c2 ON c2.id = bc2.card_id AND c2.user_id = $1
+             WHERE bc2.user_id = $1 AND bc2.book_id = b.id
+             ORDER BY bc2.added_at DESC
+             LIMIT 1
+           ) c
+         ) AS cover_card
+       FROM inspiration_books b
+       LEFT JOIN inspiration_book_cards bc ON bc.book_id = b.id AND bc.user_id = $1
+       WHERE b.user_id = $1
+       GROUP BY b.id
+       ORDER BY b.updated_at DESC`,
+      [authReq.user!.id]
+    );
+    return res.json(result.rows.map(mapBookRow));
+  } catch (err: any) {
+    console.error("Error fetching inspiration books:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/db/books", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const title = String(req.body.title || "").trim();
+    const description = String(req.body.description || "").trim();
+    if (!title) {
+      return res.status(400).json({ error: "Book title is required." });
+    }
+
+    const now = Date.now();
+    const id = `book_${Math.random().toString(36).slice(2, 12)}_${now.toString(36)}`;
+    const result = await pgPool.query(
+      `INSERT INTO inspiration_books (id, user_id, title, description, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $5)
+       RETURNING id, title, description, created_at, updated_at, 0::int AS card_count, NULL::json AS cover_card`,
+      [id, authReq.user!.id, title, description, now]
+    );
+    return res.json(mapBookRow(result.rows[0]));
+  } catch (err: any) {
+    console.error("Error creating inspiration book:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/db/books/:bookId", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const title = String(req.body.title || "").trim();
+    const description = String(req.body.description || "").trim();
+    if (!title) {
+      return res.status(400).json({ error: "Book title is required." });
+    }
+
+    const result = await pgPool.query(
+      `UPDATE inspiration_books
+       SET title = $1, description = $2, updated_at = $3
+       WHERE id = $4 AND user_id = $5
+       RETURNING id`,
+      [title, description, Date.now(), req.params.bookId, authReq.user!.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error updating inspiration book:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/db/books/:bookId", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const result = await pgPool.query(
+      "DELETE FROM inspiration_books WHERE id = $1 AND user_id = $2",
+      [req.params.bookId, authReq.user!.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error deleting inspiration book:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/db/books/:bookId/cards", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user!.id;
+    const bookId = req.params.bookId;
+    const book = await pgPool.query("SELECT id FROM inspiration_books WHERE id = $1 AND user_id = $2", [bookId, userId]);
+    if (book.rowCount === 0) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+
+    const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
+    const rawPageSize = Number.parseInt(String(req.query.pageSize || "12"), 10) || 12;
+    const pageSize = Math.min(60, Math.max(1, rawPageSize));
+    const offset = (page - 1) * pageSize;
+    const q = String(req.query.q || "").trim();
+    const values: Array<string | number> = [userId, bookId];
+    const searchSql = q ? `AND c.terms_text ILIKE $3` : "";
+    if (q) {
+      values.push(`%${q}%`);
+    }
+
+    const countResult = await pgPool.query(
+      `SELECT COUNT(*)::int AS total
+       FROM inspiration_book_cards bc
+       INNER JOIN cards c ON c.id = bc.card_id AND c.user_id = $1
+       WHERE bc.user_id = $1 AND bc.book_id = $2 ${searchSql}`,
+      values
+    );
+    const total = Number(countResult.rows[0]?.total || 0);
+
+    values.push(pageSize);
+    const limitParam = values.length;
+    values.push(offset);
+    const offsetParam = values.length;
+    const cardsResult = await pgPool.query(
+      `SELECT c.id, c.week_id, c.day_index, c.image_url, c.thumbnail_url, c.photo_uid, c.photo_hash,
+              c.terms, c.deco_type, c.angle, c.created_at, c.type, c.md_content, c.md_summary, c.md_name
+       FROM inspiration_book_cards bc
+       INNER JOIN cards c ON c.id = bc.card_id AND c.user_id = $1
+       WHERE bc.user_id = $1 AND bc.book_id = $2 ${searchSql}
+       ORDER BY bc.added_at DESC
+       LIMIT $${limitParam} OFFSET $${offsetParam}`,
+      values
+    );
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    return res.json({ cards: mapCardRows(cardsResult.rows), total, page, pageSize, totalPages });
+  } catch (err: any) {
+    console.error("Error fetching inspiration book cards:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/db/books/:bookId/cards", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user!.id;
+    const cardId = String(req.body.cardId || "").trim();
+    if (!cardId) {
+      return res.status(400).json({ error: "cardId is required." });
+    }
+
+    const owned = await pgPool.query(
+      `SELECT b.id AS book_id, c.id AS card_id
+       FROM inspiration_books b
+       INNER JOIN cards c ON c.id = $2 AND c.user_id = $1
+       WHERE b.id = $3 AND b.user_id = $1`,
+      [userId, cardId, req.params.bookId]
+    );
+    if (owned.rowCount === 0) {
+      return res.status(404).json({ error: "Book or card not found" });
+    }
+
+    const now = Date.now();
+    await pgPool.query(
+      `INSERT INTO inspiration_book_cards (user_id, book_id, card_id, added_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, book_id, card_id) DO NOTHING`,
+      [userId, req.params.bookId, cardId, now]
+    );
+    await pgPool.query("UPDATE inspiration_books SET updated_at = $1 WHERE id = $2 AND user_id = $3", [now, req.params.bookId, userId]);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error adding card to inspiration book:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/db/books/:bookId/cards/:cardId", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user!.id;
+    const book = await pgPool.query("SELECT id FROM inspiration_books WHERE id = $1 AND user_id = $2", [req.params.bookId, userId]);
+    if (book.rowCount === 0) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+
+    await pgPool.query(
+      "DELETE FROM inspiration_book_cards WHERE user_id = $1 AND book_id = $2 AND card_id = $3",
+      [userId, req.params.bookId, req.params.cardId]
+    );
+    await pgPool.query("UPDATE inspiration_books SET updated_at = $1 WHERE id = $2 AND user_id = $3", [Date.now(), req.params.bookId, userId]);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error removing card from inspiration book:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
@@ -1030,23 +1330,6 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     const userId = authReq.user!.id;
     const weekId = req.query.weekId as string;
-    const mapCards = (rows: any[]) => rows.map((row) => ({
-      id: row.id,
-      weekId: row.week_id,
-      dayIndex: row.day_index,
-      imageUrl: row.image_url,
-      thumbnailUrl: row.thumbnail_url || "",
-      photoUid: row.photo_uid || "",
-      photoHash: row.photo_hash || "",
-      terms: row.terms || [],
-      decoType: row.deco_type,
-      angle: Number(row.angle),
-      createdAt: Number(row.created_at),
-      type: row.type || "image",
-      mdContent: row.md_content || "",
-      mdSummary: row.md_summary || "",
-      mdName: row.md_name || "",
-    }));
 
     if (weekId && weekId !== "all") {
       const result = await pgPool.query(
@@ -1056,7 +1339,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
          ORDER BY day_index ASC, created_at DESC`,
         [userId, weekId]
       );
-      return res.json(mapCards(result.rows));
+      return res.json(mapCardRows(result.rows));
     }
 
     const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
@@ -1095,7 +1378,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     return res.json({
-      cards: mapCards(result.rows),
+      cards: mapCardRows(result.rows),
       total,
       page,
       pageSize,
@@ -1202,6 +1485,42 @@ app.get("/api/photos/hash/:photoHash/:variant(thumb|full)", requirePostgresAuth,
   } catch (err: any) {
     console.error("Photo proxy error:", err);
     return res.status(502).json({ error: err.message || "Photo proxy failed." });
+  }
+});
+
+app.get("/api/db/cards/:cardId/books", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user!.id;
+    const card = await pgPool.query("SELECT id FROM cards WHERE id = $1 AND user_id = $2", [req.params.cardId, userId]);
+    if (card.rowCount === 0) {
+      return res.status(404).json({ error: "Card not found" });
+    }
+
+    const result = await pgPool.query(
+      `SELECT b.id, b.title, b.description, COUNT(all_bc.card_id)::int AS card_count,
+              CASE WHEN own_bc.card_id IS NULL THEN false ELSE true END AS contains_card
+       FROM inspiration_books b
+       LEFT JOIN inspiration_book_cards all_bc ON all_bc.book_id = b.id AND all_bc.user_id = $1
+       LEFT JOIN inspiration_book_cards own_bc ON own_bc.book_id = b.id AND own_bc.user_id = $1 AND own_bc.card_id = $2
+       WHERE b.user_id = $1
+       GROUP BY b.id, own_bc.card_id
+       ORDER BY b.updated_at DESC`,
+      [userId, req.params.cardId]
+    );
+    return res.json(result.rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description || "",
+      cardCount: Number(row.card_count || 0),
+      containsCard: Boolean(row.contains_card),
+    })));
+  } catch (err: any) {
+    console.error("Error fetching card inspiration book membership:", err);
+    return res.status(500).json({ error: err.message });
   }
 });
 
