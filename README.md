@@ -87,9 +87,15 @@ For local WeChat login testing, start a mock-enabled backend:
 WECHAT_MOCK=true npm run dev
 ```
 
-For normal local mini-program API calls, `miniprogram/app/app.js` defaults to `http://localhost:3005`. For mock WeChat auth testing, set the mini-program `apiBaseUrl` to `http://localhost:3000` while the mock backend is running.
+For normal local mini-program API calls, `miniprogram/app/app.js` defaults to the Mac LAN backend, for example `http://172.17.10.116:3005`, because `localhost` may point to the simulator or phone instead of the Mac. If your Wi-Fi IP changes, update the value in `app.js` or override it in DevTools console:
 
-Keep `urlCheck` disabled in `miniprogram/app/project.config.json` for local development against `localhost`.
+```js
+wx.setStorageSync("apiBaseUrl", "http://YOUR_MAC_IP:3005")
+```
+
+For mock WeChat auth testing, set the mini-program `apiBaseUrl` to `http://localhost:3000` while the mock backend is running.
+
+Keep `urlCheck` disabled in `miniprogram/app/project.config.json` for local development against local HTTP endpoints.
 
 ## PhotoPrism Image Storage
 

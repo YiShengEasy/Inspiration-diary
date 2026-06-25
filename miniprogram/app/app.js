@@ -1,8 +1,11 @@
 App({
   globalData: {
-    apiBaseUrl: "http://localhost:3005",
+    apiBaseUrl: "http://172.17.10.116:3005",
     accountState: "guest",
     user: null
   },
-  onLaunch() {}
+  onLaunch() {
+    const apiBaseUrl = wx.getStorageSync("apiBaseUrl");
+    if (apiBaseUrl) this.globalData.apiBaseUrl = apiBaseUrl;
+  }
 });
