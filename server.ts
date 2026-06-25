@@ -59,13 +59,28 @@ function limitTermsResponse(parsedData: any): { terms: string[] } {
   return { terms };
 }
 
-function mapCardRows(rows: any[]) {
+function getRequestOrigin(req: express.Request): string {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const proto = forwardedProto || req.protocol || "http";
+  const forwardedHost = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
+  const host = forwardedHost || req.get("host") || `localhost:${PORT}`;
+  return `${proto}://${host}`;
+}
+
+function absoluteUrl(value: string | null | undefined, req: express.Request): string {
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:") || value.startsWith("wxfile://")) return value;
+  if (!value.startsWith("/")) return value;
+  return `${getRequestOrigin(req)}${value}`;
+}
+
+function mapCardRows(rows: any[], req: express.Request) {
   return rows.map((row) => ({
     id: row.id,
     weekId: row.week_id,
     dayIndex: row.day_index,
-    imageUrl: row.image_url,
-    thumbnailUrl: row.thumbnail_url || "",
+    imageUrl: absoluteUrl(row.image_url, req),
+    thumbnailUrl: absoluteUrl(row.thumbnail_url, req),
     photoUid: row.photo_uid || "",
     photoHash: row.photo_hash || "",
     terms: row.terms || [],
@@ -79,7 +94,7 @@ function mapCardRows(rows: any[]) {
   }));
 }
 
-function mapBookRow(row: any) {
+function mapBookRow(row: any, req: express.Request) {
   return {
     id: row.id,
     title: row.title,
@@ -87,7 +102,7 @@ function mapBookRow(row: any) {
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
     cardCount: Number(row.card_count || 0),
-    coverCard: row.cover_card ? mapCardRows([row.cover_card])[0] : null,
+    coverCard: row.cover_card ? mapCardRows([row.cover_card], req)[0] : null,
   };
 }
 
@@ -636,8 +651,8 @@ app.post("/api/store-image", requirePostgresAuth, upload.single("image"), async 
     return res.json({
       photoUid: stored.photoUid,
       photoHash: stored.photoHash,
-      imageUrl: `/api/photos/hash/${encodedHash}/full`,
-      thumbnailUrl: `/api/photos/hash/${encodedHash}/thumb`,
+      imageUrl: absoluteUrl(`/api/photos/hash/${encodedHash}/full`, req),
+      thumbnailUrl: absoluteUrl(`/api/photos/hash/${encodedHash}/thumb`, req),
     });
   } catch (error: any) {
     console.error("PhotoPrism image storage error:", error);
@@ -1198,7 +1213,7 @@ app.get("/api/db/books", requirePostgresAuth, async (req, res) => {
        ORDER BY b.updated_at DESC`,
       [authReq.user!.id]
     );
-    return res.json(result.rows.map(mapBookRow));
+    return res.json(result.rows.map((row) => mapBookRow(row, req)));
   } catch (err: any) {
     console.error("Error fetching inspiration books:", err);
     return res.status(500).json({ error: err.message });
@@ -1225,7 +1240,7 @@ app.post("/api/db/books", requirePostgresAuth, async (req, res) => {
        RETURNING id, title, description, created_at, updated_at, 0::int AS card_count, NULL::json AS cover_card`,
       [id, authReq.user!.id, title, description, now]
     );
-    return res.json(mapBookRow(result.rows[0]));
+    return res.json(mapBookRow(result.rows[0], req));
   } catch (err: any) {
     console.error("Error creating inspiration book:", err);
     return res.status(500).json({ error: err.message });
@@ -1330,7 +1345,7 @@ app.get("/api/db/books/:bookId/cards", requirePostgresAuth, async (req, res) => 
     );
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    return res.json({ cards: mapCardRows(cardsResult.rows), total, page, pageSize, totalPages });
+    return res.json({ cards: mapCardRows(cardsResult.rows, req), total, page, pageSize, totalPages });
   } catch (err: any) {
     console.error("Error fetching inspiration book cards:", err);
     return res.status(500).json({ error: err.message });
@@ -1416,7 +1431,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
          ORDER BY day_index ASC, created_at DESC`,
         [userId, weekId]
       );
-      return res.json(mapCardRows(result.rows));
+      return res.json(mapCardRows(result.rows, req));
     }
 
     const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
@@ -1455,7 +1470,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     return res.json({
-      cards: mapCardRows(result.rows),
+      cards: mapCardRows(result.rows, req),
       total,
       page,
       pageSize,
@@ -1531,7 +1546,7 @@ app.get("/api/db/cards/:id", requirePostgresAuth, async (req: AuthenticatedReque
     if (!result.rows[0]) {
       return res.status(404).json({ error: "Card not found" });
     }
-    return res.json(mapCardRows(result.rows)[0]);
+    return res.json(mapCardRows(result.rows, req)[0]);
   } catch (err: any) {
     console.error("Error fetching card detail:", err);
     return res.status(500).json({ error: err.message || "Failed to fetch card detail" });
