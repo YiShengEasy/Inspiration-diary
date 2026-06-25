@@ -17,11 +17,19 @@ button::after {
 }
 
 .detail-card,
-.shell-card {
+.shell-card,
+.status-card {
   border-radius: 32rpx;
   padding: 22rpx;
   background: #ffffff;
   box-shadow: 0 16rpx 42rpx rgba(20, 24, 18, 0.1);
+}
+
+.status-card {
+  margin-bottom: 18rpx;
+  color: #777b72;
+  font-size: 26rpx;
+  text-align: center;
 }
 
 .hero-image,
@@ -155,4 +163,15 @@ button::after {
   font-size: 28rpx;
   font-weight: 950;
   line-height: 76rpx;
+}
+
+.delete-button {
+  height: 78rpx;
+  margin-top: 24rpx;
+  border-radius: 999rpx;
+  background: #241f1a;
+  color: #fffaf3;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 78rpx;
 }
