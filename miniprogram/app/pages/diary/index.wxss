@@ -481,8 +481,7 @@ button::after {
   box-shadow: 0 20rpx 44rpx rgba(96, 72, 35, 0.08);
 }
 
-.day-title-row,
-.day-content {
+.day-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -501,12 +500,15 @@ button::after {
 }
 
 .day-content {
+  display: grid;
+  grid-template-columns: 192rpx 1fr auto;
+  align-items: center;
   gap: 24rpx;
 }
 
 .cover-stack {
   position: relative;
-  width: 192rpx;
+  width: 176rpx;
   height: 176rpx;
   flex-shrink: 0;
 }
@@ -515,6 +517,8 @@ button::after {
   position: absolute;
   width: 148rpx;
   height: 168rpx;
+  left: 0;
+  top: 0;
   border: 6rpx solid #ffffff;
   border-radius: 28rpx;
   background: #eef1e8;
@@ -568,24 +572,18 @@ button::after {
 }
 
 .stack-0 {
-  left: 0;
-  top: 0;
   z-index: 1;
-  transform: rotate(-5deg);
+  transform: translate(0, 0) rotate(-5deg);
 }
 
 .stack-1 {
-  left: 16rpx;
-  top: 4rpx;
   z-index: 2;
-  transform: rotate(0deg);
+  transform: translate(16rpx, 4rpx) rotate(0deg);
 }
 
 .stack-2 {
-  left: 32rpx;
-  top: 8rpx;
   z-index: 3;
-  transform: rotate(5deg);
+  transform: translate(32rpx, 8rpx) rotate(5deg);
 }
 
 .more-count {
@@ -594,19 +592,21 @@ button::after {
   top: -8rpx;
   z-index: 4;
   border-radius: 999rpx;
-  min-width: 46rpx;
-  height: 52rpx;
+  min-width: 60rpx;
+  height: 60rpx;
+  padding: 0 8rpx;
+  box-sizing: border-box;
+  border: 4rpx solid #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #111111;
   color: #b7ff38;
-  font-size: 22rpx;
+  font-size: 24rpx;
   font-weight: 900;
 }
 
 .cover-text {
-  flex: 1;
   min-width: 0;
   text-align: left;
 }
@@ -623,6 +623,7 @@ button::after {
   color: #9a6f32;
   font-size: 22rpx;
   font-weight: 900;
+  line-height: 32rpx;
 }
 
 .type-icon {
@@ -678,19 +679,21 @@ button::after {
   margin-top: 12rpx;
   font-size: 36rpx;
   font-weight: 900;
-  line-height: 40rpx;
+  line-height: 42rpx;
 }
 
 .cover-tags {
   margin-top: 10rpx;
   color: #8d7d69;
   font-size: 24rpx;
-  line-height: 28rpx;
+  line-height: 30rpx;
 }
 
 .chevron {
+  justify-self: end;
   color: #9aa093;
-  font-size: 46rpx;
+  font-size: 38rpx;
+  line-height: 1;
 }
 
 .empty-day {
