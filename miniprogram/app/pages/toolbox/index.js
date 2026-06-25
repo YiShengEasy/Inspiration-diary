@@ -23,6 +23,11 @@ Page({
     visibleTools: getVisibleTools("常用")
   },
 
+  onShow() {
+    const tabBar = this.getTabBar && this.getTabBar();
+    if (tabBar) tabBar.setData({ selected: 1 });
+  },
+
   selectCategory(event) {
     const category = event.currentTarget.dataset.category || "常用";
     this.setData({

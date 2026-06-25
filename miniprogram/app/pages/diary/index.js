@@ -46,6 +46,9 @@ Page({
   },
 
   async onShow() {
+    const tabBar = this.getTabBar && this.getTabBar();
+    if (tabBar) tabBar.setData({ selected: 0 });
+
     try {
       const status = await refreshAccountStatus();
       this.setData({ accountState: status.accountState || "guest", error: "" });

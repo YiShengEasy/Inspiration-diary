@@ -25,32 +25,12 @@ Component({
     tabs
   },
 
-  lifetimes: {
-    attached() {
-      this.syncSelected();
-    }
-  },
-
-  pageLifetimes: {
-    show() {
-      this.syncSelected();
-    }
-  },
-
   methods: {
-    syncSelected() {
-      const pages = getCurrentPages();
-      const route = pages[pages.length - 1]?.route || tabs[0].route;
-      const selected = Math.max(0, tabs.findIndex((item) => item.route === route));
-      this.setData({ selected });
-    },
-
     switchTab(event) {
       const index = Number(event.currentTarget.dataset.index);
       const item = tabs[index];
       if (!item || index === this.data.selected) return;
 
-      this.setData({ selected: index });
       wx.switchTab({ url: item.url });
     }
   }
