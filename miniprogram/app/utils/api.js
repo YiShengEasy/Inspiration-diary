@@ -9,16 +9,25 @@ function getToken() {
 
 function resolveAssetUrl(url) {
   if (!url || typeof url !== "string") return "";
-  if (!/^https?:\/\//.test(url)) return url;
 
   const baseUrl = getBaseUrl();
+  const absoluteUrl = url.startsWith("/") ? `${baseUrl}${url}` : url;
+  if (!/^https?:\/\//.test(absoluteUrl)) return absoluteUrl;
+
   const baseMatch = baseUrl.match(/^(https?:\/\/)([^:/]+)(?::(\d+))?/);
-  if (!baseMatch) return url;
+  if (!baseMatch) return absoluteUrl;
 
   const [, protocol, host] = baseMatch;
-  return url.replace(/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i, (match, _localHost, port = "") => {
+  const resolvedUrl = absoluteUrl.replace(/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i, (match, _localHost, port = "") => {
     return `${protocol}${host}${port}`;
   });
+
+  if (resolvedUrl.indexOf("/api/photos/") < 0) return resolvedUrl;
+
+  const token = getToken();
+  if (!token || resolvedUrl.indexOf("miniToken=") >= 0) return resolvedUrl;
+  const separator = resolvedUrl.indexOf("?") >= 0 ? "&" : "?";
+  return `${resolvedUrl}${separator}miniToken=${encodeURIComponent(token)}`;
 }
 
 function request({ url, method = "GET", data, header = {} }) {

@@ -28,7 +28,11 @@ export function getMiniToken(req: Request): string | null {
 
   const headerToken = req.headers["x-mini-session"];
   if (Array.isArray(headerToken)) return headerToken[0]?.trim() || null;
-  return typeof headerToken === "string" && headerToken.trim() ? headerToken.trim() : null;
+  if (typeof headerToken === "string" && headerToken.trim()) return headerToken.trim();
+
+  const queryToken = req.query.miniToken || req.query.mini_session || req.query.token;
+  if (Array.isArray(queryToken)) return String(queryToken[0] || "").trim() || null;
+  return typeof queryToken === "string" && queryToken.trim() ? queryToken.trim() : null;
 }
 
 export async function createMiniSession(pool: pg.Pool, identityId: string, userId: string | null): Promise<string> {
