@@ -1,3 +1,60 @@
-<view class="page">
-  <text>我的</text>
+<view class="page me-page">
+  <view class="me-top">
+    <view>
+      <text class="eyebrow">PROFILE</text>
+      <text class="page-title">我的</text>
+    </view>
+    <view class="top-dot"></view>
+  </view>
+
+  <view class="profile">
+    <view class="avatar">
+      <text>{{profile.avatarText}}</text>
+    </view>
+    <view class="profile-copy">
+      <text class="name">{{profile.name}}</text>
+      <text class="desc">{{profile.description}}</text>
+    </view>
+  </view>
+
+  <view class="stats">
+    <view class="stat-block">
+      <text class="num">{{stats.inspirationCount}}</text>
+      <text class="label">灵感数</text>
+    </view>
+    <view class="stat-block">
+      <text class="num">{{stats.weekRecordCount}}</text>
+      <text class="label">本周记录</text>
+    </view>
+    <view class="stat-block">
+      <text class="num">{{stats.toolUsageCount}}</text>
+      <text class="label">工具使用</text>
+    </view>
+  </view>
+
+  <view wx:if="{{accountState === 'guest'}}" class="account-banner">
+    <view>
+      <text class="banner-title">登录后可保存灵感</text>
+      <text class="banner-desc">同步作品、原图和每日灵感册。</text>
+    </view>
+    <button class="banner-button" loading="{{loading}}" bindtap="login">微信登录</button>
+  </view>
+
+  <view wx:if="{{accountState === 'wechat_logged_in_unregistered'}}" class="account-banner warn">
+    <view>
+      <text class="banner-title">还差一步完成注册</text>
+      <text class="banner-desc">绑定手机号或邮箱并设置 Web 登录密码。</text>
+    </view>
+    <button class="banner-button dark" bindtap="completeRegistration">完成注册</button>
+  </view>
+
+  <view class="menu-list">
+    <view wx:for="{{menuRows}}" wx:key="title" class="menu-row">
+      <view>
+        <text class="menu-title">{{item.title}}</text>
+        <text class="menu-desc">{{item.desc}}</text>
+      </view>
+      <text class="chevron">›</text>
+    </view>
+  </view>
 </view>

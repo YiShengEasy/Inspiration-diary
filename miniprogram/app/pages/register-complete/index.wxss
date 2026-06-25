@@ -1,3 +1,126 @@
 .page {
-  padding: 28rpx;
+  min-height: 100vh;
+  padding: 44rpx 28rpx 56rpx;
+  background: #ffffff;
+  color: #151712;
+  box-sizing: border-box;
+}
+
+.header {
+  margin-bottom: 34rpx;
+}
+
+.eyebrow,
+.title,
+.desc,
+.card-title,
+.card-desc,
+.label {
+  display: block;
+}
+
+.eyebrow {
+  color: #8b916f;
+  font-size: 22rpx;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.title {
+  margin-top: 12rpx;
+  font-size: 48rpx;
+  font-weight: 900;
+  line-height: 1.12;
+}
+
+.desc {
+  margin-top: 16rpx;
+  color: #777c72;
+  font-size: 27rpx;
+  line-height: 1.5;
+}
+
+.phone-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-bottom: 24rpx;
+  padding: 24rpx;
+  border-radius: 8rpx;
+  background: #f2ffe2;
+  border: 1rpx solid #def4bd;
+}
+
+.card-title {
+  font-size: 29rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.card-desc {
+  margin-top: 8rpx;
+  color: #757b70;
+  font-size: 24rpx;
+  line-height: 1.35;
+  word-break: break-all;
+}
+
+.phone-button {
+  flex: 0 0 auto;
+  min-width: 168rpx;
+  height: 70rpx;
+  margin: 0;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  background: #111111;
+  color: #b7ff38;
+  font-size: 25rpx;
+  font-weight: 900;
+  line-height: 70rpx;
+}
+
+.phone-button::after,
+.submit::after {
+  border: 0;
+}
+
+.form {
+  padding: 24rpx;
+  border-radius: 8rpx;
+  background: #f7f8f4;
+  border: 1rpx solid #eeeeea;
+}
+
+.field {
+  margin-bottom: 22rpx;
+}
+
+.label {
+  margin-bottom: 12rpx;
+  color: #454a40;
+  font-size: 25rpx;
+  font-weight: 800;
+}
+
+input {
+  height: 92rpx;
+  padding: 0 24rpx;
+  border-radius: 8rpx;
+  background: #ffffff;
+  color: #151712;
+  font-size: 29rpx;
+  box-sizing: border-box;
+}
+
+.submit {
+  width: 100%;
+  height: 88rpx;
+  margin: 10rpx 0 0;
+  border-radius: 999rpx;
+  background: #b7ff38;
+  color: #142006;
+  font-size: 29rpx;
+  font-weight: 900;
+  line-height: 88rpx;
 }
