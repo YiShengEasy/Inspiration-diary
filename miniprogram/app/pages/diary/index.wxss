@@ -613,21 +613,20 @@ button::after {
 .cover-text {
   min-width: 0;
   text-align: left;
+  transform: translateY(3rpx);
 }
 
 .type-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
   width: auto;
   height: auto;
-  padding: 5rpx 10rpx;
+  padding: 6rpx 11rpx 5rpx;
   border-radius: 14rpx;
-  background: #ead8bd;
-  color: #9a6f32;
-  font-size: 17rpx;
+  background: #f2e5ce;
+  color: #936a29;
+  font-size: 18rpx;
   font-weight: 900;
-  line-height: 18rpx;
+  line-height: 20rpx;
 }
 
 .type-icon {
@@ -680,17 +679,17 @@ button::after {
 }
 
 .cover-title {
-  margin-top: 10rpx;
-  font-size: 31rpx;
+  margin-top: 16rpx;
+  font-size: 33rpx;
   font-weight: 900;
-  line-height: 36rpx;
+  line-height: 40rpx;
 }
 
 .cover-tags {
-  margin-top: 6rpx;
+  margin-top: 10rpx;
   color: #8d7d69;
-  font-size: 21rpx;
-  line-height: 25rpx;
+  font-size: 23rpx;
+  line-height: 28rpx;
 }
 
 .chevron {
