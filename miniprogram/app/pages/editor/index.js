@@ -11,7 +11,14 @@ function getToolIcon(id) {
     pixel: "▦",
     filter: "◐",
     watermark: "T",
-    colorPick: "◎"
+    colorPick: "◎",
+    palette: "✦",
+    gradient: "⌁",
+    contrast: "✓",
+    rgbhex: "#",
+    film: "◌",
+    ai: "✦",
+    more: "▤"
   };
   return icons[id] || "✦";
 }
