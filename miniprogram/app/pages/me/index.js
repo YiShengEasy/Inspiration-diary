@@ -39,6 +39,10 @@ Page({
     profile: buildProfile("guest", null),
     stats: EMPTY_STATS,
     loading: false,
+    debugLoginOpen: false,
+    debugIdentifier: "",
+    debugPassword: "",
+    debugLoading: false,
     menuRows: [
       { title: "草稿", desc: "工具处理未保存内容" },
       { title: "本地缓存", desc: "清理预览和临时图" },
@@ -90,6 +94,54 @@ Page({
       await this.load();
     } catch (err) {
       wx.showToast({ title: err.message || "微信登录失败", icon: "none" });
+    }
+  },
+
+  toggleDebugLogin() {
+    this.setData({ debugLoginOpen: !this.data.debugLoginOpen });
+  },
+
+  onDebugIdentifierInput(event) {
+    this.setData({ debugIdentifier: event.detail.value });
+  },
+
+  onDebugPasswordInput(event) {
+    this.setData({ debugPassword: event.detail.value });
+  },
+
+  async debugPasswordLogin() {
+    const identifier = this.data.debugIdentifier.trim();
+    const password = this.data.debugPassword;
+
+    if (!identifier || !password) {
+      wx.showToast({ title: "请输入账号和密码", icon: "none" });
+      return;
+    }
+
+    this.setData({ debugLoading: true });
+    try {
+      const result = await request({
+        url: "/api/auth/miniprogram-password-login",
+        method: "POST",
+        data: { identifier, password }
+      });
+      wx.setStorageSync("miniToken", result.token);
+
+      const app = getApp();
+      app.globalData.accountState = result.accountState;
+      app.globalData.user = result.user || null;
+
+      this.setData({
+        accountState: result.accountState || "registered",
+        user: result.user || null,
+        profile: buildProfile(result.accountState || "registered", result.user || null),
+        debugPassword: ""
+      });
+      await this.load();
+    } catch (err) {
+      wx.showToast({ title: err.message || "调试登录失败", icon: "none" });
+    } finally {
+      this.setData({ debugLoading: false });
     }
   },
 

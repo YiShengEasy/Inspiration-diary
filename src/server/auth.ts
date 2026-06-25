@@ -48,6 +48,14 @@ function isEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function isMiniPasswordLoginEnabled(): boolean {
+  return (
+    process.env.MINI_DEBUG_PASSWORD_LOGIN === "true" ||
+    process.env.WECHAT_MOCK === "true" ||
+    process.env.NODE_ENV !== "production"
+  );
+}
+
 function safeUser(row: UserRow): AuthUser {
   return {
     id: row.id,
@@ -291,6 +299,46 @@ export function createAuthRouter(pool: pg.Pool): Router {
     const token = getMiniToken(req);
     if (token) await revokeMiniSession(pool, token);
     return res.json({ success: true });
+  });
+
+  router.post("/miniprogram-password-login", async (req: Request, res: Response) => {
+    try {
+      if (!isMiniPasswordLoginEnabled()) return res.status(404).json({ error: "调试登录未开启" });
+
+      const rawIdentifier = String(req.body.identifier || req.body.email || req.body.phone || "").trim();
+      const isEmailIdentifier = isEmail(rawIdentifier);
+      const identifier = isEmailIdentifier ? normalizeEmail(rawIdentifier) : rawIdentifier;
+      const password = String(req.body.password || "");
+      if (!identifier) return res.status(400).json({ error: "请输入邮箱或手机号" });
+
+      const result = await pool.query<UserRow>(
+        `SELECT id, email, phone, password_hash, display_name, role
+         FROM users
+         WHERE ${isEmailIdentifier ? "email" : "phone"} = $1`,
+        [identifier]
+      );
+      const row = result.rows[0];
+      if (!row?.password_hash) return res.status(401).json({ error: "邮箱/手机号或密码不正确" });
+
+      const ok = await verifyPassword(password, row.password_hash);
+      if (!ok) return res.status(401).json({ error: "邮箱/手机号或密码不正确" });
+
+      const updatedAt = nowMs();
+      const identityResult = await pool.query<{ id: string }>(
+        `INSERT INTO wechat_identities (mini_openid, user_id, nickname, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $4)
+         ON CONFLICT (mini_openid)
+         DO UPDATE SET user_id = EXCLUDED.user_id, nickname = EXCLUDED.nickname, updated_at = EXCLUDED.updated_at
+         RETURNING id`,
+        [`debug-password-${row.id}`, row.id, row.display_name || null, updatedAt]
+      );
+      const token = await createMiniSession(pool, identityResult.rows[0].id, row.id);
+      const user = safeUser(row);
+      return res.json({ token, accountState: "registered", user, missing: [] });
+    } catch (err: unknown) {
+      console.error("Mini program password login error:", err);
+      return res.status(500).json({ error: "调试登录失败" });
+    }
   });
 
   router.post("/register", async (req: Request, res: Response) => {

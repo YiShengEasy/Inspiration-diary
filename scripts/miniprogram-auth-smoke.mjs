@@ -58,6 +58,21 @@ const cards = await request("/api/db/cards?weekId=all&page=1&pageSize=1", {
 });
 assert(cards.ok, `mini token cards access failed ${cards.status}: ${JSON.stringify(await json(cards))}`);
 
+const debugLogin = await request("/api/auth/miniprogram-password-login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ identifier: phone, password }),
+});
+const debugLoginBody = await json(debugLogin);
+assert(debugLogin.ok, `mini password login failed ${debugLogin.status}: ${JSON.stringify(debugLoginBody)}`);
+assert(debugLoginBody.token, "mini password login missing token");
+assert(debugLoginBody.accountState === "registered", `expected registered, got ${debugLoginBody.accountState}`);
+
+const debugCards = await request("/api/db/cards?weekId=all&page=1&pageSize=1", {
+  headers: { Authorization: `Bearer ${debugLoginBody.token}` },
+});
+assert(debugCards.ok, `mini password token cards access failed ${debugCards.status}: ${JSON.stringify(await json(debugCards))}`);
+
 const webLogin = await request("/api/auth/login", {
   method: "POST",
   headers: { "Content-Type": "application/json" },

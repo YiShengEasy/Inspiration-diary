@@ -40,6 +40,22 @@
     <button class="banner-button" loading="{{loading}}" bindtap="login">微信登录</button>
   </view>
 
+  <view wx:if="{{accountState === 'guest'}}" class="debug-login">
+    <view class="debug-head" bindtap="toggleDebugLogin">
+      <view>
+        <text class="debug-title">调试邮箱登录</text>
+        <text class="debug-desc">开发调试时用 Web 账号直接进入。</text>
+      </view>
+      <text class="debug-chevron">{{debugLoginOpen ? '收起' : '展开'}}</text>
+    </view>
+
+    <view wx:if="{{debugLoginOpen}}" class="debug-form">
+      <input class="debug-input" value="{{debugIdentifier}}" placeholder="邮箱或手机号" bindinput="onDebugIdentifierInput" />
+      <input class="debug-input" value="{{debugPassword}}" password placeholder="密码" bindinput="onDebugPasswordInput" />
+      <button class="debug-button" loading="{{debugLoading}}" bindtap="debugPasswordLogin">登录调试账号</button>
+    </view>
+  </view>
+
   <view wx:if="{{accountState === 'wechat_logged_in_unregistered'}}" class="account-banner warn">
     <view>
       <text class="banner-title">还差一步完成注册</text>

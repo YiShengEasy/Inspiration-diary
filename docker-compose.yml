@@ -13,6 +13,7 @@ services:
       PHOTOPRISM_INTERNAL_URL: ${PHOTOPRISM_INTERNAL_URL:-http://host.docker.internal:2342}
       PHOTOPRISM_PUBLIC_URL: ${PHOTOPRISM_PUBLIC_URL:-http://localhost:2342}
       PHOTOPRISM_USERNAME: ${PHOTOPRISM_USERNAME:-admin}
+      MINI_DEBUG_PASSWORD_LOGIN: ${MINI_DEBUG_PASSWORD_LOGIN:-false}
     ports:
       - "3005:3000"
     restart: unless-stopped

@@ -181,6 +181,78 @@
   border: 0;
 }
 
+.debug-login {
+  margin-bottom: 24rpx;
+  padding: 24rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid #eeeeea;
+  background: #ffffff;
+}
+
+.debug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.debug-title,
+.debug-desc {
+  display: block;
+}
+
+.debug-title {
+  color: #151712;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.debug-desc {
+  margin-top: 8rpx;
+  color: #7c8178;
+  font-size: 23rpx;
+  line-height: 1.35;
+}
+
+.debug-chevron {
+  flex: 0 0 auto;
+  color: #6f7668;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.debug-form {
+  margin-top: 22rpx;
+  display: grid;
+  gap: 16rpx;
+}
+
+.debug-input {
+  height: 80rpx;
+  padding: 0 22rpx;
+  border-radius: 8rpx;
+  background: #f7f8f4;
+  color: #151712;
+  font-size: 26rpx;
+  box-sizing: border-box;
+}
+
+.debug-button {
+  height: 80rpx;
+  margin: 0;
+  border-radius: 8rpx;
+  background: #111111;
+  color: #b7ff38;
+  font-size: 26rpx;
+  font-weight: 900;
+  line-height: 80rpx;
+}
+
+.debug-button::after {
+  border: 0;
+}
+
 .menu-list {
   overflow: hidden;
   border-radius: 8rpx;
