@@ -1,21 +1,32 @@
 <view class="editor-page">
   <view class="editor-header">
-    <button class="header-button" bindtap="goBack">返回</button>
+    <button class="header-button icon-button" hover-class="button-press" hover-stay-time="80" bindtap="goBack">
+      <text class="button-icon back-icon">‹</text>
+      <text class="button-text">返回</text>
+    </button>
     <view class="header-title">
       <text class="title">{{toolName}}</text>
       <text class="subtitle">{{toolDesc}}</text>
     </view>
-    <button class="header-button" bindtap="chooseImage">换图</button>
+    <button class="header-button icon-button" hover-class="button-press" hover-stay-time="80" bindtap="chooseImage">
+      <text class="button-icon">↻</text>
+      <text class="button-text">换图</text>
+    </button>
   </view>
 
   <view class="editor-canvas {{tool === 'pixel' ? 'pixelated' : ''}}">
     <image wx:if="{{filePath}}" class="preview-image" src="{{resultPath || filePath}}" mode="aspectFit"></image>
     <view wx:else class="empty-preview" bindtap="chooseImage">
-      <text class="empty-mark">+</text>
+      <view class="empty-mark">
+        <text>+</text>
+      </view>
       <text class="empty-title">选择一张图片</text>
       <text class="empty-desc">从相册或相机导入后预览</text>
     </view>
-    <view class="canvas-badge">{{toolName}}</view>
+    <view class="canvas-badge">
+      <text class="tool-icon">{{toolIcon}}</text>
+      <text>{{toolName}}</text>
+    </view>
   </view>
 
   <view class="controls">
@@ -24,7 +35,10 @@
         <text class="control-title">本地预览</text>
         <text class="control-desc">预览结果可保存到相册或灵感日记</text>
       </view>
-      <button class="choose-button" bindtap="chooseImage">选择图片</button>
+      <button class="choose-button" hover-class="button-press" hover-stay-time="80" bindtap="chooseImage">
+        <text class="button-icon">＋</text>
+        <text>选择图片</text>
+      </button>
     </view>
 
     <view class="result-row">
@@ -37,8 +51,14 @@
     </view>
 
     <view class="editor-actions">
-      <button bindtap="saveToAlbum">保存到相册</button>
-      <button class="primary" bindtap="saveToDiary">保存到灵感日记</button>
+      <button hover-class="button-press" hover-stay-time="80" bindtap="saveToAlbum">
+        <text class="button-icon">↓</text>
+        <text>保存到相册</text>
+      </button>
+      <button class="primary" hover-class="button-press" hover-stay-time="80" bindtap="saveToDiary">
+        <text class="button-icon">✦</text>
+        <text>保存到灵感日记</text>
+      </button>
     </view>
   </view>
 </view>

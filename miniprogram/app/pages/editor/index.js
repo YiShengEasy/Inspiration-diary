@@ -5,11 +5,23 @@ function getTool(id) {
   return tools.find((tool) => tool.id === id) || tools[0];
 }
 
+function getToolIcon(id) {
+  const icons = {
+    crop: "⌗",
+    pixel: "▦",
+    filter: "◐",
+    watermark: "T",
+    colorPick: "◎"
+  };
+  return icons[id] || "✦";
+}
+
 Page({
   data: {
     tool: "crop",
     toolName: "图片裁剪",
     toolDesc: "调整比例和构图",
+    toolIcon: getToolIcon("crop"),
     filePath: "",
     resultPath: ""
   },
@@ -22,6 +34,7 @@ Page({
       tool: tool.id,
       toolName: tool.name,
       toolDesc: tool.desc,
+      toolIcon: getToolIcon(tool.id),
       filePath,
       resultPath: filePath
     });
