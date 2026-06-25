@@ -1,0 +1,40 @@
+{
+  "pages": [
+    "pages/toolbox/index",
+    "pages/diary/index",
+    "pages/me/index",
+    "pages/register-complete/index",
+    "pages/editor/index",
+    "pages/day-detail/index",
+    "pages/card-detail/index",
+    "pages/search/index",
+    "pages/books/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "灵感日记",
+    "navigationBarBackgroundColor": "#f8f3ea",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f8f3ea"
+  },
+  "tabBar": {
+    "color": "#8f8173",
+    "selectedColor": "#1f7a4f",
+    "backgroundColor": "#fffaf3",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/diary/index",
+        "text": "灵感"
+      },
+      {
+        "pagePath": "pages/toolbox/index",
+        "text": "工具箱"
+      },
+      {
+        "pagePath": "pages/me/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "sitemapLocation": "sitemap.json"
+}
