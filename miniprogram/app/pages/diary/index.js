@@ -1,4 +1,4 @@
-const { request, uploadImage, resolveAssetUrl } = require("../../utils/api");
+const { request, uploadImage, resolveAssetUrl, downloadAsset } = require("../../utils/api");
 const { requireRegistered, refreshAccountStatus } = require("../../utils/auth");
 const { currentWeekId, days } = require("../../utils/dates");
 
@@ -72,18 +72,25 @@ Page({
       const cards = rawCards.map(normalizeCard);
       cacheCards(cards);
 
-      const cardsByDay = days.map((day, index) => {
+      const cardsByDay = await Promise.all(days.map(async (day, index) => {
         const dayCards = cards.filter((card) => Number(card.dayIndex) === index);
         const count = dayCards.length;
+        const coverImages = await Promise.all(
+          dayCards
+            .slice(0, 3)
+            .map(imageFor)
+            .filter(Boolean)
+            .map((url) => downloadAsset(url))
+        );
         return {
           day,
           cards: dayCards,
           count,
           countText: count ? `${count} 条灵感` : "等待记录",
           cover: dayCards[0] || null,
-          coverImages: dayCards.slice(0, 3).map(imageFor).filter(Boolean)
+          coverImages
         };
-      });
+      }));
       const allTerms = cards.reduce((sum, card) => sum + card.terms.length, 0);
       this.setData({ cardsByDay, totalCards: cards.length, totalTerms: allTerms });
     } catch (err) {
@@ -97,6 +104,10 @@ Page({
     wx.navigateTo({
       url: `/pages/day-detail/index?dayIndex=${event.currentTarget.dataset.index}&weekId=${encodeURIComponent(this.data.weekId)}`
     });
+  },
+
+  onImageError(event) {
+    console.warn("Diary cover image failed:", event.currentTarget.dataset.src, event.detail);
   },
 
   openSearch() {

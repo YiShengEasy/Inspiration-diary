@@ -30,6 +30,29 @@ function resolveAssetUrl(url) {
   return `${resolvedUrl}${separator}miniToken=${encodeURIComponent(token)}`;
 }
 
+function downloadAsset(url) {
+  const src = resolveAssetUrl(url);
+  if (!src || src.indexOf("/api/photos/") < 0) return Promise.resolve(src);
+
+  return new Promise((resolve) => {
+    const token = getToken();
+    wx.downloadFile({
+      url: src,
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success(res) {
+        if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
+          resolve(res.tempFilePath);
+          return;
+        }
+        resolve(src);
+      },
+      fail() {
+        resolve(src);
+      }
+    });
+  });
+}
+
 function request({ url, method = "GET", data, header = {} }) {
   return new Promise((resolve, reject) => {
     const token = getToken();
@@ -94,4 +117,4 @@ function uploadImage({ url, filePath, name = "image", formData = {} }) {
   });
 }
 
-module.exports = { request, uploadImage, getToken, resolveAssetUrl };
+module.exports = { request, uploadImage, getToken, resolveAssetUrl, downloadAsset };
