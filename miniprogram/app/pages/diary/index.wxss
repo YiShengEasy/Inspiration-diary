@@ -208,15 +208,15 @@ button::after {
 }
 
 .week-nav {
-  width: 62rpx;
-  height: 62rpx;
+  width: 54rpx;
+  height: 54rpx;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #f0e6d7;
   color: #111111;
-  font-size: 28rpx;
+  font-size: 24rpx;
   font-weight: 700;
   line-height: 1;
 }
@@ -228,8 +228,8 @@ button::after {
 }
 
 .icon-btn {
-  width: 84rpx;
-  height: 84rpx;
+  width: 73rpx;
+  height: 73rpx;
   border-radius: 28rpx;
   display: flex;
   align-items: center;
@@ -241,19 +241,19 @@ button::after {
 
 .search-icon {
   position: relative;
-  width: 34rpx;
-  height: 34rpx;
-  border: 6rpx solid #111111;
+  width: 29rpx;
+  height: 29rpx;
+  border: 4rpx solid #111111;
   border-radius: 50%;
 }
 
 .search-icon::after {
   content: "";
   position: absolute;
-  right: -12rpx;
-  bottom: -8rpx;
-  width: 18rpx;
-  height: 6rpx;
+  right: -10rpx;
+  bottom: -6rpx;
+  width: 15rpx;
+  height: 4rpx;
   border-radius: 999rpx;
   background: #111111;
   transform: rotate(45deg);
@@ -261,32 +261,32 @@ button::after {
 
 .calendar-icon {
   position: relative;
-  width: 38rpx;
-  height: 38rpx;
-  border: 6rpx solid #111111;
+  width: 32rpx;
+  height: 32rpx;
+  border: 4rpx solid #111111;
   border-radius: 8rpx;
 }
 
 .calendar-icon::before {
   content: "";
   position: absolute;
-  left: -6rpx;
-  right: -6rpx;
-  top: 8rpx;
-  height: 6rpx;
+  left: -4rpx;
+  right: -4rpx;
+  top: 7rpx;
+  height: 4rpx;
   background: #111111;
 }
 
 .calendar-icon::after {
   content: "";
   position: absolute;
-  left: 7rpx;
-  top: 20rpx;
-  width: 5rpx;
-  height: 5rpx;
+  left: 6rpx;
+  top: 18rpx;
+  width: 4rpx;
+  height: 4rpx;
   border-radius: 50%;
   background: #111111;
-  box-shadow: 12rpx 0 0 #111111, 0 10rpx 0 #111111, 12rpx 10rpx 0 #111111;
+  box-shadow: 10rpx 0 0 #111111, 0 8rpx 0 #111111, 10rpx 8rpx 0 #111111;
 }
 
 .summary-card,
@@ -719,7 +719,7 @@ button::after {
   border-radius: 14rpx;
   background: #ecffd8;
   color: #132006;
-  font-size: 24rpx;
+  font-size: 20rpx;
   font-weight: 900;
 }
 
@@ -727,13 +727,13 @@ button::after {
   position: fixed;
   right: 34rpx;
   bottom: 52rpx;
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: 50%;
-  background: #b7ff38;
-  color: #132006;
-  box-shadow: 0 18rpx 40rpx rgba(84, 118, 20, 0.28);
-  font-size: 58rpx;
+  width: 101rpx;
+  height: 101rpx;
+  border-radius: 38rpx;
+  background: #111111;
+  color: #b7ff38;
+  box-shadow: 0 31rpx 59rpx rgba(0, 0, 0, 0.24);
+  font-size: 49rpx;
   font-weight: 700;
   display: flex;
   align-items: center;
