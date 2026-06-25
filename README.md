@@ -62,6 +62,35 @@ The production app uses local PostgreSQL-backed users and server-side sessions. 
 
 All card, note, settings, AI, upload, and photo proxy APIs require login. Sessions are stored in PostgreSQL and sent to the browser as an `HttpOnly` cookie named `inspiration_session`.
 
+## Native WeChat Mini Program
+
+The native mini program lives in `miniprogram/app`. Open that directory in WeChat Developer Tools.
+
+Do not open `miniprogram/prototype` for native mini-program testing. That directory is the React/Vite visual prototype used as the design reference.
+
+Local backend:
+
+```bash
+npm run docker:prod:detached
+```
+
+Smoke checks:
+
+```bash
+npm run auth:smoke
+AUTH_SMOKE_BASE_URL=http://localhost:3000 npm run mini:auth:smoke
+```
+
+For local WeChat login testing, start a mock-enabled backend:
+
+```bash
+WECHAT_MOCK=true npm run dev
+```
+
+For normal local mini-program API calls, `miniprogram/app/app.js` defaults to `http://localhost:3005`. For mock WeChat auth testing, set the mini-program `apiBaseUrl` to `http://localhost:3000` while the mock backend is running.
+
+Keep `urlCheck` disabled in `miniprogram/app/project.config.json` for local development against `localhost`.
+
 ## PhotoPrism Image Storage
 
 New image uploads are stored in PhotoPrism. PostgreSQL stores only URL metadata for each inspiration card.
