@@ -447,6 +447,52 @@ button::after {
   box-shadow: 0 12rpx 26rpx rgba(85, 63, 31, 0.18);
 }
 
+.cover-md {
+  box-sizing: border-box;
+  padding: 12rpx 10rpx;
+  overflow: hidden;
+  text-align: left;
+  background: linear-gradient(160deg, #ffffff 0%, #fbfaf6 58%, #eee9df 100%);
+  color: #211f1a;
+}
+
+.cover-md::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 62rpx;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), #ffffff 86%);
+}
+
+.cover-md-title,
+.cover-md-summary {
+  display: block;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.cover-md-title {
+  position: relative;
+  z-index: 1;
+  max-height: 42rpx;
+  color: #151712;
+  font-size: 18rpx;
+  font-weight: 900;
+  line-height: 21rpx;
+}
+
+.cover-md-summary {
+  position: relative;
+  z-index: 1;
+  margin-top: 8rpx;
+  max-height: 68rpx;
+  color: #8b8a82;
+  font-size: 16rpx;
+  line-height: 22rpx;
+}
+
 .stack-0 {
   left: 18rpx;
   top: 12rpx;

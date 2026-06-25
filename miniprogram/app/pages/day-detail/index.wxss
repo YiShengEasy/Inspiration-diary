@@ -104,13 +104,50 @@ button::after {
 }
 
 .md-thumb {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #151712;
-  color: #b7ff38;
-  font-size: 30rpx;
-  font-weight: 950;
+  position: relative;
+  box-sizing: border-box;
+  padding: 14rpx 12rpx;
+  overflow: hidden;
+  background: linear-gradient(160deg, #ffffff 0%, #fbfaf6 56%, #ede8de 100%);
+  border: 6rpx solid #ffffff;
+  box-shadow: 0 12rpx 24rpx rgba(85, 63, 31, 0.16);
+  transform: rotate(-4deg);
+  text-align: left;
+}
+
+.md-thumb::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 62rpx;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), #ffffff 88%);
+}
+
+.md-thumb-title,
+.md-thumb-summary {
+  position: relative;
+  z-index: 1;
+  display: block;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.md-thumb-title {
+  max-height: 44rpx;
+  color: #151712;
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 22rpx;
+}
+
+.md-thumb-summary {
+  margin-top: 10rpx;
+  max-height: 74rpx;
+  color: #8a8981;
+  font-size: 18rpx;
+  line-height: 25rpx;
 }
 
 .card-copy {

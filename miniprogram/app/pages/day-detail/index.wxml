@@ -17,8 +17,11 @@
 
   <view class="card-list">
     <button wx:for="{{cards}}" wx:key="id" class="gallery-card" data-id="{{item.id}}" bindtap="openCard">
-      <image wx:if="{{item.image}}" class="thumb" src="{{item.image}}" mode="aspectFill"></image>
-      <view wx:else class="md-thumb">MD</view>
+      <image wx:if="{{!item.isMd && item.image}}" class="thumb" src="{{item.image}}" mode="aspectFill"></image>
+      <view wx:else class="thumb md-thumb">
+        <text class="md-thumb-title">{{item.title}}</text>
+        <text class="md-thumb-summary">{{item.summary}}</text>
+      </view>
       <view class="card-copy">
         <text class="type-pill">{{item.typeLabel}}</text>
         <text class="card-title">{{item.title}}</text>

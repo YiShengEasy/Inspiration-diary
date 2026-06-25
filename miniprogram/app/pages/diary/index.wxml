@@ -90,15 +90,20 @@
         </view>
         <view wx:if="{{item.count}}" class="day-content">
           <view class="cover-stack">
-            <image
-              wx:for="{{item.coverImages}}"
-              wx:key="*this"
-              class="cover-image stack-{{index}}"
-              src="{{item}}"
-              mode="aspectFill"
-              data-src="{{item}}"
-              binderror="onImageError"
-            ></image>
+            <block wx:for="{{item.coverPreviews}}" wx:key="id">
+              <view wx:if="{{item.isMd}}" class="cover-image cover-md stack-{{index}}">
+                <text class="cover-md-title">{{item.title}}</text>
+                <text class="cover-md-summary">{{item.summary}}</text>
+              </view>
+              <image
+                wx:else
+                class="cover-image stack-{{index}}"
+                src="{{item.image}}"
+                mode="aspectFill"
+                data-src="{{item.image}}"
+                binderror="onImageError"
+              ></image>
+            </block>
             <text wx:if="{{item.count > 1}}" class="more-count">+{{item.count - 1}}</text>
           </view>
           <view class="cover-text">

@@ -7,8 +7,9 @@ function normalizeCard(card) {
     ...card,
     image: resolveAssetUrl(card.image || card.imageUrl || card.thumbnailUrl || ""),
     title: card.mdName || terms[0] || "灵感卡片",
-    summary: card.mdSummary || card.insightNote || "",
+    summary: card.mdSummary || card.mdContent || card.insightNote || "",
     typeLabel: card.type === "md" ? "MD" : "IMG",
+    isMd: card.type === "md",
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleString("zh-CN") : "",
     terms,
     termsText: terms.join(" / ")

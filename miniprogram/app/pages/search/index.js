@@ -16,8 +16,9 @@ function normalizeCard(card) {
     ...card,
     image: resolveAssetUrl(card.thumbnailUrl || card.imageUrl || ""),
     title: card.mdName || terms[0] || "灵感图片",
-    summary: card.mdSummary || card.insightNote || "",
+    summary: card.mdSummary || card.mdContent || card.insightNote || "",
     typeLabel: card.type === "md" ? "MD" : "IMG",
+    isMd: card.type === "md",
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "",
     terms,
     termsText: terms.join(" / ")

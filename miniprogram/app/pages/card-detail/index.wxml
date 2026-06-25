@@ -3,8 +3,13 @@
   <view wx:elif="{{error && hasCard}}" class="status-card">{{error}}</view>
 
   <view wx:if="{{hasCard}}" class="detail-card">
-    <image wx:if="{{card.image}}" class="hero-image" src="{{card.image}}" mode="aspectFill"></image>
-    <view wx:else class="hero-md">MD</view>
+    <image wx:if="{{!card.isMd && card.image}}" class="hero-image" src="{{card.image}}" mode="aspectFill"></image>
+    <view wx:else class="hero-md">
+      <view class="hero-md-paper">
+        <text class="hero-md-title">{{card.title}}</text>
+        <text class="hero-md-summary">{{card.summary}}</text>
+      </view>
+    </view>
 
     <view class="detail-copy">
       <text class="type-pill">{{card.typeLabel}}</text>

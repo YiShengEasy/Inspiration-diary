@@ -12,6 +12,17 @@ function imageFor(card) {
   return resolveAssetUrl(card.thumbnailUrl || card.imageUrl || "");
 }
 
+function previewFor(card) {
+  const image = imageFor(card);
+  return {
+    id: card.id,
+    isMd: card.type === "md",
+    image,
+    title: card.mdName || "Markdown Note",
+    summary: card.mdSummary || card.mdContent || "点击查看完整手稿。"
+  };
+}
+
 function weekLabel(weekId) {
   const match = String(weekId || "").match(/W(\d+)/);
   return match ? `第 ${Number(match[1])} 周` : "本周";
@@ -25,6 +36,7 @@ function normalizeCard(card) {
     title: card.mdName || terms[0] || "灵感图片",
     summary: card.mdSummary || card.insightNote || "",
     typeLabel: card.type === "md" ? "MD" : "IMG",
+    isMd: card.type === "md",
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "",
     terms,
     termsText: terms.join(" / ")
@@ -94,14 +106,14 @@ Page({
       const cardsByDay = days.map((day, index) => {
         const dayCards = cards.filter((card) => Number(card.dayIndex) === index);
         const count = dayCards.length;
-        const coverImages = dayCards.slice(0, 3).map(imageFor).filter(Boolean);
+        const coverPreviews = dayCards.slice(0, 3).map(previewFor);
         return {
           day,
           cards: dayCards,
           count,
           countText: count ? `${count} 条灵感` : "等待记录",
           cover: dayCards[0] || null,
-          coverImages
+          coverPreviews
         };
       });
       const allTerms = cards.reduce((sum, card) => sum + card.terms.length, 0);
