@@ -28,6 +28,24 @@ function weekLabel(weekId) {
   return match ? `第 ${Number(match[1])} 周` : "本周";
 }
 
+function weekDateRange(weekId) {
+  const match = String(weekId || "").match(/^(\d{4})-W(\d{1,2})$/);
+  if (!match) return "";
+
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  const janFourth = new Date(Date.UTC(year, 0, 4));
+  const janFourthDay = janFourth.getUTCDay() || 7;
+  const monday = new Date(janFourth);
+  monday.setUTCDate(janFourth.getUTCDate() - janFourthDay + 1 + (week - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const format = (date) => `${months[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  return `${format(monday)} - ${format(sunday)}`;
+}
+
 function normalizeCard(card) {
   const terms = Array.isArray(card.terms) ? card.terms : [];
   return {
@@ -65,6 +83,7 @@ Page({
     accountState: "guest",
     weekId: currentWeekId(),
     weekLabel: weekLabel(currentWeekId()),
+    weekDateRange: weekDateRange(currentWeekId()),
     days,
     books: [],
     cardsByDay: [],
