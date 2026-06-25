@@ -46,6 +46,11 @@ function weekDateRange(weekId) {
   return `${format(monday)} - ${format(sunday)}`;
 }
 
+function formatTermsText(terms) {
+  const visibleTerms = terms.slice(0, 3);
+  return `${visibleTerms.join(" / ")}${terms.length > 3 ? " ..." : ""}`;
+}
+
 function normalizeCard(card) {
   const terms = Array.isArray(card.terms) ? card.terms : [];
   return {
@@ -57,7 +62,7 @@ function normalizeCard(card) {
     isMd: card.type === "md",
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "",
     terms,
-    termsText: terms.join(" / ")
+    termsText: formatTermsText(terms)
   };
 }
 
