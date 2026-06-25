@@ -1,3 +1,54 @@
-<view class="page">
-  <text>工具箱</text>
+<view class="page toolbox-page">
+  <view class="promo-banner">
+    <view class="promo-copy">
+      <text class="eyebrow">INSPIRATION DIARY</text>
+      <text class="title">把图片灵感收进每天的日记</text>
+      <text class="subtitle">工具箱可以先用，保存到灵感日记需要完成账号注册</text>
+    </view>
+    <view class="promo-stack" aria-hidden="true">
+      <view class="stack-card card-back"></view>
+      <view class="stack-card card-front">
+        <view class="stack-dot"></view>
+        <view class="stack-line long"></view>
+        <view class="stack-line"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="featured">
+    <button bindtap="importImage" data-source="album" class="feature main">
+      <text class="feature-label">本地图片</text>
+      <text class="feature-title">导入图片</text>
+      <text class="feature-desc">裁剪、滤镜后保存灵感</text>
+    </button>
+    <button bindtap="importImage" data-source="camera" class="feature camera">
+      <text class="feature-label">拍摄</text>
+      <text class="feature-title">相机</text>
+    </button>
+    <button data-id="pixel" bindtap="openTool" class="feature pixel">
+      <text class="feature-label">重点工具</text>
+      <text class="feature-title">像素风</text>
+    </button>
+  </view>
+
+  <scroll-view class="category-tabs" scroll-x enable-flex>
+    <block wx:for="{{categories}}" wx:key="*this">
+      <button class="category {{category === item ? 'active' : ''}}" data-category="{{item}}" bindtap="selectCategory">{{item}}</button>
+    </block>
+  </scroll-view>
+
+  <view class="tool-grid" wx:if="{{visibleTools.length}}">
+    <block wx:for="{{visibleTools}}" wx:key="id">
+      <button class="tool-card {{item.accent}}" data-id="{{item.id}}" bindtap="openTool">
+        <text class="tool-icon">{{item.iconText}}</text>
+        <text class="tool-name">{{item.name}}</text>
+        <text class="tool-desc">{{item.desc}}</text>
+      </button>
+    </block>
+  </view>
+
+  <view class="empty-state" wx:else>
+    <text class="empty-title">这个分类还在整理</text>
+    <text class="empty-desc">先试试常用工具，后续会补充更多能力。</text>
+  </view>
 </view>

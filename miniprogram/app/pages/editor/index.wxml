@@ -1,3 +1,44 @@
-<view class="page">
-  <text>编辑</text>
+<view class="editor-page">
+  <view class="editor-header">
+    <button class="header-button" bindtap="goBack">返回</button>
+    <view class="header-title">
+      <text class="title">{{toolName}}</text>
+      <text class="subtitle">{{toolDesc}}</text>
+    </view>
+    <button class="header-button" bindtap="chooseImage">换图</button>
+  </view>
+
+  <view class="editor-canvas {{tool === 'pixel' ? 'pixelated' : ''}}">
+    <image wx:if="{{filePath}}" class="preview-image" src="{{resultPath || filePath}}" mode="aspectFit"></image>
+    <view wx:else class="empty-preview" bindtap="chooseImage">
+      <text class="empty-mark">+</text>
+      <text class="empty-title">选择一张图片</text>
+      <text class="empty-desc">从相册或相机导入后预览</text>
+    </view>
+    <view class="canvas-badge">{{toolName}}</view>
+  </view>
+
+  <view class="controls">
+    <view class="control-head">
+      <view>
+        <text class="control-title">本地预览</text>
+        <text class="control-desc">预览结果可保存到相册或灵感日记</text>
+      </view>
+      <button class="choose-button" bindtap="chooseImage">选择图片</button>
+    </view>
+
+    <view class="result-row">
+      <text class="result-label">当前工具</text>
+      <text class="result-value">{{toolName}}</text>
+    </view>
+    <view class="result-row">
+      <text class="result-label">图片状态</text>
+      <text class="result-value">{{filePath ? '已选择' : '未选择'}}</text>
+    </view>
+
+    <view class="editor-actions">
+      <button bindtap="saveToAlbum">保存到相册</button>
+      <button class="primary" bindtap="saveToDiary">保存到灵感日记</button>
+    </view>
+  </view>
 </view>
