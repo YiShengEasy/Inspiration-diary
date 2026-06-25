@@ -39,34 +39,45 @@
   </view>
 
   <view wx:else class="weekly-layout">
-    <view class="diary-header">
-      <view>
-        <text class="caption">本周灵感</text>
-        <text class="week-title">{{weekId}}</text>
-      </view>
-      <view class="header-actions">
-        <button class="icon-btn" hover-class="button-press" hover-stay-time="80" bindtap="openSearch">
-          <view class="search-icon"></view>
-        </button>
-      </view>
+    <view class="week-switcher">
+      <button class="week-nav" hover-class="button-press">‹</button>
+      <text class="week-pill-title">{{weekLabel}}</text>
+      <button class="week-nav" hover-class="button-press">›</button>
     </view>
 
-    <button class="summary-card">
+    <button class="summary-card" hover-class="button-press">
       <view>
         <text class="summary-label">本周总结</text>
-        <text class="summary-title">{{totalCards}} 条灵感 · {{totalTerms}} 个标签</text>
-        <text class="summary-desc">新增内容会按日期整理，AI 标签完成后自动刷新。</text>
+        <text class="summary-title">{{totalCards}} 条灵感 · {{mdCount}} 篇手稿 · {{totalTerms}} 个标签</text>
+        <text class="summary-desc">AI 已整理本周风格：自然层次、纸感版式、像素复古。</text>
       </view>
       <text class="summary-action">查看</text>
     </button>
 
-    <button class="books-card" bindtap="openBooks">
-      <view>
-        <text class="books-label">我的灵感册</text>
-        <text class="books-title">按专题收纳每日灵感</text>
+    <view class="books-section">
+      <view class="section-head">
+        <text class="section-title">我的灵感册</text>
+        <button class="manage-button" hover-class="button-press" bindtap="openBooks">
+          <text>管理</text>
+          <text class="manage-chevron">›</text>
+        </button>
       </view>
-      <text class="books-action">管理</text>
-    </button>
+      <scroll-view class="book-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+        <view class="book-strip">
+          <view wx:for="{{books}}" wx:key="id" class="book-tile">
+            <image wx:if="{{item.coverImage}}" class="book-tile-image" src="{{item.coverImage}}" mode="aspectFill"></image>
+            <view wx:else class="book-tile-image empty-book"></view>
+            <text class="book-tile-title">{{item.title}}</text>
+            <text class="book-tile-count">{{item.cardCountText}}</text>
+          </view>
+          <view wx:if="{{!books.length}}" class="book-tile placeholder-book" bindtap="openBooks">
+            <view class="book-tile-image empty-book"></view>
+            <text class="book-tile-title">新建灵感册</text>
+            <text class="book-tile-count">开始收纳</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
 
     <view wx:if="{{loading}}" class="state">正在加载本周灵感...</view>
     <view wx:if="{{error}}" class="state error">{{error}}</view>
@@ -88,16 +99,10 @@
               data-src="{{item}}"
               binderror="onImageError"
             ></image>
-            <text wx:if="{{item.count > 3}}" class="more-count">+{{item.count}}</text>
+            <text wx:if="{{item.count > 1}}" class="more-count">+{{item.count - 1}}</text>
           </view>
           <view class="cover-text">
-            <view class="type-pill {{item.cover.typeLabel === 'IMG' ? 'image-pill' : 'md-pill'}}">
-              <view wx:if="{{item.cover.typeLabel === 'IMG'}}" class="picture-icon">
-                <view class="picture-sun"></view>
-                <view class="picture-mountain"></view>
-              </view>
-              <text wx:else class="type-icon">MD</text>
-            </view>
+            <text class="type-pill {{item.cover.typeLabel === 'IMG' ? 'image-pill' : 'md-pill'}}">{{item.cover.typeLabel}}</text>
             <text class="cover-title">{{item.cover.title}}</text>
             <text class="cover-tags">{{item.cover.termsText}}</text>
           </view>

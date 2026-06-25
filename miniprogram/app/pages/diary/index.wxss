@@ -167,23 +167,36 @@ button::after {
   padding-bottom: 130rpx;
 }
 
-.diary-header {
+.week-switcher {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 26rpx;
+  height: 76rpx;
+  margin-bottom: 22rpx;
+  padding: 0 18rpx;
+  border: 2rpx solid #eadcc8;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.78);
 }
 
-.week-title {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 44rpx;
-  font-weight: 950;
-}
-
-.header-actions {
+.week-nav {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
   display: flex;
-  gap: 14rpx;
+  align-items: center;
+  justify-content: center;
+  background: #f0e6d7;
+  color: #111111;
+  font-size: 44rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.week-pill-title {
+  color: #111111;
+  font-size: 30rpx;
+  font-weight: 950;
 }
 
 .icon-btn {
@@ -219,37 +232,41 @@ button::after {
 }
 
 .summary-card,
-.books-card {
+.section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  border-radius: 26rpx;
   box-sizing: border-box;
 }
 
 .summary-card {
-  min-height: 178rpx;
+  min-height: 176rpx;
   padding: 28rpx;
+  border-radius: 28rpx;
   background: #151712;
   color: #ffffff;
 }
 
-.summary-label,
-.books-label {
+.summary-label {
   display: block;
   font-size: 23rpx;
   font-weight: 800;
 }
 
 .summary-label {
-  color: #b7ff38;
+  display: inline-flex;
+  align-items: center;
+  height: 40rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  background: #b7ff38;
+  color: #102006;
 }
 
-.summary-title,
-.books-title {
+.summary-title {
   display: block;
-  margin-top: 10rpx;
+  margin-top: 18rpx;
   font-size: 32rpx;
   font-weight: 900;
 }
@@ -261,29 +278,105 @@ button::after {
   font-size: 24rpx;
 }
 
-.summary-action,
-.books-action {
+.summary-action {
   flex-shrink: 0;
   border-radius: 999rpx;
-  padding: 12rpx 20rpx;
   font-size: 24rpx;
   font-weight: 900;
 }
 
 .summary-action {
+  width: 74rpx;
+  height: 74rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #b7ff38;
   color: #132006;
 }
 
-.books-card {
-  margin-top: 18rpx;
-  padding: 26rpx;
-  background: #ecffd8;
-  color: #17220e;
+.books-section {
+  margin-top: 30rpx;
 }
 
-.books-action {
+.section-head {
+  margin-bottom: 18rpx;
+}
+
+.section-title {
+  color: #151712;
+  font-size: 34rpx;
+  font-weight: 950;
+}
+
+.manage-button {
+  height: 64rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  background: rgba(255, 255, 255, 0.86);
+  color: #6f6254;
+  font-size: 26rpx;
+  font-weight: 900;
+}
+
+.manage-chevron {
+  font-size: 36rpx;
+  line-height: 1;
+}
+
+.book-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.book-strip {
+  display: inline-flex;
+  gap: 20rpx;
+  padding: 0 2rpx 8rpx;
+}
+
+.book-tile {
+  width: 166rpx;
+  padding: 10rpx;
+  border-radius: 24rpx;
   background: #ffffff;
+  box-shadow: 0 12rpx 28rpx rgba(85, 63, 31, 0.1);
+}
+
+.book-tile-image {
+  width: 146rpx;
+  height: 104rpx;
+  border-radius: 16rpx;
+  background: #f0e6d7;
+}
+
+.empty-book {
+  background: linear-gradient(135deg, #efe7d8, #ffffff);
+}
+
+.book-tile-title,
+.book-tile-count {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.book-tile-title {
+  margin-top: 14rpx;
+  color: #151712;
+  font-size: 26rpx;
+  font-weight: 950;
+}
+
+.book-tile-count {
+  margin-top: 6rpx;
+  color: #9a8064;
+  font-size: 22rpx;
+  font-weight: 900;
 }
 
 .state {
@@ -308,11 +401,11 @@ button::after {
   display: block;
   width: 100%;
   margin-bottom: 20rpx;
-  border-radius: 28rpx;
-  padding: 24rpx;
+  border-radius: 30rpx;
+  padding: 24rpx 20rpx;
   box-sizing: border-box;
   background: #ffffff;
-  box-shadow: 0 14rpx 36rpx rgba(20, 24, 18, 0.08);
+  box-shadow: 0 16rpx 40rpx rgba(85, 63, 31, 0.1);
 }
 
 .day-title-row,
@@ -323,7 +416,7 @@ button::after {
 }
 
 .day-name {
-  font-size: 34rpx;
+  font-size: 32rpx;
   font-weight: 950;
 }
 
@@ -333,51 +426,59 @@ button::after {
 }
 
 .day-content {
-  margin-top: 20rpx;
-  gap: 20rpx;
+  margin-top: 22rpx;
+  gap: 26rpx;
 }
 
 .cover-stack {
   position: relative;
-  width: 164rpx;
-  height: 120rpx;
+  width: 154rpx;
+  height: 154rpx;
   flex-shrink: 0;
 }
 
 .cover-image {
   position: absolute;
-  width: 92rpx;
-  height: 112rpx;
+  width: 124rpx;
+  height: 134rpx;
   border: 6rpx solid #ffffff;
-  border-radius: 18rpx;
+  border-radius: 20rpx;
   background: #eef1e8;
-  box-shadow: 0 10rpx 24rpx rgba(20, 24, 18, 0.16);
+  box-shadow: 0 12rpx 26rpx rgba(85, 63, 31, 0.18);
 }
 
 .stack-0 {
-  left: 0;
-  top: 6rpx;
-  transform: rotate(-8deg);
+  left: 18rpx;
+  top: 12rpx;
+  z-index: 3;
+  transform: rotate(-4deg);
 }
 
 .stack-1 {
-  left: 40rpx;
-  top: 0;
-  transform: rotate(5deg);
+  left: 6rpx;
+  top: 4rpx;
+  z-index: 2;
+  transform: rotate(-8deg);
 }
 
 .stack-2 {
-  left: 76rpx;
-  top: 10rpx;
-  transform: rotate(9deg);
+  left: 0;
+  top: 18rpx;
+  z-index: 1;
+  transform: rotate(-12deg);
 }
 
 .more-count {
   position: absolute;
   right: 0;
-  bottom: 0;
+  top: 0;
+  z-index: 4;
   border-radius: 999rpx;
-  padding: 4rpx 12rpx;
+  min-width: 46rpx;
+  height: 46rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #111111;
   color: #b7ff38;
   font-size: 22rpx;
@@ -393,11 +494,13 @@ button::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 64rpx;
-  height: 64rpx;
+  width: auto;
+  height: 36rpx;
+  padding: 0 14rpx;
   border-radius: 999rpx;
-  background: #111111;
-  color: #b7ff38;
+  background: #ead8bd;
+  color: #9a6f32;
+  font-size: 22rpx;
   font-weight: 900;
 }
 
@@ -438,8 +541,8 @@ button::after {
 }
 
 .md-pill {
-  background: #fff3d6;
-  color: #111111;
+  background: #ead8bd;
+  color: #9a6f32;
 }
 
 .cover-title,
@@ -451,13 +554,13 @@ button::after {
 }
 
 .cover-title {
-  margin-top: 10rpx;
-  font-size: 30rpx;
+  margin-top: 14rpx;
+  font-size: 32rpx;
   font-weight: 900;
 }
 
 .cover-tags {
-  margin-top: 8rpx;
+  margin-top: 16rpx;
   color: #777b72;
   font-size: 24rpx;
 }

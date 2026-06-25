@@ -12,6 +12,11 @@ function imageFor(card) {
   return resolveAssetUrl(card.thumbnailUrl || card.imageUrl || "");
 }
 
+function weekLabel(weekId) {
+  const match = String(weekId || "").match(/W(\d+)/);
+  return match ? `第 ${Number(match[1])} 周` : "本周";
+}
+
 function normalizeCard(card) {
   const terms = Array.isArray(card.terms) ? card.terms : [];
   return {
@@ -26,6 +31,17 @@ function normalizeCard(card) {
   };
 }
 
+async function normalizeBook(book) {
+  const cover = book.coverCard || null;
+  const coverImage = cover ? await downloadAsset(cover.thumbnailUrl || cover.imageUrl || "") : "";
+  return {
+    ...book,
+    coverImage,
+    cardCountText: `${Number(book.cardCount || 0)} 条`,
+    descriptionText: book.description || ""
+  };
+}
+
 function cacheCards(cards) {
   cards.forEach((card) => {
     if (card && card.id) wx.setStorageSync(`miniCard:${card.id}`, card);
@@ -36,9 +52,12 @@ Page({
   data: {
     accountState: "guest",
     weekId: currentWeekId(),
+    weekLabel: weekLabel(currentWeekId()),
     days,
+    books: [],
     cardsByDay: [],
     totalCards: 0,
+    mdCount: 0,
     totalTerms: 0,
     loading: false,
     uploading: false,
@@ -53,9 +72,9 @@ Page({
       const status = await refreshAccountStatus();
       this.setData({ accountState: status.accountState || "guest", error: "" });
       if (status.accountState === "registered") {
-        await this.loadCards();
+        await Promise.all([this.loadCards(), this.loadBooks()]);
       } else {
-        this.setData({ cardsByDay: [] });
+        this.setData({ cardsByDay: [], books: [] });
       }
     } catch (err) {
       this.setData({ accountState: "guest", error: err.message || "账号状态加载失败" });
@@ -92,11 +111,22 @@ Page({
         };
       }));
       const allTerms = cards.reduce((sum, card) => sum + card.terms.length, 0);
-      this.setData({ cardsByDay, totalCards: cards.length, totalTerms: allTerms });
+      const mdCount = cards.filter((card) => card.type === "md").length;
+      this.setData({ cardsByDay, totalCards: cards.length, mdCount, totalTerms: allTerms });
     } catch (err) {
       this.setData({ error: err.message || "灵感加载失败" });
     } finally {
       this.setData({ loading: false });
+    }
+  },
+
+  async loadBooks() {
+    try {
+      const body = await request({ url: "/api/db/books" });
+      const books = Array.isArray(body) ? await Promise.all(body.map(normalizeBook)) : [];
+      this.setData({ books });
+    } catch (err) {
+      this.setData({ books: [] });
     }
   },
 

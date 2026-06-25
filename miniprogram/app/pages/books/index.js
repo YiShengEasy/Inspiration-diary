@@ -1,12 +1,13 @@
-const { request, resolveAssetUrl } = require("../../utils/api");
+const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
 
-function normalizeBook(book) {
+async function normalizeBook(book) {
   const cover = book.coverCard || null;
+  const coverImage = cover ? await downloadAsset(resolveAssetUrl(cover.thumbnailUrl || cover.imageUrl || "")) : "";
   return {
     ...book,
     cardCountText: `${Number(book.cardCount || 0)} 条灵感`,
     descriptionText: book.description || "暂无描述",
-    coverImage: cover ? resolveAssetUrl(cover.thumbnailUrl || cover.imageUrl || "") : "",
+    coverImage,
     updatedText: book.updatedAt ? new Date(Number(book.updatedAt)).toLocaleDateString("zh-CN") : ""
   };
 }
@@ -28,7 +29,7 @@ Page({
     this.setData({ loading: true, error: "" });
     try {
       const body = await request({ url: "/api/db/books" });
-      const books = Array.isArray(body) ? body.map(normalizeBook) : [];
+      const books = Array.isArray(body) ? await Promise.all(body.map(normalizeBook)) : [];
       this.setData({ books });
     } catch (err) {
       this.setData({ error: err.message || "灵感册加载失败" });

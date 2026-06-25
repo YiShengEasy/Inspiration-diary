@@ -1,4 +1,4 @@
-const { request, resolveAssetUrl } = require("../../utils/api");
+const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
 const { days } = require("../../utils/dates");
 
 function normalizeCard(card) {
@@ -13,6 +13,11 @@ function normalizeCard(card) {
     terms,
     termsText: terms.join(" / ")
   };
+}
+
+async function hydrateCardImage(card) {
+  if (!card.image) return card;
+  return { ...card, image: await downloadAsset(card.image) };
 }
 
 Page({
@@ -45,8 +50,9 @@ Page({
       const cards = rawCards
         .filter((card) => Number(card.dayIndex) === this.data.dayIndex)
         .map(normalizeCard);
-      cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
-      this.setData({ cards });
+      const hydratedCards = await Promise.all(cards.map(hydrateCardImage));
+      hydratedCards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
+      this.setData({ cards: hydratedCards });
     } catch (err) {
       this.setData({ error: err.message || "日期灵感加载失败" });
     } finally {
