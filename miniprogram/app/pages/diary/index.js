@@ -1,4 +1,4 @@
-const { request, uploadImage } = require("../../utils/api");
+const { request, uploadImage, resolveAssetUrl } = require("../../utils/api");
 const { requireRegistered, refreshAccountStatus } = require("../../utils/auth");
 const { currentWeekId, days } = require("../../utils/dates");
 
@@ -9,7 +9,7 @@ function todayDayIndex() {
 }
 
 function imageFor(card) {
-  return card.thumbnailUrl || card.imageUrl || "";
+  return resolveAssetUrl(card.thumbnailUrl || card.imageUrl || "");
 }
 
 function normalizeCard(card) {

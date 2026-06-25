@@ -7,6 +7,7 @@
 }
 
 button {
+  box-sizing: border-box;
   padding: 0;
   background: transparent;
   text-align: left;
@@ -14,6 +15,11 @@ button {
 
 button::after {
   border: 0;
+}
+
+.button-press {
+  opacity: 0.82;
+  transform: scale(0.96);
 }
 
 .diary-preview {
@@ -184,12 +190,32 @@ button::after {
   width: 84rpx;
   height: 84rpx;
   border-radius: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #f0f2ea;
   color: #111111;
-  font-size: 28rpx;
-  font-weight: 900;
-  text-align: center;
-  line-height: 84rpx;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.search-icon {
+  position: relative;
+  width: 34rpx;
+  height: 34rpx;
+  border: 6rpx solid #111111;
+  border-radius: 50%;
+}
+
+.search-icon::after {
+  content: "";
+  position: absolute;
+  right: -12rpx;
+  bottom: -8rpx;
+  width: 18rpx;
+  height: 6rpx;
+  border-radius: 999rpx;
+  background: #111111;
+  transform: rotate(45deg);
 }
 
 .summary-card,
@@ -324,6 +350,7 @@ button::after {
   height: 112rpx;
   border: 6rpx solid #ffffff;
   border-radius: 18rpx;
+  background: #eef1e8;
   box-shadow: 0 10rpx 24rpx rgba(20, 24, 18, 0.16);
 }
 
@@ -363,13 +390,56 @@ button::after {
 }
 
 .type-pill {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
   border-radius: 999rpx;
-  padding: 5rpx 12rpx;
   background: #111111;
   color: #b7ff38;
-  font-size: 20rpx;
   font-weight: 900;
+}
+
+.type-icon {
+  display: block;
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+.picture-icon {
+  position: relative;
+  width: 32rpx;
+  height: 28rpx;
+  border: 4rpx solid #b7ff38;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+
+.picture-sun {
+  position: absolute;
+  right: 5rpx;
+  top: 5rpx;
+  width: 7rpx;
+  height: 7rpx;
+  border-radius: 50%;
+  background: #b7ff38;
+}
+
+.picture-mountain {
+  position: absolute;
+  left: 4rpx;
+  bottom: 3rpx;
+  width: 22rpx;
+  height: 14rpx;
+  background: #b7ff38;
+  transform: skewX(-26deg) rotate(4deg);
+  transform-origin: left bottom;
+}
+
+.md-pill {
+  background: #fff3d6;
+  color: #111111;
 }
 
 .cover-title,
@@ -411,6 +481,19 @@ button::after {
   font-weight: 800;
 }
 
+.empty-day-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 14rpx;
+  background: #ecffd8;
+  color: #132006;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
 .upload-fab {
   position: fixed;
   right: 34rpx;
@@ -423,6 +506,14 @@ button::after {
   box-shadow: 0 18rpx 40rpx rgba(84, 118, 20, 0.28);
   font-size: 58rpx;
   font-weight: 700;
-  line-height: 104rpx;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.upload-fab text {
+  display: block;
+  line-height: 1;
+  transform: translateY(-3rpx);
 }

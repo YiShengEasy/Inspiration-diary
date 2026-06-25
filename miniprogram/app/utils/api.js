@@ -7,6 +7,20 @@ function getToken() {
   return wx.getStorageSync("miniToken") || "";
 }
 
+function resolveAssetUrl(url) {
+  if (!url || typeof url !== "string") return "";
+  if (!/^https?:\/\//.test(url)) return url;
+
+  const baseUrl = getBaseUrl();
+  const baseMatch = baseUrl.match(/^(https?:\/\/)([^:/]+)(?::(\d+))?/);
+  if (!baseMatch) return url;
+
+  const [, protocol, host] = baseMatch;
+  return url.replace(/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/i, (match, _localHost, port = "") => {
+    return `${protocol}${host}${port}`;
+  });
+}
+
 function request({ url, method = "GET", data, header = {} }) {
   return new Promise((resolve, reject) => {
     const token = getToken();
@@ -71,4 +85,4 @@ function uploadImage({ url, filePath, name = "image", formData = {} }) {
   });
 }
 
-module.exports = { request, uploadImage, getToken };
+module.exports = { request, uploadImage, getToken, resolveAssetUrl };

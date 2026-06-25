@@ -1,4 +1,4 @@
-const { request } = require("../../utils/api");
+const { request, resolveAssetUrl } = require("../../utils/api");
 
 const filterNames = ["全部", "图片", "MD", "标签"];
 
@@ -14,7 +14,7 @@ function normalizeCard(card) {
   const terms = Array.isArray(card.terms) ? card.terms : [];
   return {
     ...card,
-    image: card.thumbnailUrl || card.imageUrl || "",
+    image: resolveAssetUrl(card.thumbnailUrl || card.imageUrl || ""),
     title: card.mdName || terms[0] || "灵感图片",
     summary: card.mdSummary || card.insightNote || "",
     typeLabel: card.type === "md" ? "MD" : "IMG",

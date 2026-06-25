@@ -1,4 +1,4 @@
-const { request } = require("../../utils/api");
+const { request, resolveAssetUrl } = require("../../utils/api");
 
 function normalizeBook(book) {
   const cover = book.coverCard || null;
@@ -6,7 +6,7 @@ function normalizeBook(book) {
     ...book,
     cardCountText: `${Number(book.cardCount || 0)} 条灵感`,
     descriptionText: book.description || "暂无描述",
-    coverImage: cover ? cover.thumbnailUrl || cover.imageUrl || "" : "",
+    coverImage: cover ? resolveAssetUrl(cover.thumbnailUrl || cover.imageUrl || "") : "",
     updatedText: book.updatedAt ? new Date(Number(book.updatedAt)).toLocaleDateString("zh-CN") : ""
   };
 }

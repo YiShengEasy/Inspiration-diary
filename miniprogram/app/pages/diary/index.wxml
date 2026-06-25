@@ -45,7 +45,9 @@
         <text class="week-title">{{weekId}}</text>
       </view>
       <view class="header-actions">
-        <button class="icon-btn" bindtap="openSearch">搜</button>
+        <button class="icon-btn" hover-class="button-press" hover-stay-time="80" bindtap="openSearch">
+          <view class="search-icon"></view>
+        </button>
       </view>
     </view>
 
@@ -81,19 +83,27 @@
             <text wx:if="{{item.count > 3}}" class="more-count">+{{item.count}}</text>
           </view>
           <view class="cover-text">
-            <text class="type-pill">{{item.cover.typeLabel}}</text>
+            <view class="type-pill {{item.cover.typeLabel === 'IMG' ? 'image-pill' : 'md-pill'}}">
+              <view wx:if="{{item.cover.typeLabel === 'IMG'}}" class="picture-icon">
+                <view class="picture-sun"></view>
+                <view class="picture-mountain"></view>
+              </view>
+              <text wx:else class="type-icon">MD</text>
+            </view>
             <text class="cover-title">{{item.cover.title}}</text>
             <text class="cover-tags">{{item.cover.termsText}}</text>
           </view>
           <text class="chevron">›</text>
         </view>
         <view wx:else class="empty-day">
-          <text>+</text>
+          <text class="empty-day-icon">＋</text>
           <text>添加今天的灵感</text>
         </view>
       </button>
     </view>
 
-    <button class="upload-fab" loading="{{uploading}}" bindtap="chooseUpload">+</button>
+    <button class="upload-fab" loading="{{uploading}}" hover-class="button-press" hover-stay-time="80" bindtap="chooseUpload">
+      <text>＋</text>
+    </button>
   </view>
 </view>

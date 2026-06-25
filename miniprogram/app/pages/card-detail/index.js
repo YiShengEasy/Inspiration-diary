@@ -1,11 +1,11 @@
-const { request } = require("../../utils/api");
+const { request, resolveAssetUrl } = require("../../utils/api");
 
 function normalizeCard(card) {
   if (!card) return null;
   const terms = Array.isArray(card.terms) ? card.terms : [];
   return {
     ...card,
-    image: card.image || card.imageUrl || card.thumbnailUrl || "",
+    image: resolveAssetUrl(card.image || card.imageUrl || card.thumbnailUrl || ""),
     title: card.mdName || terms[0] || "灵感卡片",
     summary: card.mdSummary || card.insightNote || "",
     typeLabel: card.type === "md" ? "MD" : "IMG",
