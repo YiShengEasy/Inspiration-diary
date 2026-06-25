@@ -12,6 +12,14 @@ export interface PhotoPrismImageResponse {
   contentType: string;
 }
 
+export interface ImageUploadInput {
+  buffer: Buffer;
+  mimeType: string;
+  filename?: string;
+  extension: string;
+  dataUrl: string;
+}
+
 interface PhotoPrismSession {
   authToken: string;
   userUid: string;
@@ -240,15 +248,24 @@ async function findUploadedPhoto(config: PhotoPrismConfig, session: PhotoPrismSe
 }
 
 export async function storeImageInPhotoPrism(imageBase64: string): Promise<StoredPhotoPrismImage> {
+  const decoded = decodeDataUrl(imageBase64);
+  return storeImageUploadInPhotoPrism({
+    buffer: decoded.buffer,
+    mimeType: decoded.mimeType,
+    extension: decoded.extension,
+    dataUrl: imageBase64,
+  });
+}
+
+export async function storeImageUploadInPhotoPrism(image: ImageUploadInput): Promise<StoredPhotoPrismImage> {
   const config = getConfig();
   const session = await login(config);
   const clientConfig = await loadClientConfig(config, session);
-  const decoded = decodeDataUrl(imageBase64);
-  const imageHash = crypto.createHash("sha1").update(decoded.buffer).digest("hex");
+  const imageHash = crypto.createHash("sha1").update(image.buffer).digest("hex");
   const uploadToken = generateUploadToken();
-  const filename = `inspiration-${Date.now()}-${uploadToken}.${decoded.extension}`;
+  const filename = `inspiration-${Date.now()}-${uploadToken}.${image.extension}`;
 
-  await uploadFile(config, session, imageBase64, filename, uploadToken);
+  await uploadFile(config, session, image.dataUrl, filename, uploadToken);
 
   const photo = await findUploadedPhoto(config, session, filename, imageHash);
   const hash = photo.Hash || photo.FileHash || photo.Files?.[0]?.Hash;
