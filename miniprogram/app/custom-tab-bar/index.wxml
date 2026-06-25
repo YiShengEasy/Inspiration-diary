@@ -1,0 +1,19 @@
+<view class="tabbar-shell">
+  <view class="tabbar">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="route"
+      class="tab {{selected === index ? 'active' : ''}}"
+      data-index="{{index}}"
+      hover-class="tab-press"
+      hover-stay-time="80"
+      bindtap="switchTab"
+    >
+      <view class="icon-wrap">
+        <text class="tab-icon">{{item.icon}}</text>
+      </view>
+      <text class="tab-label">{{item.label}}</text>
+      <view class="active-mark"></view>
+    </view>
+  </view>
+</view>

@@ -1,7 +1,7 @@
 .toolbox-page {
   min-height: 100vh;
   background: #ffffff;
-  padding: 0 28rpx 40rpx;
+  padding: 0 28rpx 180rpx;
 }
 
 button {
