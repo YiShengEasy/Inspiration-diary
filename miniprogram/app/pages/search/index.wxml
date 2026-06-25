@@ -1,3 +1,37 @@
-<view class="page">
-  <text>搜索</text>
+<view class="page search-page">
+  <view class="search-bar">
+    <text class="search-icon">搜</text>
+    <input value="{{q}}" bindinput="onInput" confirm-type="search" bindconfirm="search" placeholder="搜索标签、手稿或摘要" />
+    <button bindtap="search" loading="{{loading}}">搜索</button>
+  </view>
+
+  <view class="filter-row">
+    <button wx:for="{{filters}}" wx:key="name" class="filter {{item.activeClass}}" data-filter="{{item.name}}" bindtap="setFilter">{{item.name}}</button>
+  </view>
+
+  <view class="recent-row">
+    <text>最近搜索</text>
+    <button data-keyword="手稿" bindtap="useKeyword">手稿</button>
+    <button data-keyword="留白" bindtap="useKeyword">留白</button>
+    <button data-keyword="像素风" bindtap="useKeyword">像素风</button>
+  </view>
+
+  <view wx:if="{{error}}" class="state error">{{error}}</view>
+
+  <view class="result-list">
+    <button wx:for="{{cards}}" wx:key="id" class="result-card" data-id="{{item.id}}" bindtap="openCard">
+      <image wx:if="{{item.image}}" class="thumb" src="{{item.image}}" mode="aspectFill"></image>
+      <view wx:else class="md-thumb">MD</view>
+      <view class="result-copy">
+        <text class="type-pill">{{item.typeLabel}}</text>
+        <text class="result-title">{{item.title}}</text>
+        <text class="result-desc">{{item.createdText}} · {{item.termsText}}</text>
+      </view>
+    </button>
+  </view>
+
+  <view wx:if="{{searched && !loading && !cards.length && !error}}" class="empty-state">
+    <text class="empty-title">没有找到相关灵感</text>
+    <text class="empty-desc">试试搜索标签、手稿标题或摘要内容。</text>
+  </view>
 </view>

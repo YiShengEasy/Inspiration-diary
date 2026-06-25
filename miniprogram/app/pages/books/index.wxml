@@ -1,3 +1,34 @@
-<view class="page">
-  <text>灵感书</text>
+<view class="page books-page">
+  <view class="books-header">
+    <view>
+      <text class="caption">BOOKSHELF</text>
+      <text class="title">我的灵感册</text>
+    </view>
+    <text class="count">{{books.length}} 本</text>
+  </view>
+
+  <view class="create-row">
+    <input value="{{title}}" bindinput="onTitleInput" placeholder="新建灵感册名称" />
+    <button bindtap="createBook" loading="{{creating}}">新建</button>
+  </view>
+
+  <view wx:if="{{loading}}" class="state">正在加载...</view>
+  <view wx:if="{{error}}" class="state error">{{error}}</view>
+
+  <view wx:if="{{!loading && !books.length}}" class="empty-state">
+    <text class="empty-title">还没有灵感册</text>
+    <text class="empty-desc">新建一个专题，把每日灵感慢慢收进去。</text>
+  </view>
+
+  <view class="book-list">
+    <view wx:for="{{books}}" wx:key="id" class="book-card">
+      <image wx:if="{{item.coverImage}}" class="book-cover" src="{{item.coverImage}}" mode="aspectFill"></image>
+      <view wx:else class="book-cover empty-cover">BOOK</view>
+      <view class="book-copy">
+        <text class="book-title">{{item.title}}</text>
+        <text class="book-desc">{{item.descriptionText}}</text>
+        <text class="book-meta">{{item.cardCountText}} · {{item.updatedText}}</text>
+      </view>
+    </view>
+  </view>
 </view>

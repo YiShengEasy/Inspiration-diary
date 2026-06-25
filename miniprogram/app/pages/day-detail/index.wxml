@@ -1,3 +1,30 @@
-<view class="page">
-  <text>日期详情</text>
+<view class="page day-detail-page">
+  <view class="detail-header">
+    <view>
+      <text class="caption">{{weekId}}</text>
+      <text class="title">{{dayName}}</text>
+    </view>
+    <text class="count">{{cards.length}} 条</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="state">正在加载...</view>
+  <view wx:if="{{error}}" class="state error">{{error}}</view>
+
+  <view wx:if="{{!loading && !cards.length}}" class="empty-state">
+    <text class="empty-title">这一天还没有灵感</text>
+    <text class="empty-desc">回到灵感页点击右下角添加图片。</text>
+  </view>
+
+  <view class="card-list">
+    <button wx:for="{{cards}}" wx:key="id" class="gallery-card" data-id="{{item.id}}" bindtap="openCard">
+      <image wx:if="{{item.image}}" class="thumb" src="{{item.image}}" mode="aspectFill"></image>
+      <view wx:else class="md-thumb">MD</view>
+      <view class="card-copy">
+        <text class="type-pill">{{item.typeLabel}}</text>
+        <text class="card-title">{{item.title}}</text>
+        <text class="card-tags">{{item.termsText}}</text>
+      </view>
+      <text class="time">{{item.createdText}}</text>
+    </button>
+  </view>
 </view>

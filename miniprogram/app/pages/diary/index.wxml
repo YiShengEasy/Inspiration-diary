@@ -1,3 +1,99 @@
-<view class="page">
-  <text>灵感</text>
+<view class="page diary-page">
+  <view wx:if="{{accountState !== 'registered'}}" class="diary-preview">
+    <view class="preview-hero">
+      <view>
+        <text class="eyebrow">Inspiration Diary</text>
+        <text class="title">把每天的视觉灵感整理成册</text>
+        <text class="desc">图片、Markdown、色卡和标签会按日期沉淀，也能收录进不同灵感册。</text>
+        <button class="primary-btn" bindtap="openRegister">完成注册</button>
+      </view>
+      <view class="preview-stack">
+        <view class="stack-card first"></view>
+        <view class="stack-card second"></view>
+        <view class="stack-card third"></view>
+      </view>
+    </view>
+
+    <view class="preview-grid">
+      <view class="preview-item">
+        <text class="item-icon">图</text>
+        <text class="item-title">图片</text>
+        <text class="item-desc">原图 / 缩略图</text>
+      </view>
+      <view class="preview-item">
+        <text class="item-icon">文</text>
+        <text class="item-title">文档</text>
+        <text class="item-desc">MD 摘要</text>
+      </view>
+      <view class="preview-item">
+        <text class="item-icon">色</text>
+        <text class="item-title">色卡</text>
+        <text class="item-desc">图片取色</text>
+      </view>
+      <view class="preview-item">
+        <text class="item-icon">AI</text>
+        <text class="item-title">总结</text>
+        <text class="item-desc">每周整理</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:else class="weekly-layout">
+    <view class="diary-header">
+      <view>
+        <text class="caption">本周灵感</text>
+        <text class="week-title">{{weekId}}</text>
+      </view>
+      <view class="header-actions">
+        <button class="icon-btn" bindtap="openSearch">搜</button>
+      </view>
+    </view>
+
+    <button class="summary-card">
+      <view>
+        <text class="summary-label">本周总结</text>
+        <text class="summary-title">{{totalCards}} 条灵感 · {{totalTerms}} 个标签</text>
+        <text class="summary-desc">新增内容会按日期整理，AI 标签完成后自动刷新。</text>
+      </view>
+      <text class="summary-action">查看</text>
+    </button>
+
+    <button class="books-card" bindtap="openBooks">
+      <view>
+        <text class="books-label">我的灵感册</text>
+        <text class="books-title">按专题收纳每日灵感</text>
+      </view>
+      <text class="books-action">管理</text>
+    </button>
+
+    <view wx:if="{{loading}}" class="state">正在加载本周灵感...</view>
+    <view wx:if="{{error}}" class="state error">{{error}}</view>
+
+    <view class="day-list">
+      <button wx:for="{{cardsByDay}}" wx:key="day" class="day-card" data-index="{{index}}" bindtap="openDay">
+        <view class="day-title-row">
+          <text class="day-name">{{item.day}}</text>
+          <text class="day-count">{{item.countText}}</text>
+        </view>
+        <view wx:if="{{item.count}}" class="day-content">
+          <view class="cover-stack">
+            <image wx:for="{{item.coverImages}}" wx:key="*this" class="cover-image stack-{{index}}" src="{{item}}" mode="aspectFill"></image>
+            <text wx:if="{{item.count > 3}}" class="more-count">+{{item.count}}</text>
+          </view>
+          <view class="cover-text">
+            <text class="type-pill">{{item.cover.typeLabel}}</text>
+            <text class="cover-title">{{item.cover.title}}</text>
+            <text class="cover-tags">{{item.cover.termsText}}</text>
+          </view>
+          <text class="chevron">›</text>
+        </view>
+        <view wx:else class="empty-day">
+          <text>+</text>
+          <text>添加今天的灵感</text>
+        </view>
+      </button>
+    </view>
+
+    <button class="upload-fab" loading="{{uploading}}" bindtap="chooseUpload">+</button>
+  </view>
 </view>

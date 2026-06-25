@@ -1,3 +1,158 @@
 .page {
+  min-height: 100vh;
   padding: 28rpx;
+  box-sizing: border-box;
+  background: #fffaf3;
+  color: #151712;
+}
+
+button {
+  padding: 0;
+  background: transparent;
+  text-align: center;
+}
+
+button::after {
+  border: 0;
+}
+
+.detail-card,
+.shell-card {
+  border-radius: 32rpx;
+  padding: 22rpx;
+  background: #ffffff;
+  box-shadow: 0 16rpx 42rpx rgba(20, 24, 18, 0.1);
+}
+
+.hero-image,
+.hero-md {
+  width: 100%;
+  height: 620rpx;
+  border-radius: 28rpx;
+}
+
+.hero-md {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #151712;
+  color: #b7ff38;
+  font-size: 72rpx;
+  font-weight: 950;
+}
+
+.detail-copy {
+  padding: 28rpx 6rpx 8rpx;
+}
+
+.type-pill {
+  display: inline-block;
+  border-radius: 999rpx;
+  padding: 6rpx 14rpx;
+  background: #111111;
+  color: #b7ff38;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.title {
+  display: block;
+  margin-top: 18rpx;
+  font-size: 44rpx;
+  font-weight: 950;
+  line-height: 1.18;
+}
+
+.meta {
+  display: block;
+  margin-top: 10rpx;
+  color: #9aa093;
+  font-size: 24rpx;
+}
+
+.summary {
+  display: block;
+  margin-top: 18rpx;
+  color: #555d50;
+  font-size: 27rpx;
+  line-height: 1.55;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  padding: 12rpx 6rpx 24rpx;
+}
+
+.tag {
+  border-radius: 999rpx;
+  padding: 10rpx 16rpx;
+  background: #ecffd8;
+  color: #2b4b16;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.empty-tags {
+  color: #9aa093;
+  font-size: 24rpx;
+}
+
+.field {
+  border-top: 2rpx solid #f0ede3;
+  padding: 22rpx 6rpx 6rpx;
+}
+
+.field-label,
+.field-value {
+  display: block;
+}
+
+.field-label {
+  color: #9aa093;
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.field-value {
+  margin-top: 8rpx;
+  color: #555d50;
+  font-size: 24rpx;
+  word-break: break-all;
+}
+
+.shell-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  padding: 42rpx;
+  text-align: center;
+}
+
+.shell-title {
+  font-size: 38rpx;
+  font-weight: 950;
+}
+
+.shell-desc,
+.shell-id {
+  color: #777b72;
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+.shell-id {
+  word-break: break-all;
+}
+
+.shell-card button {
+  height: 76rpx;
+  margin-top: 12rpx;
+  border-radius: 999rpx;
+  background: #b7ff38;
+  color: #132006;
+  font-size: 28rpx;
+  font-weight: 950;
+  line-height: 76rpx;
 }

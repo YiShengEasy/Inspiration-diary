@@ -1,3 +1,30 @@
-<view class="page">
-  <text>卡片详情</text>
+<view class="page card-detail-page">
+  <view wx:if="{{hasCard}}" class="detail-card">
+    <image wx:if="{{card.image}}" class="hero-image" src="{{card.image}}" mode="aspectFill"></image>
+    <view wx:else class="hero-md">MD</view>
+
+    <view class="detail-copy">
+      <text class="type-pill">{{card.typeLabel}}</text>
+      <text class="title">{{card.title}}</text>
+      <text class="meta">{{card.createdText}}</text>
+      <text wx:if="{{card.summary}}" class="summary">{{card.summary}}</text>
+    </view>
+
+    <view class="tag-list">
+      <text wx:for="{{card.terms}}" wx:key="*this" class="tag">#{{item}}</text>
+      <text wx:if="{{!card.terms.length}}" class="empty-tags">暂无标签</text>
+    </view>
+
+    <view class="field">
+      <text class="field-label">Card ID</text>
+      <text class="field-value">{{id}}</text>
+    </view>
+  </view>
+
+  <view wx:else class="shell-card">
+    <text class="shell-title">卡片详情暂不可用</text>
+    <text class="shell-desc">当前后端还没有单卡详情接口。请从日视图或搜索结果重新打开，页面会优先使用本地缓存展示。</text>
+    <text class="shell-id">Card ID: {{id}}</text>
+    <button bindtap="openSearch">去搜索</button>
+  </view>
 </view>

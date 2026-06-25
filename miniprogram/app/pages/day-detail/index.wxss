@@ -1,3 +1,155 @@
 .page {
+  min-height: 100vh;
   padding: 28rpx;
+  box-sizing: border-box;
+  background: #fffaf3;
+  color: #151712;
+}
+
+button {
+  padding: 0;
+  background: transparent;
+  text-align: left;
+}
+
+button::after {
+  border: 0;
+}
+
+.detail-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 28rpx;
+}
+
+.caption {
+  display: block;
+  color: #777b72;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.title {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 48rpx;
+  font-weight: 950;
+}
+
+.count {
+  border-radius: 999rpx;
+  padding: 10rpx 18rpx;
+  background: #ecffd8;
+  color: #2b4b16;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.state,
+.empty-state {
+  border-radius: 24rpx;
+  padding: 28rpx;
+  background: #ffffff;
+  color: #777b72;
+  font-size: 26rpx;
+}
+
+.state.error {
+  background: #fff0ed;
+  color: #b4442f;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  text-align: center;
+}
+
+.empty-title {
+  color: #151712;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.empty-desc {
+  font-size: 25rpx;
+}
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+}
+
+.gallery-card {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  width: 100%;
+  border-radius: 28rpx;
+  padding: 18rpx;
+  box-sizing: border-box;
+  background: #ffffff;
+  box-shadow: 0 14rpx 36rpx rgba(20, 24, 18, 0.08);
+}
+
+.thumb,
+.md-thumb {
+  width: 140rpx;
+  height: 140rpx;
+  flex-shrink: 0;
+  border-radius: 24rpx;
+}
+
+.md-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #151712;
+  color: #b7ff38;
+  font-size: 30rpx;
+  font-weight: 950;
+}
+
+.card-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.type-pill {
+  display: inline-block;
+  border-radius: 999rpx;
+  padding: 5rpx 12rpx;
+  background: #111111;
+  color: #b7ff38;
+  font-size: 20rpx;
+  font-weight: 900;
+}
+
+.card-title,
+.card-tags {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card-title {
+  margin-top: 10rpx;
+  font-size: 31rpx;
+  font-weight: 900;
+}
+
+.card-tags {
+  margin-top: 8rpx;
+  color: #777b72;
+  font-size: 24rpx;
+}
+
+.time {
+  align-self: flex-start;
+  color: #9aa093;
+  font-size: 22rpx;
 }

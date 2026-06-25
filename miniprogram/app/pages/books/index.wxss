@@ -1,3 +1,172 @@
 .page {
+  min-height: 100vh;
   padding: 28rpx;
+  box-sizing: border-box;
+  background: #fffaf3;
+  color: #151712;
+}
+
+button {
+  padding: 0;
+  background: transparent;
+  text-align: center;
+}
+
+button::after {
+  border: 0;
+}
+
+.books-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 26rpx;
+}
+
+.caption {
+  display: block;
+  color: #5b49bf;
+  font-size: 24rpx;
+  font-weight: 900;
+  letter-spacing: 1rpx;
+}
+
+.title {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 48rpx;
+  font-weight: 950;
+}
+
+.count {
+  border-radius: 999rpx;
+  padding: 10rpx 18rpx;
+  background: #ecffd8;
+  color: #2b4b16;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.create-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  border-radius: 28rpx;
+  padding: 14rpx;
+  background: #ffffff;
+  box-shadow: 0 14rpx 36rpx rgba(20, 24, 18, 0.08);
+}
+
+.create-row input {
+  flex: 1;
+  height: 68rpx;
+  padding-left: 12rpx;
+  font-size: 28rpx;
+}
+
+.create-row button {
+  width: 112rpx;
+  height: 68rpx;
+  border-radius: 999rpx;
+  background: #151712;
+  color: #b7ff38;
+  font-size: 26rpx;
+  font-weight: 900;
+  line-height: 68rpx;
+}
+
+.state,
+.empty-state {
+  margin-top: 26rpx;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  background: #ffffff;
+  color: #777b72;
+  font-size: 26rpx;
+}
+
+.state.error {
+  background: #fff0ed;
+  color: #b4442f;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  text-align: center;
+}
+
+.empty-title {
+  color: #151712;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.empty-desc {
+  font-size: 25rpx;
+}
+
+.book-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  margin-top: 26rpx;
+}
+
+.book-card {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+  border-radius: 28rpx;
+  padding: 18rpx;
+  background: #ffffff;
+  box-shadow: 0 14rpx 36rpx rgba(20, 24, 18, 0.08);
+}
+
+.book-cover {
+  width: 146rpx;
+  height: 178rpx;
+  flex-shrink: 0;
+  border-radius: 24rpx;
+}
+
+.empty-cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(150deg, #151712, #455238);
+  color: #b7ff38;
+  font-size: 26rpx;
+  font-weight: 950;
+}
+
+.book-copy {
+  min-width: 0;
+}
+
+.book-title,
+.book-desc,
+.book-meta {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.book-title {
+  font-size: 34rpx;
+  font-weight: 950;
+}
+
+.book-desc {
+  margin-top: 10rpx;
+  color: #777b72;
+  font-size: 25rpx;
+}
+
+.book-meta {
+  margin-top: 16rpx;
+  color: #9aa093;
+  font-size: 23rpx;
 }
