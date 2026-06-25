@@ -519,26 +519,26 @@ button::after {
 
 .day-content {
   display: grid;
-  grid-template-columns: 167rpx 1fr auto;
+  grid-template-columns: 158rpx 1fr auto;
   align-items: center;
-  gap: 20rpx;
+  gap: 28rpx;
 }
 
 .cover-stack {
   position: relative;
-  width: 153rpx;
-  height: 153rpx;
+  width: 146rpx;
+  height: 146rpx;
   flex-shrink: 0;
 }
 
 .cover-image {
   position: absolute;
-  width: 129rpx;
-  height: 147rpx;
+  width: 123rpx;
+  height: 140rpx;
   left: 0;
   top: 0;
   border: 5rpx solid #ffffff;
-  border-radius: 24rpx;
+  border-radius: 23rpx;
   background: #eef1e8;
   box-shadow: 0 14rpx 31rpx rgba(70, 52, 24, 0.15);
 }
@@ -596,12 +596,12 @@ button::after {
 
 .stack-1 {
   z-index: 2;
-  transform: translate(14rpx, 3rpx) rotate(0deg);
+  transform: translate(13rpx, 3rpx) rotate(0deg);
 }
 
 .stack-2 {
   z-index: 3;
-  transform: translate(28rpx, 7rpx) rotate(5deg);
+  transform: translate(26rpx, 6rpx) rotate(5deg);
 }
 
 .more-count {
