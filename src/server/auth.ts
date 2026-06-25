@@ -6,6 +6,7 @@ import type pg from "pg";
 export interface AuthUser {
   id: string;
   email: string;
+  phone?: string | null;
   displayName: string | null;
   role: string;
 }
@@ -18,6 +19,7 @@ export interface AuthenticatedRequest extends Request {
 interface UserRow {
   id: string;
   email: string;
+  phone?: string | null;
   display_name: string | null;
   role: string | null;
   password_hash?: string;
@@ -48,6 +50,7 @@ function safeUser(row: UserRow): AuthUser {
   return {
     id: row.id,
     email: row.email,
+    phone: row.phone || null,
     displayName: row.display_name || null,
     role: row.role || "user",
   };
