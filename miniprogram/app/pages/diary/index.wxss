@@ -404,9 +404,9 @@ button::after {
 .day-card {
   display: block;
   width: 100%;
-  margin-top: 14rpx;
+  margin-top: 12rpx;
   border-radius: 30rpx;
-  padding: 20rpx 18rpx;
+  padding: 14rpx 18rpx;
   box-sizing: border-box;
   background: #ffffff;
   box-shadow: 0 16rpx 40rpx rgba(85, 63, 31, 0.1);
@@ -430,20 +430,20 @@ button::after {
 }
 
 .day-content {
-  gap: 20rpx;
+  gap: 18rpx;
 }
 
 .cover-stack {
   position: relative;
-  width: 154rpx;
-  height: 154rpx;
+  width: 164rpx;
+  height: 138rpx;
   flex-shrink: 0;
 }
 
 .cover-image {
   position: absolute;
-  width: 124rpx;
-  height: 134rpx;
+  width: 140rpx;
+  height: 142rpx;
   border: 6rpx solid #ffffff;
   border-radius: 20rpx;
   background: #eef1e8;
@@ -479,48 +479,48 @@ button::after {
 .cover-md-title {
   position: relative;
   z-index: 1;
-  max-height: 42rpx;
+  max-height: 38rpx;
   color: #151712;
   font-size: 18rpx;
   font-weight: 900;
-  line-height: 21rpx;
+  line-height: 19rpx;
 }
 
 .cover-md-summary {
   position: relative;
   z-index: 1;
-  margin-top: 8rpx;
-  max-height: 68rpx;
+  margin-top: 6rpx;
+  max-height: 64rpx;
   color: #8b8a82;
   font-size: 16rpx;
-  line-height: 22rpx;
+  line-height: 20rpx;
 }
 
 .stack-0 {
-  left: 18rpx;
-  top: 12rpx;
+  left: 20rpx;
+  top: 0;
   z-index: 3;
   transform: rotate(-4deg);
 }
 
 .stack-1 {
-  left: 6rpx;
-  top: 4rpx;
+  left: 8rpx;
+  top: -2rpx;
   z-index: 2;
   transform: rotate(-8deg);
 }
 
 .stack-2 {
   left: 0;
-  top: 18rpx;
+  top: 10rpx;
   z-index: 1;
   transform: rotate(-12deg);
 }
 
 .more-count {
   position: absolute;
-  right: 0;
-  top: 0;
+  right: 2rpx;
+  top: -8rpx;
   z-index: 4;
   border-radius: 999rpx;
   min-width: 46rpx;
@@ -537,6 +537,7 @@ button::after {
 .cover-text {
   flex: 1;
   min-width: 0;
+  text-align: left;
 }
 
 .type-pill {
@@ -603,15 +604,17 @@ button::after {
 }
 
 .cover-title {
-  margin-top: 8rpx;
-  font-size: 32rpx;
+  margin-top: 6rpx;
+  font-size: 34rpx;
   font-weight: 900;
+  line-height: 38rpx;
 }
 
 .cover-tags {
-  margin-top: 8rpx;
+  margin-top: 5rpx;
   color: #777b72;
-  font-size: 24rpx;
+  font-size: 26rpx;
+  line-height: 30rpx;
 }
 
 .chevron {
