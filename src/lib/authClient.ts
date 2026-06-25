@@ -1,6 +1,7 @@
 export interface AuthUser {
   id: string;
   email: string;
+  phone?: string | null;
   displayName: string | null;
   role: string;
 }
@@ -27,12 +28,12 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   return body.user;
 }
 
-export async function login(email: string, password: string): Promise<AuthUser> {
+export async function login(identifier: string, password: string): Promise<AuthUser> {
   const res = await fetch("/api/auth/login", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ identifier, email: identifier, password }),
   });
   const body = await parseJson<{ user: AuthUser }>(res);
   return body.user;

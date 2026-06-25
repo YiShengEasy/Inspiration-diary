@@ -325,17 +325,23 @@ export function createAuthRouter(pool: pg.Pool): Router {
 
   router.post("/login", async (req: Request, res: Response) => {
     try {
-      const email = normalizeEmail(String(req.body.email || ""));
+      const rawIdentifier = String(req.body.identifier || req.body.email || "").trim();
+      const isEmailIdentifier = isEmail(rawIdentifier);
+      const identifier = isEmailIdentifier ? normalizeEmail(rawIdentifier) : rawIdentifier;
       const password = String(req.body.password || "");
+      if (!identifier) return res.status(400).json({ error: "请输入邮箱或手机号" });
+
       const result = await pool.query<UserRow>(
-        "SELECT id, email, password_hash, display_name, role FROM users WHERE email = $1",
-        [email]
+        `SELECT id, email, phone, password_hash, display_name, role
+         FROM users
+         WHERE ${isEmailIdentifier ? "email" : "phone"} = $1`,
+        [identifier]
       );
       const row = result.rows[0];
-      if (!row?.password_hash) return res.status(401).json({ error: "邮箱或密码不正确" });
+      if (!row?.password_hash) return res.status(401).json({ error: "邮箱/手机号或密码不正确" });
 
       const ok = await verifyPassword(password, row.password_hash);
-      if (!ok) return res.status(401).json({ error: "邮箱或密码不正确" });
+      if (!ok) return res.status(401).json({ error: "邮箱/手机号或密码不正确" });
 
       const user = safeUser(row);
       const session = await createSession(pool, user.id, req);

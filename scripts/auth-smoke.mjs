@@ -36,6 +36,14 @@ const regA = await request("/api/auth/register", {
 assert(regA.ok, `register A failed ${regA.status}: ${JSON.stringify(await json(regA))}`);
 const cookieA = cookieFrom(regA, "user A");
 
+const loginAByIdentifier = await request("/api/auth/login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ identifier: userA.email, password: userA.password }),
+});
+assert(loginAByIdentifier.ok, `login A with identifier failed ${loginAByIdentifier.status}: ${JSON.stringify(await json(loginAByIdentifier))}`);
+cookieFrom(loginAByIdentifier, "user A identifier login");
+
 const regB = await request("/api/auth/register", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -43,6 +51,14 @@ const regB = await request("/api/auth/register", {
 });
 assert(regB.ok, `register B failed ${regB.status}: ${JSON.stringify(await json(regB))}`);
 const cookieB = cookieFrom(regB, "user B");
+
+const loginBByEmail = await request("/api/auth/login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: userB.email, password: userB.password }),
+});
+assert(loginBByEmail.ok, `login B with email failed ${loginBByEmail.status}: ${JSON.stringify(await json(loginBByEmail))}`);
+cookieFrom(loginBByEmail, "user B email login");
 
 const cardId = `smoke_${suffix}`;
 const photoUid = `photo_${suffix}`;

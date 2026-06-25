@@ -4,7 +4,7 @@ import { Feather, Camera, Eye, EyeOff, Loader2 } from "lucide-react";
 import InkReveal from "./ui/ink-reveal";
 
 interface LoginScreenProps {
-  onLogin: (email: string, password: string) => Promise<void>;
+  onLogin: (identifier: string, password: string) => Promise<void>;
   onRegister: (email: string, password: string) => Promise<void>;
 }
 
@@ -21,7 +21,7 @@ export default function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
     setError(null);
 
     if (!email.trim()) {
-      setError("请输入邮箱");
+      setError(isLoginMode ? "请输入邮箱或手机号" : "请输入邮箱");
       return;
     }
     if (password.length < 8) {
@@ -151,8 +151,8 @@ export default function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 font-sans w-full">
             <div className="flex flex-col gap-3 relative z-20">
               <input 
-                type="email" 
-                placeholder="邮箱 (Email)"
+                type={isLoginMode ? "text" : "email"}
+                placeholder={isLoginMode ? "邮箱或手机号 (Email or phone)" : "邮箱 (Email)"}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/60 dark:bg-stone-900/60 backdrop-blur-md border border-stone-300/50 dark:border-stone-700/50 text-stone-800 dark:text-stone-200 placeholder:text-stone-500 dark:placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-400 dark:focus:ring-stone-600 transition-all text-sm outline-none shadow-sm"
