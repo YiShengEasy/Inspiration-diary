@@ -613,7 +613,7 @@ button::after {
 .cover-text {
   min-width: 0;
   text-align: left;
-  transform: translateY(-10rpx);
+  transform: translateY(-6rpx);
 }
 
 .type-pill {
@@ -679,14 +679,14 @@ button::after {
 }
 
 .cover-title {
-  margin-top: 8rpx;
+  margin-top: 12rpx;
   font-size: 33rpx;
   font-weight: 900;
   line-height: 40rpx;
 }
 
 .cover-tags {
-  margin-top: 15rpx;
+  margin-top: 12rpx;
   color: #8d7d69;
   font-size: 23rpx;
   line-height: 28rpx;
