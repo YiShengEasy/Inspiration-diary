@@ -397,12 +397,16 @@ button::after {
   margin-top: 26rpx;
 }
 
+.day-section {
+  margin-bottom: 24rpx;
+}
+
 .day-card {
   display: block;
   width: 100%;
-  margin-bottom: 20rpx;
+  margin-top: 14rpx;
   border-radius: 30rpx;
-  padding: 24rpx 20rpx;
+  padding: 20rpx 18rpx;
   box-sizing: border-box;
   background: #ffffff;
   box-shadow: 0 16rpx 40rpx rgba(85, 63, 31, 0.1);
@@ -426,8 +430,7 @@ button::after {
 }
 
 .day-content {
-  margin-top: 22rpx;
-  gap: 26rpx;
+  gap: 20rpx;
 }
 
 .cover-stack {
@@ -600,13 +603,13 @@ button::after {
 }
 
 .cover-title {
-  margin-top: 14rpx;
+  margin-top: 8rpx;
   font-size: 32rpx;
   font-weight: 900;
 }
 
 .cover-tags {
-  margin-top: 16rpx;
+  margin-top: 8rpx;
   color: #777b72;
   font-size: 24rpx;
 }

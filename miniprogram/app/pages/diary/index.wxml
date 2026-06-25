@@ -83,41 +83,43 @@
     <view wx:if="{{error}}" class="state error">{{error}}</view>
 
     <view class="day-list">
-      <button wx:for="{{cardsByDay}}" wx:key="day" class="day-card" data-index="{{index}}" bindtap="openDay">
+      <view wx:for="{{cardsByDay}}" wx:key="day" class="day-section">
         <view class="day-title-row">
           <text class="day-name">{{item.day}}</text>
           <text class="day-count">{{item.countText}}</text>
         </view>
-        <view wx:if="{{item.count}}" class="day-content">
-          <view class="cover-stack">
-            <block wx:for="{{item.coverPreviews}}" wx:key="id">
-              <view wx:if="{{item.isMd}}" class="cover-image cover-md stack-{{index}}">
-                <text class="cover-md-title">{{item.title}}</text>
-                <text class="cover-md-summary">{{item.summary}}</text>
-              </view>
-              <image
-                wx:else
-                class="cover-image stack-{{index}}"
-                src="{{item.image}}"
-                mode="aspectFill"
-                data-src="{{item.image}}"
-                binderror="onImageError"
-              ></image>
-            </block>
-            <text wx:if="{{item.count > 1}}" class="more-count">+{{item.count - 1}}</text>
+        <button class="day-card" data-index="{{index}}" bindtap="openDay">
+          <view wx:if="{{item.count}}" class="day-content">
+            <view class="cover-stack">
+              <block wx:for="{{item.coverPreviews}}" wx:key="id">
+                <view wx:if="{{item.isMd}}" class="cover-image cover-md stack-{{index}}">
+                  <text class="cover-md-title">{{item.title}}</text>
+                  <text class="cover-md-summary">{{item.summary}}</text>
+                </view>
+                <image
+                  wx:else
+                  class="cover-image stack-{{index}}"
+                  src="{{item.image}}"
+                  mode="aspectFill"
+                  data-src="{{item.image}}"
+                  binderror="onImageError"
+                ></image>
+              </block>
+              <text wx:if="{{item.count > 1}}" class="more-count">+{{item.count - 1}}</text>
+            </view>
+            <view class="cover-text">
+              <text class="type-pill {{item.cover.typeLabel === 'IMG' ? 'image-pill' : 'md-pill'}}">{{item.cover.typeLabel}}</text>
+              <text class="cover-title">{{item.cover.title}}</text>
+              <text class="cover-tags">{{item.cover.termsText}}</text>
+            </view>
+            <text class="chevron">›</text>
           </view>
-          <view class="cover-text">
-            <text class="type-pill {{item.cover.typeLabel === 'IMG' ? 'image-pill' : 'md-pill'}}">{{item.cover.typeLabel}}</text>
-            <text class="cover-title">{{item.cover.title}}</text>
-            <text class="cover-tags">{{item.cover.termsText}}</text>
+          <view wx:else class="empty-day">
+            <text class="empty-day-icon">＋</text>
+            <text>添加今天的灵感</text>
           </view>
-          <text class="chevron">›</text>
-        </view>
-        <view wx:else class="empty-day">
-          <text class="empty-day-icon">＋</text>
-          <text>添加今天的灵感</text>
-        </view>
-      </button>
+        </button>
+      </view>
     </view>
 
     <button class="upload-fab" loading="{{uploading}}" hover-class="button-press" hover-stay-time="80" bindtap="chooseUpload">
