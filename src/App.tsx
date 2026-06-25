@@ -346,14 +346,13 @@ export default function App() {
   };
 
   // Upload card and proxy call AI analysis API server-side
-  const handleUploadImage = async (dayIndex: number, base64Data: string, analysisBase64Data = base64Data) => {
+  const handleUploadImage = async (dayIndex: number, originalFile: File, analysisBlob: Blob = originalFile) => {
     try {
       if (!weekId) {
         throw new Error("当前周信息还在加载，请稍后再粘贴图片。");
       }
 
       const headers: Record<string, string> = {
-        "Content-Type": "application/json",
         "x-provider": customProvider || "gemini",
       };
 
@@ -406,10 +405,13 @@ export default function App() {
       ];
 	      const selectedFallback = fallbackOptions[Math.floor(Math.random() * fallbackOptions.length)];
 
+      const storeForm = new FormData();
+      storeForm.append("image", originalFile, originalFile.name || "inspiration-upload.jpg");
+      storeForm.append("source", "web");
+
 	      const storeResponse = await authFetch("/api/store-image", {
 	        method: "POST",
-	        headers: { "Content-Type": "application/json" },
-	        body: JSON.stringify({ imageBase64: base64Data }),
+	        body: storeForm,
 	      });
 
 	      if (!storeResponse.ok) {
@@ -436,8 +438,8 @@ export default function App() {
 	        dayIndex,
 	        imageUrl,
 	        thumbnailUrl,
-	        photoUid: "",
-          photoHash: "",
+	        photoUid: storedImage.photoUid || "",
+          photoHash: storedImage.photoHash || "",
 	        terms: selectedFallback,
         decoType: randomDeco,
         angle: randomAngle,
@@ -451,10 +453,13 @@ export default function App() {
         const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout limit
 
         try {
+          const analyzeForm = new FormData();
+          analyzeForm.append("image", analysisBlob, "analysis.jpg");
+
           const response = await authFetch("/api/analyze-image", {
             method: "POST",
             headers,
-            body: JSON.stringify({ imageBase64: analysisBase64Data }),
+            body: analyzeForm,
             signal: controller.signal,
           });
 

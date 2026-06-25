@@ -10,7 +10,7 @@ interface DaySlotProps {
   label: string;
   subLabel: string;
   cards: ImageCard[];
-  onUploadImage: (dayIndex: number, originalBase64Data: string, analysisBase64Data?: string) => Promise<void>;
+  onUploadImage: (dayIndex: number, originalFile: File, analysisBlob?: Blob) => Promise<void>;
   onUploadMd?: (dayIndex: number, text: string, filename: string) => Promise<void>;
   onDeleteCard: (id: string) => void;
   onDeleteTerm: (cardId: string, termIndex: number) => void;
@@ -141,18 +141,18 @@ export default function DaySlot({
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          // Compress to JPEG with 0.8 quality
-          const compressedBase64 = canvas.toDataURL("image/jpeg", 0.82);
-          try {
-            await onUploadImage(dayIndex, originalBase64, compressedBase64);
-          } catch (err: any) {
-            setUploadError(err.message || "Failed to analyze image terms.");
-          } finally {
-            setIsUploading(false);
-          }
+          canvas.toBlob(async (blob) => {
+            try {
+              await onUploadImage(dayIndex, file, blob || file);
+            } catch (err: any) {
+              setUploadError(err.message || "Failed to analyze image terms.");
+            } finally {
+              setIsUploading(false);
+            }
+          }, "image/jpeg", 0.82);
         } else {
           try {
-            await onUploadImage(dayIndex, originalBase64);
+            await onUploadImage(dayIndex, file, file);
           } catch (err: any) {
             setUploadError(err.message || "Failed to analyze image terms.");
           } finally {
