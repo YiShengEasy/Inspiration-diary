@@ -85,10 +85,10 @@
             <text class="book-tile-title">{{item.title}}</text>
             <text class="book-tile-count">{{item.cardCountText}}</text>
           </view>
-          <view wx:if="{{!books.length}}" class="book-tile placeholder-book" bindtap="openBooks">
-            <view class="book-tile-image empty-book"></view>
-            <text class="book-tile-title">新建灵感册</text>
-            <text class="book-tile-count">开始收纳</text>
+          <view class="book-tile new-book-tile" bindtap="openBooks">
+            <text class="new-tile-icon">＋</text>
+            <text class="new-tile-label">新增</text>
+            <text class="new-tile-sub">创建册子</text>
           </view>
         </view>
       </scroll-view>

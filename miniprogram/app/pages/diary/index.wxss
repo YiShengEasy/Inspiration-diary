@@ -120,14 +120,14 @@ button::after {
 
 .preview-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 18rpx;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16rpx;
 }
 
 .preview-item {
-  min-height: 154rpx;
-  border-radius: 24rpx;
-  padding: 24rpx;
+  min-height: 156rpx;
+  border-radius: 32rpx;
+  padding: 20rpx 16rpx;
   background: #ffffff;
   box-shadow: 0 14rpx 34rpx rgba(20, 24, 18, 0.08);
 }
@@ -199,9 +199,9 @@ button::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 86rpx;
-  margin-bottom: 28rpx;
-  padding: 0 20rpx;
+  height: 75rpx;
+  margin-bottom: 24rpx;
+  padding: 0 17rpx;
   border: 2rpx solid #eadcc8;
   border-radius: 999rpx;
   background: rgba(255, 255, 255, 0.82);
@@ -210,11 +210,11 @@ button::after {
 .week-nav {
   width: 54rpx;
   height: 54rpx;
-  border-radius: 50%;
+  border-radius: 999rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0e6d7;
+  background: #f4ead8;
   color: #111111;
   font-size: 24rpx;
   font-weight: 700;
@@ -234,9 +234,11 @@ button::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0f2ea;
+  background: #f7f7f3;
   color: #111111;
-  transition: transform 120ms ease, opacity 120ms ease;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease;
 }
 
 .search-icon {
@@ -286,7 +288,10 @@ button::after {
   height: 4rpx;
   border-radius: 50%;
   background: #111111;
-  box-shadow: 10rpx 0 0 #111111, 0 8rpx 0 #111111, 10rpx 8rpx 0 #111111;
+  box-shadow:
+    10rpx 0 0 #111111,
+    0 8rpx 0 #111111,
+    10rpx 8rpx 0 #111111;
 }
 
 .summary-card,
@@ -299,18 +304,12 @@ button::after {
 }
 
 .summary-card {
-  min-height: 196rpx;
-  padding: 28rpx;
-  border-radius: 40rpx;
+  margin-bottom: 24rpx;
+  padding: 24rpx;
+  border-radius: 35rpx;
   background: #111111;
   color: #ffffff;
-  box-shadow: 0 32rpx 64rpx rgba(36, 30, 18, 0.14);
-}
-
-.summary-label {
-  display: block;
-  font-size: 19rpx;
-  font-weight: 800;
+  box-shadow: 0 28rpx 56rpx rgba(36, 30, 18, 0.14);
 }
 
 .summary-label {
@@ -321,6 +320,8 @@ button::after {
   border-radius: 999rpx;
   background: #b7ff38;
   color: #102006;
+  font-size: 19rpx;
+  font-weight: 950;
 }
 
 .summary-title {
@@ -334,7 +335,7 @@ button::after {
 .summary-desc {
   display: block;
   margin-top: 10rpx;
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 0.72);
   font-size: 21rpx;
   line-height: 30rpx;
 }
@@ -401,19 +402,19 @@ button::after {
 }
 
 .book-tile {
-  width: 208rpx;
-  min-height: 248rpx;
+  width: 182rpx;
+  min-height: 218rpx;
   overflow: hidden;
   border: 2rpx solid #eee4d3;
-  border-radius: 36rpx;
+  border-radius: 32rpx;
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 20rpx 44rpx rgba(96, 72, 35, 0.08);
+  box-shadow: 0 17rpx 38rpx rgba(96, 72, 35, 0.08);
 }
 
 .book-tile-image {
   display: block;
-  width: 208rpx;
-  height: 144rpx;
+  width: 182rpx;
+  height: 126rpx;
   border-radius: 0;
   background: #f0e6d7;
 }
@@ -465,20 +466,20 @@ button::after {
 }
 
 .day-section {
-  margin-bottom: 28rpx;
+  margin-bottom: 24rpx;
 }
 
 .day-card {
   display: block;
   width: 100%;
-  min-height: 224rpx;
-  margin-top: 16rpx;
+  min-height: 196rpx;
+  margin-top: 14rpx;
   border: 2rpx solid #eee4d3;
-  border-radius: 48rpx;
-  padding: 20rpx;
+  border-radius: 42rpx;
+  padding: 17rpx;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 20rpx 44rpx rgba(96, 72, 35, 0.08);
+  box-shadow: 0 17rpx 38rpx rgba(96, 72, 35, 0.08);
 }
 
 .day-title-row {
@@ -501,28 +502,28 @@ button::after {
 
 .day-content {
   display: grid;
-  grid-template-columns: 192rpx 1fr auto;
+  grid-template-columns: 167rpx 1fr auto;
   align-items: center;
-  gap: 24rpx;
+  gap: 20rpx;
 }
 
 .cover-stack {
   position: relative;
-  width: 176rpx;
-  height: 176rpx;
+  width: 153rpx;
+  height: 153rpx;
   flex-shrink: 0;
 }
 
 .cover-image {
   position: absolute;
-  width: 148rpx;
-  height: 168rpx;
+  width: 129rpx;
+  height: 147rpx;
   left: 0;
   top: 0;
-  border: 6rpx solid #ffffff;
-  border-radius: 28rpx;
+  border: 5rpx solid #ffffff;
+  border-radius: 24rpx;
   background: #eef1e8;
-  box-shadow: 0 16rpx 36rpx rgba(70, 52, 24, 0.15);
+  box-shadow: 0 14rpx 31rpx rgba(70, 52, 24, 0.15);
 }
 
 .cover-md {
@@ -578,23 +579,23 @@ button::after {
 
 .stack-1 {
   z-index: 2;
-  transform: translate(16rpx, 4rpx) rotate(0deg);
+  transform: translate(14rpx, 3rpx) rotate(0deg);
 }
 
 .stack-2 {
   z-index: 3;
-  transform: translate(32rpx, 8rpx) rotate(5deg);
+  transform: translate(28rpx, 7rpx) rotate(5deg);
 }
 
 .more-count {
   position: absolute;
-  right: -8rpx;
-  top: -8rpx;
+  right: -6rpx;
+  top: -6rpx;
   z-index: 4;
   border-radius: 999rpx;
-  min-width: 60rpx;
-  height: 60rpx;
-  padding: 0 8rpx;
+  min-width: 52rpx;
+  height: 52rpx;
+  padding: 0 7rpx;
   box-sizing: border-box;
   border: 4rpx solid #ffffff;
   display: flex;
@@ -602,7 +603,7 @@ button::after {
   justify-content: center;
   background: #111111;
   color: #b7ff38;
-  font-size: 21rpx;
+  font-size: 19rpx;
   font-weight: 900;
 }
 
@@ -676,14 +677,14 @@ button::after {
 }
 
 .cover-title {
-  margin-top: 12rpx;
+  margin-top: 10rpx;
   font-size: 31rpx;
   font-weight: 900;
   line-height: 36rpx;
 }
 
 .cover-tags {
-  margin-top: 10rpx;
+  margin-top: 6rpx;
   color: #8d7d69;
   font-size: 21rpx;
   line-height: 25rpx;
@@ -726,7 +727,7 @@ button::after {
 .upload-fab {
   position: fixed;
   right: 34rpx;
-  bottom: 52rpx;
+  bottom: calc(150rpx + env(safe-area-inset-bottom));
   width: 101rpx;
   height: 101rpx;
   border-radius: 38rpx;
@@ -738,11 +739,61 @@ button::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 120ms ease, opacity 120ms ease;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease;
 }
 
 .upload-fab text {
   display: block;
   line-height: 1;
   transform: translateY(-3rpx);
+}
+
+/* 新增灵感册卡片 */
+.new-book-tile {
+  background: #fff5e7;
+  border: 2rpx dashed #f0d8b0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-tile-icon {
+  font-size: 44rpx;
+  line-height: 1;
+  color: #8a5a16;
+  font-weight: 300;
+}
+
+.new-tile-label {
+  margin-top: 14rpx;
+  font-size: 26rpx;
+  font-weight: 900;
+  color: #8a5a16;
+  text-align: center;
+}
+
+.new-tile-sub {
+  margin-top: 6rpx;
+  font-size: 21rpx;
+  font-weight: 800;
+  color: #b07a40;
+  text-align: center;
+}
+
+/* 预览页能力图标缩小适配 4 列 */
+.item-icon {
+  width: 36rpx;
+  height: 36rpx;
+  font-size: 18rpx;
+}
+
+.item-title {
+  font-size: 24rpx;
+}
+
+.item-desc {
+  font-size: 19rpx;
 }

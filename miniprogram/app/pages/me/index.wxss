@@ -1,6 +1,6 @@
 .page {
   min-height: 100vh;
-  padding: 32rpx 28rpx 180rpx;
+  padding: 31rpx 31rpx 170rpx;
   background: #ffffff;
   color: #151712;
   box-sizing: border-box;
@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 28rpx;
+  margin-bottom: 31rpx;
 }
 
 .eyebrow,
@@ -28,22 +28,22 @@
 
 .eyebrow {
   color: #8b916f;
-  font-size: 22rpx;
+  font-size: 21rpx;
   font-weight: 800;
   letter-spacing: 0;
 }
 
 .page-title {
-  margin-top: 8rpx;
-  font-size: 48rpx;
+  margin-top: 6rpx;
+  font-size: 42rpx;
   font-weight: 900;
   line-height: 1.1;
 }
 
 .top-dot {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 24rpx;
+  width: 73rpx;
+  height: 73rpx;
+  border-radius: 28rpx;
   background: #f4f5ef;
   position: relative;
 }
@@ -51,10 +51,10 @@
 .top-dot::after {
   content: "";
   position: absolute;
-  left: 24rpx;
-  top: 24rpx;
-  width: 24rpx;
-  height: 24rpx;
+  left: 25rpx;
+  top: 25rpx;
+  width: 23rpx;
+  height: 23rpx;
   border-radius: 50%;
   background: #b7ff38;
 }
@@ -62,21 +62,21 @@
 .profile {
   display: flex;
   align-items: center;
-  gap: 24rpx;
-  margin-bottom: 28rpx;
+  gap: 28rpx;
+  margin: 21rpx 0 38rpx;
 }
 
 .avatar {
   flex: 0 0 auto;
-  width: 132rpx;
-  height: 132rpx;
+  width: 136rpx;
+  height: 136rpx;
   border-radius: 50%;
   background: linear-gradient(135deg, #111111, #3e4930);
   color: #b7ff38;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 48rpx;
+  font-size: 42rpx;
   font-weight: 900;
   box-shadow: 0 20rpx 48rpx rgba(17, 17, 17, 0.18);
 }
@@ -96,20 +96,20 @@
 .desc {
   margin-top: 10rpx;
   color: #787d73;
-  font-size: 26rpx;
+  font-size: 24rpx;
   line-height: 1.45;
 }
 
 .stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16rpx;
-  margin-bottom: 24rpx;
+  gap: 17rpx;
+  margin-bottom: 28rpx;
 }
 
 .stat-block {
-  min-height: 130rpx;
-  padding: 22rpx 16rpx;
+  min-height: 112rpx;
+  padding: 16rpx 14rpx;
   border-radius: 8rpx;
   background: #f7f8f4;
   box-sizing: border-box;
@@ -122,7 +122,7 @@
 }
 
 .label {
-  margin-top: 12rpx;
+  margin-top: 5rpx;
   color: #7c8178;
   font-size: 24rpx;
   line-height: 1.2;
@@ -132,10 +132,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20rpx;
-  margin-bottom: 24rpx;
-  padding: 24rpx;
-  border-radius: 8rpx;
+  gap: 17rpx;
+  margin-bottom: 21rpx;
+  padding: 21rpx;
+  border-radius: 10rpx;
   background: #f2ffe2;
   border: 1rpx solid #def4bd;
 }
@@ -146,7 +146,7 @@
 }
 
 .banner-title {
-  font-size: 28rpx;
+  font-size: 24rpx;
   font-weight: 900;
   line-height: 1.25;
 }
@@ -154,22 +154,22 @@
 .banner-desc {
   margin-top: 8rpx;
   color: #767b70;
-  font-size: 23rpx;
+  font-size: 21rpx;
   line-height: 1.35;
 }
 
 .banner-button {
   flex: 0 0 auto;
-  min-width: 172rpx;
-  height: 72rpx;
+  min-width: 150rpx;
+  height: 63rpx;
   margin: 0;
   padding: 0 24rpx;
   border-radius: 999rpx;
   background: #b7ff38;
   color: #142006;
-  font-size: 25rpx;
+  font-size: 22rpx;
   font-weight: 900;
-  line-height: 72rpx;
+  line-height: 63rpx;
 }
 
 .banner-button.dark {
@@ -182,9 +182,9 @@
 }
 
 .debug-login {
-  margin-bottom: 24rpx;
-  padding: 24rpx;
-  border-radius: 8rpx;
+  margin-bottom: 21rpx;
+  padding: 21rpx;
+  border-radius: 10rpx;
   border: 1rpx solid #eeeeea;
   background: #ffffff;
 }
@@ -203,7 +203,7 @@
 
 .debug-title {
   color: #151712;
-  font-size: 28rpx;
+  font-size: 24rpx;
   font-weight: 900;
   line-height: 1.25;
 }
@@ -211,14 +211,14 @@
 .debug-desc {
   margin-top: 8rpx;
   color: #7c8178;
-  font-size: 23rpx;
+  font-size: 21rpx;
   line-height: 1.35;
 }
 
 .debug-chevron {
   flex: 0 0 auto;
   color: #6f7668;
-  font-size: 24rpx;
+  font-size: 21rpx;
   font-weight: 800;
 }
 
@@ -229,24 +229,24 @@
 }
 
 .debug-input {
-  height: 80rpx;
+  height: 70rpx;
   padding: 0 22rpx;
   border-radius: 8rpx;
   background: #f7f8f4;
   color: #151712;
-  font-size: 26rpx;
+  font-size: 23rpx;
   box-sizing: border-box;
 }
 
 .debug-button {
-  height: 80rpx;
+  height: 70rpx;
   margin: 0;
   border-radius: 8rpx;
   background: #111111;
   color: #b7ff38;
-  font-size: 26rpx;
+  font-size: 23rpx;
   font-weight: 900;
-  line-height: 80rpx;
+  line-height: 70rpx;
 }
 
 .debug-button::after {
@@ -261,8 +261,8 @@
 }
 
 .menu-row {
-  min-height: 106rpx;
-  padding: 20rpx 24rpx;
+  min-height: 92rpx;
+  padding: 17rpx 21rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -275,7 +275,7 @@
 }
 
 .menu-title {
-  font-size: 29rpx;
+  font-size: 25rpx;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -283,13 +283,13 @@
 .menu-desc {
   margin-top: 8rpx;
   color: #8b9087;
-  font-size: 23rpx;
+  font-size: 20rpx;
   line-height: 1.25;
 }
 
 .chevron {
   margin-left: 20rpx;
   color: #b2b6ad;
-  font-size: 42rpx;
+  font-size: 32rpx;
   line-height: 1;
 }

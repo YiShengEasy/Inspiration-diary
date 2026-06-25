@@ -4,7 +4,7 @@
   right: 0;
   bottom: 0;
   z-index: 99;
-  padding: 10rpx 18rpx calc(12rpx + env(safe-area-inset-bottom));
+  padding: 8rpx 18rpx calc(10rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.92);
   border-top: 1rpx solid rgba(238, 238, 238, 0.94);
@@ -13,7 +13,7 @@
 }
 
 .tabbar {
-  height: 118rpx;
+  height: 102rpx;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   align-items: center;
@@ -28,7 +28,7 @@
   justify-content: center;
   gap: 6rpx;
   color: #9a9d94;
-  font-size: 22rpx;
+  font-size: 19rpx;
   font-weight: 900;
   transition: transform 140ms ease, color 140ms ease, opacity 140ms ease;
 }
@@ -39,9 +39,9 @@
 }
 
 .icon-wrap {
-  width: 50rpx;
-  height: 46rpx;
-  border-radius: 18rpx;
+  width: 44rpx;
+  height: 40rpx;
+  border-radius: 16rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -50,18 +50,18 @@
 
 .tab-icon {
   display: block;
-  font-size: 34rpx;
+  font-size: 28rpx;
   line-height: 1;
 }
 
 .tab-label {
   display: block;
-  line-height: 26rpx;
+  line-height: 22rpx;
 }
 
 .active-mark {
-  width: 42rpx;
-  height: 7rpx;
+  width: 37rpx;
+  height: 6rpx;
   border-radius: 999rpx;
   background: #b7ff38;
   opacity: 0;
@@ -77,7 +77,7 @@
 .tab.active .icon-wrap {
   background: #111111;
   color: #b7ff38;
-  transform: translateY(-5rpx);
+  transform: translateY(-4rpx);
 }
 
 .tab.active .active-mark {

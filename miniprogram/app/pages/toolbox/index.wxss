@@ -1,7 +1,7 @@
 .toolbox-page {
   min-height: 100vh;
   background: #ffffff;
-  padding: 0 28rpx 180rpx;
+  padding: 0 31rpx 170rpx;
 }
 
 button {
@@ -17,9 +17,9 @@ button::after {
 
 .promo-banner {
   position: relative;
-  min-height: 308rpx;
-  margin: 0 -28rpx;
-  padding: 44rpx 44rpx 36rpx;
+  min-height: 268rpx;
+  margin: 0 -31rpx;
+  padding: 38rpx 38rpx 31rpx;
   box-sizing: border-box;
   overflow: hidden;
   display: flex;
@@ -33,99 +33,99 @@ button::after {
 .promo-copy {
   position: relative;
   z-index: 2;
-  width: 390rpx;
+  width: 307rpx;
 }
 
 .eyebrow {
   display: block;
-  font-size: 22rpx;
-  line-height: 30rpx;
+  font-size: 21rpx;
+  line-height: 26rpx;
   font-weight: 900;
   color: #5742c8;
 }
 
 .title {
   display: block;
-  margin-top: 14rpx;
+  margin-top: 12rpx;
   font-size: 52rpx;
-  line-height: 58rpx;
+  line-height: 56rpx;
   font-weight: 900;
 }
 
 .subtitle {
   display: block;
-  width: 350rpx;
-  margin-top: 14rpx;
-  font-size: 24rpx;
-  line-height: 34rpx;
+  width: 321rpx;
+  margin-top: 12rpx;
+  font-size: 21rpx;
+  line-height: 28rpx;
   color: rgba(33, 32, 72, 0.64);
 }
 
 .promo-stack {
   position: absolute;
-  right: 18rpx;
-  top: 52rpx;
-  width: 210rpx;
-  height: 188rpx;
+  right: -17rpx;
+  top: 28rpx;
+  width: 241rpx;
+  height: 195rpx;
 }
 
 .stack-card {
   position: absolute;
-  width: 156rpx;
-  height: 188rpx;
-  border-radius: 28rpx;
-  box-shadow: 0 24rpx 70rpx rgba(54, 43, 116, 0.2);
+  width: 126rpx;
+  height: 157rpx;
+  border-radius: 24rpx;
+  box-shadow: 0 21rpx 49rpx rgba(61, 55, 139, 0.22);
 }
 
 .card-back {
-  right: 22rpx;
-  top: 0;
+  left: 77rpx;
+  top: -3rpx;
   background: rgba(255, 255, 255, 0.5);
   transform: rotate(11deg);
 }
 
 .card-front {
-  right: 54rpx;
-  top: 20rpx;
-  padding: 22rpx;
+  left: 0;
+  top: 16rpx;
+  padding: 18rpx;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.86);
   transform: rotate(-8deg);
 }
 
 .stack-dot {
-  width: 54rpx;
-  height: 54rpx;
-  border-radius: 20rpx;
+  width: 47rpx;
+  height: 47rpx;
+  border-radius: 17rpx;
   background: #b7ff38;
 }
 
 .stack-line {
-  width: 72rpx;
-  height: 14rpx;
-  margin-top: 16rpx;
+  width: 63rpx;
+  height: 12rpx;
+  margin-top: 14rpx;
   border-radius: 99rpx;
   background: #171736;
   opacity: 0.18;
 }
 
 .stack-line.long {
-  width: 104rpx;
+  width: 91rpx;
 }
 
 .featured {
   display: grid;
   grid-template-columns: 1.18fr 0.82fr;
-  grid-template-rows: repeat(2, 128rpx);
-  gap: 20rpx;
-  margin: 32rpx 0;
+  grid-template-rows: repeat(2, 112rpx);
+  gap: 17rpx;
+  margin: 28rpx 0;
 }
 
 .feature {
   position: relative;
   overflow: hidden;
-  min-height: 128rpx;
-  padding: 24rpx;
+  min-height: 112rpx;
+  padding: 23rpx;
   box-sizing: border-box;
   border-radius: 32rpx 12rpx 32rpx 12rpx;
   display: flex;
@@ -151,8 +151,8 @@ button::after {
 
 .feature.main {
   grid-row: span 2;
-  min-height: 276rpx;
-  border-radius: 34rpx;
+  min-height: 241rpx;
+  border-radius: 31rpx;
   background: #b7ff38;
   color: #111111;
 }
@@ -184,11 +184,11 @@ button::after {
 
 .feature-label {
   width: auto;
-  padding: 8rpx 14rpx;
+  padding: 7rpx 14rpx;
   border-radius: 999rpx;
   background: rgba(255, 255, 255, 0.44);
-  font-size: 20rpx;
-  line-height: 24rpx;
+  font-size: 19rpx;
+  line-height: 22rpx;
   font-weight: 900;
 }
 
@@ -198,28 +198,28 @@ button::after {
 }
 
 .feature-title {
-  margin-top: 16rpx;
-  font-size: 34rpx;
-  line-height: 38rpx;
+  margin-top: 21rpx;
+  font-size: 31rpx;
+  line-height: 31rpx;
   font-weight: 900;
 }
 
 .feature.main .feature-title {
-  font-size: 46rpx;
-  line-height: 50rpx;
+  font-size: 42rpx;
+  line-height: 42rpx;
 }
 
 .feature-desc {
   margin-top: 12rpx;
-  font-size: 24rpx;
-  line-height: 30rpx;
+  font-size: 21rpx;
+  line-height: 26rpx;
   font-weight: 700;
   color: rgba(17, 17, 17, 0.62);
 }
 
 .category-tabs {
   width: 100%;
-  margin: 0 0 28rpx;
+  margin: 14rpx 0 24rpx;
   white-space: nowrap;
 }
 
@@ -227,13 +227,13 @@ button::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 66rpx;
-  margin-right: 16rpx;
-  padding: 0 30rpx;
+  min-height: 49rpx;
+  margin-right: 14rpx;
+  padding: 0 26rpx;
   border-radius: 999rpx;
   background: #f4f4ef;
   color: #72766d;
-  font-size: 26rpx;
+  font-size: 21rpx;
   font-weight: 800;
 }
 
@@ -244,19 +244,20 @@ button::after {
 
 .tool-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18rpx;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 31rpx 14rpx;
 }
 
 .tool-card {
-  min-height: 180rpx;
-  padding: 24rpx;
+  min-height: 150rpx;
+  padding: 14rpx 7rpx;
   box-sizing: border-box;
-  border-radius: 28rpx;
+  border-radius: 31rpx;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   background: #ffffff;
   color: #161712;
   box-shadow: inset 0 0 0 2rpx #f0f0ea;
@@ -280,31 +281,31 @@ button::after {
 }
 
 .tool-icon {
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 20rpx;
+  width: 42rpx;
+  height: 42rpx;
+  border-radius: 16rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(17, 17, 17, 0.08);
-  font-size: 26rpx;
-  line-height: 56rpx;
+  font-size: 19rpx;
+  line-height: 42rpx;
   font-weight: 900;
 }
 
 .tool-name {
   display: block;
-  margin-top: 18rpx;
-  font-size: 30rpx;
-  line-height: 34rpx;
+  margin-top: 9rpx;
+  font-size: 23rpx;
+  line-height: 23rpx;
   font-weight: 900;
 }
 
 .tool-desc {
   display: block;
-  margin-top: 10rpx;
-  font-size: 23rpx;
-  line-height: 30rpx;
+  margin-top: 6rpx;
+  font-size: 16rpx;
+  line-height: 18rpx;
   color: #888d84;
   font-weight: 700;
 }
@@ -323,14 +324,14 @@ button::after {
 }
 
 .empty-title {
-  font-size: 30rpx;
-  line-height: 36rpx;
+  font-size: 26rpx;
+  line-height: 31rpx;
   font-weight: 900;
 }
 
 .empty-desc {
   margin-top: 12rpx;
-  font-size: 24rpx;
-  line-height: 32rpx;
+  font-size: 21rpx;
+  line-height: 28rpx;
   color: #7c8078;
 }
