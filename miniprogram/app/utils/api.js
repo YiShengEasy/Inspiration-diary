@@ -22,12 +22,7 @@ function resolveAssetUrl(url) {
     return `${protocol}${host}${port}`;
   });
 
-  if (resolvedUrl.indexOf("/api/photos/") < 0) return resolvedUrl;
-
-  const token = getToken();
-  if (!token || resolvedUrl.indexOf("miniToken=") >= 0) return resolvedUrl;
-  const separator = resolvedUrl.indexOf("?") >= 0 ? "&" : "?";
-  return `${resolvedUrl}${separator}miniToken=${encodeURIComponent(token)}`;
+  return resolvedUrl;
 }
 
 function downloadAsset(url) {

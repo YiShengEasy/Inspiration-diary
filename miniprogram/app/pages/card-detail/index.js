@@ -1,4 +1,4 @@
-const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
+const { request, resolveAssetUrl } = require("../../utils/api");
 
 function normalizeCard(card) {
   if (!card) return null;
@@ -13,11 +13,6 @@ function normalizeCard(card) {
     terms,
     termsText: terms.join(" / ")
   };
-}
-
-async function hydrateCardImage(card) {
-  if (!card || !card.image) return card;
-  return { ...card, image: await downloadAsset(card.image) };
 }
 
 Page({
@@ -41,7 +36,7 @@ Page({
     if (!this.data.id) return;
     this.setData({ loading: true, error: "" });
     try {
-      const card = await hydrateCardImage(normalizeCard(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}` })));
+      const card = normalizeCard(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}` }));
       wx.setStorageSync(`miniCard:${this.data.id}`, card);
       this.setData({ card, hasCard: !!card, loading: false });
     } catch (err) {

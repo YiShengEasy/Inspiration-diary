@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -74,13 +75,69 @@ function absoluteUrl(value: string | null | undefined, req: express.Request): st
   return `${getRequestOrigin(req)}${value}`;
 }
 
+const IMAGE_URL_TTL_SECONDS = Math.max(60, Number.parseInt(process.env.IMAGE_URL_TTL_SECONDS || "900", 10) || 900);
+
+function getImageSigningSecret(): string {
+  return (
+    process.env.IMAGE_URL_SIGNING_SECRET ||
+    process.env.AUTH_SESSION_SECRET ||
+    process.env.DATABASE_URL ||
+    "inspiration-diary-local-image-signing"
+  );
+}
+
+function signImagePath(pathname: string, expiresAt: number): string {
+  return crypto
+    .createHmac("sha256", getImageSigningSecret())
+    .update(`${pathname}:${expiresAt}`)
+    .digest("base64url");
+}
+
+function hasValidSignedImageUrl(req: express.Request): boolean {
+  const expValue = Array.isArray(req.query.exp) ? req.query.exp[0] : req.query.exp;
+  const sigValue = Array.isArray(req.query.sig) ? req.query.sig[0] : req.query.sig;
+  if (typeof expValue !== "string" || typeof sigValue !== "string") return false;
+
+  const expiresAt = Number(expValue);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return false;
+
+  const expected = signImagePath(req.path, expiresAt);
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(sigValue);
+  return expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function signedImageUrl(value: string | null | undefined, req: express.Request): string {
+  const resolved = absoluteUrl(value, req);
+  if (!resolved || !/^https?:\/\//i.test(resolved)) return resolved;
+
+  const origin = getRequestOrigin(req);
+  let url: URL;
+  try {
+    url = new URL(resolved);
+  } catch {
+    return resolved;
+  }
+
+  const requestOrigin = new URL(origin);
+  if (url.origin !== requestOrigin.origin || !url.pathname.startsWith("/api/photos/")) return resolved;
+
+  const expiresAt = Date.now() + IMAGE_URL_TTL_SECONDS * 1000;
+  url.searchParams.delete("miniToken");
+  url.searchParams.delete("mini_session");
+  url.searchParams.delete("token");
+  url.searchParams.set("exp", String(expiresAt));
+  url.searchParams.set("sig", signImagePath(url.pathname, expiresAt));
+  return url.toString();
+}
+
 function mapCardRows(rows: any[], req: express.Request) {
   return rows.map((row) => ({
     id: row.id,
     weekId: row.week_id,
     dayIndex: row.day_index,
-    imageUrl: absoluteUrl(row.image_url, req),
-    thumbnailUrl: absoluteUrl(row.thumbnail_url, req),
+    imageUrl: signedImageUrl(row.image_url, req),
+    thumbnailUrl: signedImageUrl(row.thumbnail_url, req),
     photoUid: row.photo_uid || "",
     photoHash: row.photo_hash || "",
     terms: row.terms || [],
@@ -651,8 +708,8 @@ app.post("/api/store-image", requirePostgresAuth, upload.single("image"), async 
     return res.json({
       photoUid: stored.photoUid,
       photoHash: stored.photoHash,
-      imageUrl: absoluteUrl(`/api/photos/hash/${encodedHash}/full`, req),
-      thumbnailUrl: absoluteUrl(`/api/photos/hash/${encodedHash}/thumb`, req),
+      imageUrl: signedImageUrl(`/api/photos/hash/${encodedHash}/full`, req),
+      thumbnailUrl: signedImageUrl(`/api/photos/hash/${encodedHash}/thumb`, req),
     });
   } catch (error: any) {
     console.error("PhotoPrism image storage error:", error);
@@ -1553,7 +1610,15 @@ app.get("/api/db/cards/:id", requirePostgresAuth, async (req: AuthenticatedReque
   }
 });
 
-app.get("/api/photos/:photoUid/:variant(thumb|full)", requirePostgresAuth, async (req, res) => {
+const requirePostgresAuthOrSignedPhoto: express.RequestHandler = (req, res, next) => {
+  if (hasValidSignedImageUrl(req)) {
+    next();
+    return;
+  }
+  requirePostgresAuth(req as AuthenticatedRequest, res, next);
+};
+
+app.get("/api/photos/:photoUid/:variant(thumb|full)", requirePostgresAuthOrSignedPhoto, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
@@ -1561,14 +1626,24 @@ app.get("/api/photos/:photoUid/:variant(thumb|full)", requirePostgresAuth, async
   try {
     const authReq = req as AuthenticatedRequest;
     const { photoUid, variant } = req.params;
-    const result = await pgPool.query(
-      `SELECT photo_hash
-       FROM cards
-       WHERE user_id = $1 AND photo_uid = $2
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [authReq.user!.id, photoUid]
-    );
+    const signedRequest = hasValidSignedImageUrl(req);
+    const result = signedRequest
+      ? await pgPool.query(
+          `SELECT photo_hash
+           FROM cards
+           WHERE photo_uid = $1
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [photoUid]
+        )
+      : await pgPool.query(
+          `SELECT photo_hash
+           FROM cards
+           WHERE user_id = $1 AND photo_uid = $2
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [authReq.user!.id, photoUid]
+        );
     const photoHash = result.rows[0]?.photo_hash;
 
     if (!photoHash) {
@@ -1585,7 +1660,7 @@ app.get("/api/photos/:photoUid/:variant(thumb|full)", requirePostgresAuth, async
   }
 });
 
-app.get("/api/photos/hash/:photoHash/:variant(thumb|full)", requirePostgresAuth, async (req, res) => {
+app.get("/api/photos/hash/:photoHash/:variant(thumb|full)", requirePostgresAuthOrSignedPhoto, async (req, res) => {
   try {
     const { photoHash, variant } = req.params;
     if (!/^[a-f0-9]{40}$/i.test(photoHash)) {

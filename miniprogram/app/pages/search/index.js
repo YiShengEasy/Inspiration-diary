@@ -1,4 +1,4 @@
-const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
+const { request, resolveAssetUrl } = require("../../utils/api");
 
 const filterNames = ["全部", "图片", "MD", "标签"];
 
@@ -22,11 +22,6 @@ function normalizeCard(card) {
     terms,
     termsText: terms.join(" / ")
   };
-}
-
-async function hydrateCardImage(card) {
-  if (!card.image) return card;
-  return { ...card, image: await downloadAsset(card.image) };
 }
 
 Page({
@@ -74,9 +69,8 @@ Page({
       } else if (this.data.filter === "标签" && q) {
         cards = cards.filter((card) => card.terms.some((term) => term.indexOf(q) >= 0));
       }
-      const hydratedCards = await Promise.all(cards.map(hydrateCardImage));
-      hydratedCards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
-      this.setData({ cards: hydratedCards });
+      cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
+      this.setData({ cards });
     } catch (err) {
       this.setData({ error: err.message || "搜索失败" });
     } finally {
