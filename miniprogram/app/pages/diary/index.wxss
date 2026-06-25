@@ -41,7 +41,7 @@ button::after {
 .caption {
   display: block;
   color: #5b49bf;
-  font-size: 24rpx;
+  font-size: 21rpx;
   font-weight: 800;
   letter-spacing: 1rpx;
 }
@@ -61,7 +61,7 @@ button::after {
   width: 430rpx;
   margin-top: 18rpx;
   color: rgba(33, 32, 72, 0.66);
-  font-size: 26rpx;
+  font-size: 23rpx;
   line-height: 1.45;
 }
 
@@ -153,14 +153,14 @@ button::after {
 
 .item-title {
   margin-top: 16rpx;
-  font-size: 30rpx;
+  font-size: 26rpx;
   font-weight: 900;
 }
 
 .item-desc {
   margin-top: 6rpx;
   color: #777b72;
-  font-size: 24rpx;
+  font-size: 21rpx;
 }
 
 .weekly-layout {
@@ -177,7 +177,7 @@ button::after {
 .caption {
   display: block;
   color: #a47c34;
-  font-size: 24rpx;
+  font-size: 21rpx;
   font-weight: 900;
 }
 
@@ -185,9 +185,9 @@ button::after {
   display: block;
   margin-top: 4rpx;
   color: #111111;
-  font-size: 50rpx;
+  font-size: 44rpx;
   font-weight: 950;
-  line-height: 56rpx;
+  line-height: 48rpx;
 }
 
 .header-actions {
@@ -216,14 +216,14 @@ button::after {
   justify-content: center;
   background: #f0e6d7;
   color: #111111;
-  font-size: 44rpx;
+  font-size: 28rpx;
   font-weight: 700;
   line-height: 1;
 }
 
 .week-pill-title {
   color: #111111;
-  font-size: 34rpx;
+  font-size: 30rpx;
   font-weight: 950;
 }
 
@@ -309,7 +309,7 @@ button::after {
 
 .summary-label {
   display: block;
-  font-size: 23rpx;
+  font-size: 19rpx;
   font-weight: 800;
 }
 
@@ -326,23 +326,23 @@ button::after {
 .summary-title {
   display: block;
   margin-top: 16rpx;
-  font-size: 32rpx;
+  font-size: 28rpx;
   font-weight: 900;
-  line-height: 38rpx;
+  line-height: 34rpx;
 }
 
 .summary-desc {
   display: block;
   margin-top: 10rpx;
   color: rgba(255, 255, 255, 0.68);
-  font-size: 24rpx;
-  line-height: 34rpx;
+  font-size: 21rpx;
+  line-height: 30rpx;
 }
 
 .summary-action {
   flex-shrink: 0;
   border-radius: 999rpx;
-  font-size: 24rpx;
+  font-size: 21rpx;
   font-weight: 900;
 }
 
@@ -367,7 +367,7 @@ button::after {
 
 .section-title {
   color: #151712;
-  font-size: 34rpx;
+  font-size: 30rpx;
   font-weight: 950;
 }
 
@@ -380,12 +380,12 @@ button::after {
   gap: 8rpx;
   background: rgba(255, 255, 255, 0.86);
   color: #6f6254;
-  font-size: 26rpx;
+  font-size: 23rpx;
   font-weight: 900;
 }
 
 .manage-chevron {
-  font-size: 36rpx;
+  font-size: 26rpx;
   line-height: 1;
 }
 
@@ -434,7 +434,7 @@ button::after {
   margin-top: 16rpx;
   padding: 0 18rpx;
   color: #151712;
-  font-size: 26rpx;
+  font-size: 23rpx;
   font-weight: 950;
 }
 
@@ -442,7 +442,7 @@ button::after {
   margin-top: 6rpx;
   padding: 0 18rpx;
   color: #9a8064;
-  font-size: 22rpx;
+  font-size: 19rpx;
   font-weight: 900;
 }
 
@@ -488,14 +488,14 @@ button::after {
 }
 
 .day-name {
-  font-size: 32rpx;
+  font-size: 28rpx;
   font-weight: 950;
-  line-height: 38rpx;
+  line-height: 34rpx;
 }
 
 .day-count {
   color: #9a8064;
-  font-size: 24rpx;
+  font-size: 21rpx;
   font-weight: 700;
 }
 
@@ -556,9 +556,9 @@ button::after {
   z-index: 1;
   max-height: 38rpx;
   color: #151712;
-  font-size: 18rpx;
+  font-size: 16rpx;
   font-weight: 900;
-  line-height: 19rpx;
+  line-height: 18rpx;
 }
 
 .cover-md-summary {
@@ -567,8 +567,8 @@ button::after {
   margin-top: 6rpx;
   max-height: 64rpx;
   color: #8b8a82;
-  font-size: 16rpx;
-  line-height: 20rpx;
+  font-size: 14rpx;
+  line-height: 18rpx;
 }
 
 .stack-0 {
@@ -602,7 +602,7 @@ button::after {
   justify-content: center;
   background: #111111;
   color: #b7ff38;
-  font-size: 24rpx;
+  font-size: 21rpx;
   font-weight: 900;
 }
 
@@ -621,7 +621,7 @@ button::after {
   border-radius: 16rpx;
   background: #ead8bd;
   color: #9a6f32;
-  font-size: 22rpx;
+  font-size: 18rpx;
   font-weight: 900;
   line-height: 32rpx;
 }
@@ -677,22 +677,22 @@ button::after {
 
 .cover-title {
   margin-top: 12rpx;
-  font-size: 36rpx;
+  font-size: 31rpx;
   font-weight: 900;
-  line-height: 42rpx;
+  line-height: 36rpx;
 }
 
 .cover-tags {
   margin-top: 10rpx;
   color: #8d7d69;
-  font-size: 24rpx;
-  line-height: 30rpx;
+  font-size: 21rpx;
+  line-height: 25rpx;
 }
 
 .chevron {
   justify-self: end;
   color: #9aa093;
-  font-size: 38rpx;
+  font-size: 33rpx;
   line-height: 1;
 }
 
@@ -706,7 +706,7 @@ button::after {
   border: 2rpx dashed #d8ddcf;
   border-radius: 24rpx;
   color: #6f7d63;
-  font-size: 26rpx;
+  font-size: 23rpx;
   font-weight: 800;
 }
 
@@ -719,7 +719,7 @@ button::after {
   border-radius: 14rpx;
   background: #ecffd8;
   color: #132006;
-  font-size: 28rpx;
+  font-size: 24rpx;
   font-weight: 900;
 }
 
