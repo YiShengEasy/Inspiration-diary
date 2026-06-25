@@ -120,7 +120,7 @@
                   binderror="onImageError"
                 ></image>
               </block>
-              <text wx:if="{{item.count > 1}}" class="more-count">+{{item.count - 1}}</text>
+              <text wx:if="{{item.count > 1}}" class="more-count">+{{item.count}}</text>
             </view>
             <view class="cover-text">
               <text class="type-pill {{item.cover.typeLabel === 'IMG' ? 'image-pill' : 'md-pill'}}">{{item.cover.typeLabel}}</text>
