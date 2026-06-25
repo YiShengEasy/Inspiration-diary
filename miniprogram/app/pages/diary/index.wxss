@@ -632,7 +632,7 @@ button::after {
   gap: 10rpx;
   min-width: 0;
   text-align: left;
-  transform: translateY(-6rpx);
+  transform: translateY(-1rpx);
 }
 
 .type-pill {
