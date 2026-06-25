@@ -12,7 +12,8 @@
     "docker:prod:down": "docker compose down --remove-orphans",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "auth:smoke": "node scripts/auth-smoke.mjs"
+    "auth:smoke": "node scripts/auth-smoke.mjs",
+    "mini:auth:smoke": "WECHAT_MOCK=true node scripts/miniprogram-auth-smoke.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
