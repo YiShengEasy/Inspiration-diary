@@ -4,13 +4,23 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import pg from "pg";
+import multer from "multer";
 import { createAuthRouter, requireAuth, type AuthenticatedRequest } from "./src/server/auth";
-import { fetchPhotoPrismImage, storeImageInPhotoPrism } from "./src/server/photoprism";
+import { fetchPhotoPrismImage, storeImageUploadInPhotoPrism } from "./src/server/photoprism";
+import { normalizeImageUpload } from "./src/server/upload";
+import { getMiniToken, loadMiniSessionUser } from "./src/server/miniprogramAuth";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 25 * 1024 * 1024,
+    files: 1,
+  },
+});
 
 function getCompletionsUrl(baseUrl: string): string {
   let url = baseUrl.trim();
@@ -131,6 +141,9 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
             updated_at BIGINT NOT NULL
           );
         `);
+        await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(40);");
+        await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;");
+        await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_unique ON users(phone) WHERE phone IS NOT NULL AND phone <> '';");
         await client.query(`
           CREATE TABLE IF NOT EXISTS sessions (
             id TEXT PRIMARY KEY,
@@ -143,6 +156,32 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
         `);
         await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS wechat_identities (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+            mini_openid TEXT NOT NULL UNIQUE,
+            unionid TEXT,
+            phone TEXT,
+            nickname TEXT,
+            avatar_url TEXT,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+          );
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_wechat_identities_user_id ON wechat_identities(user_id);");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS mini_program_sessions (
+            id TEXT PRIMARY KEY,
+            identity_id UUID NOT NULL REFERENCES wechat_identities(id) ON DELETE CASCADE,
+            user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+            created_at BIGINT NOT NULL,
+            expires_at BIGINT NOT NULL,
+            last_seen_at BIGINT NOT NULL
+          );
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_mini_program_sessions_user_id ON mini_program_sessions(user_id);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_mini_program_sessions_expires_at ON mini_program_sessions(expires_at);");
         await client.query(`
           CREATE TABLE IF NOT EXISTS notes (
             week_id VARCHAR(50) PRIMARY KEY,
@@ -283,18 +322,57 @@ if (pgPool) {
   app.use("/api/auth", createAuthRouter(pgPool));
 }
 
-const requirePostgresAuth = (req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
+function getCurrentWeekId(): string {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const days = Math.floor(
+    (Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - start.getTime()) / 86400000
+  );
+  const week = Math.ceil((days + start.getUTCDay() + 1) / 7);
+  return `${now.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+const requirePostgresAuth = async (req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
   if (!pgPool) return res.status(503).json({ error: "PostgreSQL is not configured." });
+  const miniToken = getMiniToken(req);
+  if (miniToken) {
+    const miniUser = await loadMiniSessionUser(pgPool, miniToken);
+    if (!miniUser) return res.status(401).json({ error: "登录已过期" });
+    req.user = miniUser;
+    req.sessionId = miniToken;
+    return next();
+  }
   return requireAuth(pgPool)(req, res, next);
 };
 
-app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
+app.get("/api/miniprogram/me", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { imageBase64, mimeType } = req.body;
-    if (!imageBase64) {
-      return res.status(400).json({ error: "Missing imageBase64 in request body." });
-    }
+    const userId = req.user!.id;
+    const [inspirationCount, weekCount] = await Promise.all([
+      pgPool!.query("SELECT COUNT(*)::int AS count FROM cards WHERE user_id = $1", [userId]),
+      pgPool!.query("SELECT COUNT(*)::int AS count FROM cards WHERE user_id = $1 AND week_id = $2", [userId, getCurrentWeekId()]),
+    ]);
+    return res.json({
+      user: req.user,
+      stats: {
+        inspirationCount: inspirationCount.rows[0]?.count || 0,
+        weekRecordCount: weekCount.rows[0]?.count || 0,
+        toolUsageCount: 0,
+      },
+      sync: { status: "ready" },
+    });
+  } catch (err: unknown) {
+    console.error("Mini program me error:", err);
+    return res.status(500).json({ error: "加载我的信息失败" });
+  }
+});
 
+app.post("/api/miniprogram/tool-usage", requirePostgresAuth, async (_req, res) => {
+  return res.json({ success: true });
+});
+
+app.post("/api/analyze-image", requirePostgresAuth, upload.single("image"), async (req, res) => {
+  try {
     const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
     const customApiKey = req.headers["x-api-key"] as string | undefined;
     const customModelName = req.headers["x-model-name"] as string | undefined;
@@ -308,11 +386,12 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
     console.log("customGeminiBaseUrl:", customGeminiBaseUrl);
     console.log("=====================================");
 
-    let rawBase64 = imageBase64;
-    let actualMimeType = mimeType || "image/png";
+    const image = normalizeImageUpload(req);
+    let rawBase64 = image.dataUrl;
+    let actualMimeType = image.mimeType;
 
-    if (imageBase64.includes(";base64,")) {
-      const parts = imageBase64.split(";base64,");
+    if (rawBase64.includes(";base64,")) {
+      const parts = rawBase64.split(";base64,");
       rawBase64 = parts[1];
       const match = parts[0].match(/data:(.*);base64/);
       if (match) {
@@ -549,22 +628,20 @@ app.post("/api/analyze-image", requirePostgresAuth, async (req, res) => {
   }
 });
 
-app.post("/api/store-image", requirePostgresAuth, async (req, res) => {
+app.post("/api/store-image", requirePostgresAuth, upload.single("image"), async (req, res) => {
   try {
-    const { imageBase64 } = req.body;
-    if (!imageBase64) {
-      return res.status(400).json({ error: "Missing imageBase64 in request body." });
-    }
-
-    const stored = await storeImageInPhotoPrism(imageBase64);
+    const image = normalizeImageUpload(req);
+    const stored = await storeImageUploadInPhotoPrism(image);
     const encodedHash = encodeURIComponent(stored.photoHash);
     return res.json({
+      photoUid: stored.photoUid,
+      photoHash: stored.photoHash,
       imageUrl: `/api/photos/hash/${encodedHash}/full`,
       thumbnailUrl: `/api/photos/hash/${encodedHash}/thumb`,
     });
   } catch (error: any) {
     console.error("PhotoPrism image storage error:", error);
-    return res.status(500).json({ error: error.message || "PhotoPrism image storage failed." });
+    return res.status(400).json({ error: error.message || "PhotoPrism image storage failed." });
   }
 });
 
@@ -1439,6 +1516,28 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
   }
 });
 
+app.get("/api/db/cards/:id", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const result = await pgPool.query(
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name
+       FROM cards
+       WHERE id = $1 AND user_id = $2`,
+      [req.params.id, req.user!.id]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: "Card not found" });
+    }
+    return res.json(mapCardRows(result.rows)[0]);
+  } catch (err: any) {
+    console.error("Error fetching card detail:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch card detail" });
+  }
+});
+
 app.get("/api/photos/:photoUid/:variant(thumb|full)", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
@@ -1604,6 +1703,15 @@ app.post("/api/db/settings", requirePostgresAuth, async (req, res) => {
     console.error("Error saving settings:", err);
     return res.status(500).json({ error: err.message });
   }
+});
+
+app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(413).json({
+      error: err.code === "LIMIT_FILE_SIZE" ? "图片过大，请压缩后重试" : err.message,
+    });
+  }
+  return next(err);
 });
 
 async function startServer() {
