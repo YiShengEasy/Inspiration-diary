@@ -178,6 +178,12 @@ Page({
     if (requireRegistered()) wx.navigateTo({ url: "/pages/books/index" });
   },
 
+  openBook(event) {
+    const id = event.currentTarget.dataset.id;
+    if (!id) return;
+    if (requireRegistered()) wx.navigateTo({ url: `/pages/books/index?bookId=${encodeURIComponent(id)}` });
+  },
+
   openRegister() {
     wx.navigateTo({ url: "/pages/register-complete/index" });
   },

@@ -1,5 +1,5 @@
 <view class="page books-page">
-  <view class="books-header">
+  <view wx:if="{{!selectedBookId}}" class="books-header">
     <view>
       <text class="caption">BOOKSHELF</text>
       <text class="title">我的灵感册</text>
@@ -7,7 +7,7 @@
     <text class="count">{{books.length}} 本</text>
   </view>
 
-  <view class="create-row">
+  <view wx:if="{{!selectedBookId}}" class="create-row">
     <input value="{{title}}" bindinput="onTitleInput" placeholder="新建灵感册名称" />
     <button bindtap="createBook" loading="{{creating}}">新建</button>
   </view>
@@ -15,13 +15,13 @@
   <view wx:if="{{loading}}" class="state">正在加载...</view>
   <view wx:if="{{error}}" class="state error">{{error}}</view>
 
-  <view wx:if="{{!loading && !books.length}}" class="empty-state">
+  <view wx:if="{{!selectedBookId && !loading && !books.length}}" class="empty-state">
     <text class="empty-title">还没有灵感册</text>
     <text class="empty-desc">新建一个专题，把每日灵感慢慢收进去。</text>
   </view>
 
-  <view class="book-list">
-    <view wx:for="{{books}}" wx:key="id" class="book-card">
+  <view wx:if="{{!selectedBookId}}" class="book-list">
+    <button wx:for="{{books}}" wx:key="id" class="book-card" data-id="{{item.id}}" bindtap="openBook">
       <image wx:if="{{item.coverImage}}" class="book-cover" src="{{item.coverImage}}" mode="aspectFill"></image>
       <view wx:else class="book-cover empty-cover">BOOK</view>
       <view class="book-copy">
@@ -29,6 +29,41 @@
         <text class="book-desc">{{item.descriptionText}}</text>
         <text class="book-meta">{{item.cardCountText}} · {{item.updatedText}}</text>
       </view>
+      <text class="book-chevron">›</text>
+    </button>
+  </view>
+
+  <view wx:if="{{selectedBookId}}" class="book-detail">
+    <view class="detail-header">
+      <button class="back-button" bindtap="closeBook">‹</button>
+      <view class="detail-copy">
+        <text class="caption">BOOKSHELF</text>
+        <text class="title">{{selectedBook.title || "灵感册"}}</text>
+        <text class="detail-desc">{{selectedBook.descriptionText}}</text>
+      </view>
+      <text class="count">{{cards.length}} 条</text>
+    </view>
+
+    <view wx:if="{{cardsLoading}}" class="state">正在加载内容...</view>
+    <view wx:if="{{!cardsLoading && !cards.length}}" class="empty-state">
+      <text class="empty-title">这个册子还没有收录</text>
+      <text class="empty-desc">后续可以从灵感详情里把内容收进来。</text>
+    </view>
+
+    <view class="card-list">
+      <button wx:for="{{cards}}" wx:key="id" class="gallery-card" data-id="{{item.id}}" bindtap="openCard">
+        <image wx:if="{{!item.isMd && item.image}}" class="thumb" src="{{item.image}}" mode="aspectFill"></image>
+        <view wx:else class="thumb md-thumb">
+          <text class="md-thumb-title">{{item.title}}</text>
+          <text class="md-thumb-summary">{{item.summary}}</text>
+        </view>
+        <view class="card-copy">
+          <text class="type-pill">{{item.typeLabel}}</text>
+          <text class="card-title">{{item.title}}</text>
+          <text class="card-tags">{{item.termsText}}</text>
+        </view>
+        <text class="time">{{item.createdText}}</text>
+      </button>
     </view>
   </view>
 </view>

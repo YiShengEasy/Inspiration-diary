@@ -79,7 +79,7 @@
       </view>
       <scroll-view class="book-scroll" scroll-x enhanced show-scrollbar="{{false}}">
         <view class="book-strip">
-          <view wx:for="{{books}}" wx:key="id" class="book-tile">
+          <view wx:for="{{books}}" wx:key="id" class="book-tile" data-id="{{item.id}}" bindtap="openBook">
             <image wx:if="{{item.coverImage}}" class="book-tile-image" src="{{item.coverImage}}" mode="aspectFill"></image>
             <view wx:else class="book-tile-image empty-book"></view>
             <text class="book-tile-title">{{item.title}}</text>
