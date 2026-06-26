@@ -1,69 +1,87 @@
 <view class="page books-page">
-  <view wx:if="{{!selectedBookId}}" class="books-header">
-    <view>
-      <text class="caption">BOOKSHELF</text>
-      <text class="title">我的灵感册</text>
+  <view class="collections-header">
+    <button class="header-button" bindtap="closeBook">‹</button>
+    <view class="header-copy">
+      <text class="header-title">我的灵感册</text>
+      <text class="header-desc">把每日灵感收录成专题</text>
     </view>
-    <text class="count">{{books.length}} 本</text>
-  </view>
-
-  <view wx:if="{{!selectedBookId}}" class="create-row">
-    <input value="{{title}}" bindinput="onTitleInput" placeholder="新建灵感册名称" />
-    <button bindtap="createBook" loading="{{creating}}">新建</button>
+    <button class="header-button" bindtap="createBook">＋</button>
   </view>
 
   <view wx:if="{{loading}}" class="state">正在加载...</view>
   <view wx:if="{{error}}" class="state error">{{error}}</view>
 
-  <view wx:if="{{!selectedBookId && !loading && !books.length}}" class="empty-state">
+  <view wx:if="{{!loading && !books.length}}" class="empty-state">
     <text class="empty-title">还没有灵感册</text>
-    <text class="empty-desc">新建一个专题，把每日灵感慢慢收进去。</text>
+    <text class="empty-desc">点击右上角新建一个专题。</text>
   </view>
 
-  <view wx:if="{{!selectedBookId}}" class="book-list">
-    <button wx:for="{{books}}" wx:key="id" class="book-card" data-id="{{item.id}}" bindtap="openBook">
-      <image wx:if="{{item.coverImage}}" class="book-cover" src="{{item.coverImage}}" mode="aspectFill"></image>
-      <view wx:else class="book-cover empty-cover">BOOK</view>
-      <view class="book-copy">
-        <text class="book-title">{{item.title}}</text>
-        <text class="book-desc">{{item.descriptionText}}</text>
-        <text class="book-meta">{{item.cardCountText}} · {{item.updatedText}}</text>
+  <view wx:if="{{!loading && books.length}}" class="books-workspace">
+    <view class="books-sidebar">
+      <text class="bookshelf-label">BOOKSHELF</text>
+      <view class="book-search">
+        <text class="search-icon">⌕</text>
+        <input value="{{bookSearch}}" bindinput="onBookSearchInput" placeholder="搜索册子" />
       </view>
-      <text class="book-chevron">›</text>
-    </button>
-  </view>
 
-  <view wx:if="{{selectedBookId}}" class="book-detail">
-    <view class="detail-header">
-      <button class="back-button" bindtap="closeBook">‹</button>
-      <view class="detail-copy">
-        <text class="caption">BOOKSHELF</text>
-        <text class="title">{{selectedBook.title || "灵感册"}}</text>
-        <text class="detail-desc">{{selectedBook.descriptionText}}</text>
+      <scroll-view class="book-list" scroll-y enhanced show-scrollbar="{{false}}">
+        <button
+          wx:for="{{visibleBooks}}"
+          wx:key="id"
+          class="book-list-item {{selectedBookId === item.id ? 'active' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="openBook"
+        >
+          <image wx:if="{{item.coverImage}}" class="book-list-cover" src="{{item.coverImage}}" mode="aspectFill"></image>
+          <view wx:else class="book-list-cover empty-cover">BOOK</view>
+          <view class="book-list-copy">
+            <text class="book-list-title">{{item.title}}</text>
+            <text class="book-list-count">{{item.cardCountText}}</text>
+          </view>
+        </button>
+      </scroll-view>
+
+      <view class="book-crud">
+        <button bindtap="createBook">＋ 新建</button>
+        <button bindtap="editBook">✎ 编辑</button>
+        <button class="danger" bindtap="deleteBook">⌫ 删除</button>
       </view>
-      <text class="count">{{cards.length}} 条</text>
     </view>
 
-    <view wx:if="{{cardsLoading}}" class="state">正在加载内容...</view>
-    <view wx:if="{{!cardsLoading && !cards.length}}" class="empty-state">
-      <text class="empty-title">这个册子还没有收录</text>
-      <text class="empty-desc">后续可以从灵感详情里把内容收进来。</text>
-    </view>
+    <scroll-view class="book-content" scroll-y enhanced show-scrollbar="{{false}}">
+      <view class="book-title-row">
+        <view>
+          <text class="current-label">当前灵感册</text>
+          <text class="current-title">{{selectedBook.title || "灵感册"}}</text>
+          <text class="current-desc">{{selectedBook.descriptionText}}</text>
+        </view>
+        <button class="collect-button" bindtap="openCollect">▯ 收录</button>
+      </view>
 
-    <view class="card-list">
-      <button wx:for="{{cards}}" wx:key="id" class="gallery-card" data-id="{{item.id}}" bindtap="openCard">
-        <image wx:if="{{!item.isMd && item.image}}" class="thumb" src="{{item.image}}" mode="aspectFill"></image>
-        <view wx:else class="thumb md-thumb">
-          <text class="md-thumb-title">{{item.title}}</text>
-          <text class="md-thumb-summary">{{item.summary}}</text>
-        </view>
-        <view class="card-copy">
-          <text class="type-pill">{{item.typeLabel}}</text>
-          <text class="card-title">{{item.title}}</text>
-          <text class="card-tags">{{item.termsText}}</text>
-        </view>
-        <text class="time">{{item.createdText}}</text>
-      </button>
-    </view>
+      <view wx:if="{{selectedBook.tags && selectedBook.tags.length}}" class="book-tag-row">
+        <text wx:for="{{selectedBook.tags}}" wx:key="*this">#{{item}}</text>
+      </view>
+
+      <view wx:if="{{cardsLoading}}" class="state compact">正在加载内容...</view>
+      <view wx:if="{{!cardsLoading && !cards.length}}" class="empty-state compact">
+        <text class="empty-title">这个册子还没有收录</text>
+        <text class="empty-desc">后续可以从灵感详情里把内容收进来。</text>
+      </view>
+
+      <view class="book-items">
+        <button wx:for="{{cards}}" wx:key="id" class="book-item {{index === 0 ? 'cover' : ''}}" data-id="{{item.id}}" bindtap="openCard">
+          <view class="book-item-thumb">
+            <image wx:if="{{!item.isMd && item.image}}" src="{{item.image}}" mode="aspectFill"></image>
+            <view wx:else class="md-thumb">
+              <text class="md-thumb-title">{{item.title}}</text>
+              <text class="md-thumb-summary">{{item.summary}}</text>
+            </view>
+            <text wx:if="{{index === 0}}" class="cover-badge">封面</text>
+          </view>
+          <text class="item-title">{{item.title}}</text>
+          <text class="item-tags">{{item.termsText}}</text>
+        </button>
+      </view>
+    </scroll-view>
   </view>
 </view>

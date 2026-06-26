@@ -8,11 +8,13 @@ function formatTermsText(terms) {
 function normalizeBook(book) {
   const cover = book.coverCard || null;
   const coverImage = cover ? resolveAssetUrl(cover.thumbnailUrl || cover.imageUrl || "") : "";
+  const description = book.description || "暂无描述";
   return {
     ...book,
     cardCountText: `${Number(book.cardCount || 0)} 条灵感`,
-    descriptionText: book.description || "暂无描述",
+    descriptionText: description,
     coverImage,
+    tags: Array.isArray(book.tags) ? book.tags : [],
     updatedText: book.updatedAt ? new Date(Number(book.updatedAt)).toLocaleDateString("zh-CN") : ""
   };
 }
@@ -37,7 +39,10 @@ Page({
     books: [],
     selectedBookId: "",
     selectedBook: {},
+    entryFrom: "",
     cards: [],
+    visibleBooks: [],
+    bookSearch: "",
     title: "",
     loading: false,
     cardsLoading: false,
@@ -46,7 +51,10 @@ Page({
   },
 
   onLoad(query = {}) {
-    this.setData({ selectedBookId: query.bookId ? decodeURIComponent(query.bookId) : "" });
+    this.setData({
+      selectedBookId: query.bookId ? decodeURIComponent(query.bookId) : "",
+      entryFrom: query.from || ""
+    });
   },
 
   onShow() {
@@ -58,10 +66,11 @@ Page({
     try {
       const body = await request({ url: "/api/db/books" });
       const books = Array.isArray(body) ? body.map(normalizeBook) : [];
-      const selectedBook = books.find((book) => book.id === this.data.selectedBookId) || {};
-      this.setData({ books, selectedBook });
-      if (this.data.selectedBookId) {
-        await this.loadBookCards(this.data.selectedBookId);
+      const selectedBookId = this.data.selectedBookId || (books[0] && books[0].id) || "";
+      const selectedBook = books.find((book) => book.id === selectedBookId) || {};
+      this.setData({ books, visibleBooks: this.filterBooks(books, this.data.bookSearch), selectedBookId, selectedBook });
+      if (selectedBookId) {
+        await this.loadBookCards(selectedBookId);
       }
     } catch (err) {
       this.setData({ error: err.message || "灵感册加载失败" });
@@ -89,6 +98,23 @@ Page({
 
   onTitleInput(event) {
     this.setData({ title: event.detail.value });
+  },
+
+  onBookSearchInput(event) {
+    const bookSearch = event.detail.value;
+    this.setData({
+      bookSearch,
+      visibleBooks: this.filterBooks(this.data.books, bookSearch)
+    });
+  },
+
+  filterBooks(books, keyword) {
+    const q = String(keyword || "").trim().toLowerCase();
+    if (!q) return books;
+    return books.filter((book) => {
+      const haystack = `${book.title || ""} ${book.descriptionText || ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
   },
 
   async createBook() {
@@ -125,7 +151,19 @@ Page({
   },
 
   closeBook() {
-    this.setData({ selectedBookId: "", selectedBook: {}, cards: [], error: "" });
+    wx.navigateBack();
+  },
+
+  editBook() {
+    wx.showToast({ title: "编辑功能待补充", icon: "none" });
+  },
+
+  deleteBook() {
+    wx.showToast({ title: "删除功能待补充", icon: "none" });
+  },
+
+  openCollect() {
+    wx.showToast({ title: "收录功能待补充", icon: "none" });
   },
 
   openCard(event) {

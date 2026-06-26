@@ -181,7 +181,7 @@ Page({
   openBook(event) {
     const id = event.currentTarget.dataset.id;
     if (!id) return;
-    if (requireRegistered()) wx.navigateTo({ url: `/pages/books/index?bookId=${encodeURIComponent(id)}` });
+    if (requireRegistered()) wx.navigateTo({ url: `/pages/books/index?bookId=${encodeURIComponent(id)}&from=diary` });
   },
 
   openRegister() {
