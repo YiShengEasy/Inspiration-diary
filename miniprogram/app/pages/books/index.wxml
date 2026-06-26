@@ -1,13 +1,4 @@
 <view class="page books-page">
-  <view class="collections-header">
-    <button class="header-button" bindtap="closeBook">‹</button>
-    <view class="header-copy">
-      <text class="header-title">我的灵感册</text>
-      <text class="header-desc">把每日灵感收录成专题</text>
-    </view>
-    <button class="header-button" bindtap="createBook">＋</button>
-  </view>
-
   <view wx:if="{{loading}}" class="state">正在加载...</view>
   <view wx:if="{{error}}" class="state error">{{error}}</view>
 

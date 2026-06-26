@@ -21,61 +21,11 @@ button::after {
   border: 0;
 }
 
-.collections-header {
-  height: 117rpx;
-  display: grid;
-  grid-template-columns: 77rpx 1fr 77rpx;
-  align-items: center;
-  gap: 17rpx;
-  padding: 17rpx 28rpx 10rpx;
-  box-sizing: border-box;
-  background: rgba(255, 250, 241, 0.96);
-}
-
-.header-button {
-  width: 70rpx;
-  height: 66rpx;
-  border-radius: 24rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.82);
-  color: #000000;
-  font-size: 42rpx;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.header-copy {
-  min-width: 0;
-}
-
-.header-title,
-.header-desc {
-  display: block;
-}
-
-.header-title {
-  color: #111111;
-  font-size: 30rpx;
-  line-height: 36rpx;
-  font-weight: 900;
-}
-
-.header-desc {
-  margin-top: 5rpx;
-  color: #8d7d69;
-  font-size: 21rpx;
-  line-height: 26rpx;
-  font-weight: 800;
-}
-
 .books-workspace {
-  height: calc(100vh - 117rpx);
+  height: 100vh;
   min-height: 0;
   display: grid;
   grid-template-columns: 230rpx 1fr;
-  border-top: 2rpx solid #e9dfce;
 }
 
 .books-sidebar {
@@ -128,8 +78,8 @@ button::after {
 }
 
 .book-list {
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  max-height: 390rpx;
   margin: 17rpx 0;
 }
 
