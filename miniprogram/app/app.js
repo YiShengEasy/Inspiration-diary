@@ -1,6 +1,6 @@
-const DEFAULT_API_BASE_URL = "http://192.168.13.106:3005";
+const DEFAULT_API_BASE_URL = "http://172.17.10.116:3005";
 const STALE_DEFAULT_API_BASE_URLS = [
-  "http://172.17.10.116:3005"
+  "http://192.168.13.106:3005"
 ];
 
 App({
