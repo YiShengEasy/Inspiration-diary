@@ -21,8 +21,9 @@
 .label,
 .banner-title,
 .banner-desc,
-.menu-title,
-.menu-desc {
+.me-card-icon,
+.me-card-title,
+.me-card-desc {
   display: block;
 }
 
@@ -60,14 +61,14 @@
 }
 
 .profile {
-  display: flex;
+  display: grid;
+  grid-template-columns: 136rpx 1fr;
   align-items: center;
   gap: 28rpx;
   margin: 21rpx 0 38rpx;
 }
 
 .avatar {
-  flex: 0 0 auto;
   width: 136rpx;
   height: 136rpx;
   border-radius: 50%;
@@ -79,11 +80,17 @@
   font-size: 42rpx;
   font-weight: 900;
   box-shadow: 0 20rpx 48rpx rgba(17, 17, 17, 0.18);
+  overflow: hidden;
+}
+
+.avatar image {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .profile-copy {
   min-width: 0;
-  flex: 1;
 }
 
 .name {
@@ -108,11 +115,8 @@
 }
 
 .stat-block {
-  min-height: 112rpx;
-  padding: 16rpx 14rpx;
-  border-radius: 8rpx;
-  background: #f7f8f4;
-  box-sizing: border-box;
+  display: grid;
+  gap: 5rpx;
 }
 
 .num {
@@ -122,7 +126,6 @@
 }
 
 .label {
-  margin-top: 5rpx;
   color: #7c8178;
   font-size: 24rpx;
   line-height: 1.2;
@@ -253,43 +256,170 @@
   border: 0;
 }
 
-.menu-list {
-  overflow: hidden;
-  border-radius: 8rpx;
-  border: 1rpx solid #eeeeea;
-  background: #ffffff;
+.me-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 21rpx;
 }
 
-.menu-row {
-  min-height: 92rpx;
-  padding: 17rpx 21rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1rpx solid #eeeeea;
+.me-card {
+  min-height: 146rpx;
+  margin: 0;
+  padding: 24rpx;
+  border-radius: 10rpx;
+  background: #f8f8f8;
+  color: #151712;
+  display: grid;
+  grid-template-columns: 52rpx 1fr;
+  column-gap: 17rpx;
+  text-align: left;
   box-sizing: border-box;
 }
 
-.menu-row:last-child {
-  border-bottom: 0;
+.me-card::after,
+.profile-tab::after {
+  border: 0;
 }
 
-.menu-title {
-  font-size: 25rpx;
-  font-weight: 800;
+.me-card-icon {
+  grid-row: 1 / span 2;
+  width: 52rpx;
+  height: 52rpx;
+  color: #111111;
+  position: relative;
+  align-self: start;
+}
+
+.icon-file {
+  width: 34rpx;
+  height: 42rpx;
+  margin: 5rpx 9rpx;
+  border: 4rpx solid #111111;
+  border-radius: 4rpx;
+  box-sizing: border-box;
+}
+
+.icon-file::before {
+  content: "";
+  position: absolute;
+  right: -4rpx;
+  top: -4rpx;
+  width: 13rpx;
+  height: 13rpx;
+  border-left: 4rpx solid #111111;
+  border-bottom: 4rpx solid #111111;
+  background: #f8f8f8;
+}
+
+.icon-file::after {
+  content: "";
+  position: absolute;
+  left: 7rpx;
+  top: 17rpx;
+  width: 14rpx;
+  height: 4rpx;
+  background: #111111;
+  box-shadow: 0 10rpx 0 #111111;
+}
+
+.icon-download::before {
+  content: "";
+  position: absolute;
+  left: 23rpx;
+  top: 4rpx;
+  width: 5rpx;
+  height: 29rpx;
+  border-radius: 999rpx;
+  background: #111111;
+}
+
+.icon-download::after {
+  content: "";
+  position: absolute;
+  left: 15rpx;
+  top: 21rpx;
+  width: 18rpx;
+  height: 18rpx;
+  border-left: 5rpx solid #111111;
+  border-bottom: 5rpx solid #111111;
+  transform: rotate(-45deg);
+}
+
+.me-card-title {
+  align-self: end;
+  font-size: 26rpx;
+  font-weight: 900;
   line-height: 1.2;
 }
 
-.menu-desc {
-  margin-top: 8rpx;
-  color: #8b9087;
-  font-size: 20rpx;
-  line-height: 1.25;
+.me-card-desc {
+  grid-column: 2;
+  margin-top: 7rpx;
+  color: #80847c;
+  font-size: 21rpx;
+  line-height: 1.2;
 }
 
-.chevron {
-  margin-left: 20rpx;
-  color: #b2b6ad;
-  font-size: 32rpx;
+.profile-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 49rpx 0 21rpx;
+  border-bottom: 1rpx solid #eeeeee;
+}
+
+.profile-tab {
+  position: relative;
+  height: 84rpx;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: #888b84;
+  font-size: 33rpx;
+  font-weight: 900;
+  line-height: 84rpx;
+}
+
+.profile-tab.active {
+  color: #111111;
+}
+
+.profile-tab.active::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 80rpx;
+  height: 7rpx;
+  transform: translateX(-50%);
+  border-radius: 999rpx;
+  background: #111111;
+}
+
+.work-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5rpx;
+}
+
+.work-item {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: #f4f1e8;
+}
+
+.work-item image {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.work-badge {
+  position: absolute;
+  left: 14rpx;
+  bottom: 14rpx;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 900;
   line-height: 1;
 }

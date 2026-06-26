@@ -7,12 +7,20 @@ const EMPTY_STATS = {
   toolUsageCount: 0
 };
 
+const WORK_IMAGES = [
+  "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=900&q=80",
+  "https://images.unsplash.com/photo-1493612276216-ee3925520721?auto=format&fit=crop&w=900&q=80",
+  "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=900&q=80"
+];
+const AVATAR_IMAGE = "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=320&q=80";
+
 function buildProfile(accountState, user) {
   if (accountState === "guest") {
     return {
       name: "未登录",
       description: "登录并注册后同步灵感和原图",
-      avatarText: "灵"
+      avatarText: "灵",
+      avatarUrl: AVATAR_IMAGE
     };
   }
 
@@ -20,7 +28,8 @@ function buildProfile(accountState, user) {
     return {
       name: "微信用户",
       description: "完成注册后可在 Web 端继续整理灵感",
-      avatarText: "微"
+      avatarText: "微",
+      avatarUrl: AVATAR_IMAGE
     };
   }
 
@@ -28,7 +37,8 @@ function buildProfile(accountState, user) {
   return {
     name,
     description: "把每天的视觉灵感留成一本册子",
-    avatarText: name.slice(0, 1).toUpperCase()
+    avatarText: name.slice(0, 1).toUpperCase(),
+    avatarUrl: (user && user.avatarUrl) || AVATAR_IMAGE
   };
 }
 
@@ -43,15 +53,13 @@ Page({
     debugIdentifier: "",
     debugPassword: "",
     debugLoading: false,
-    menuRows: [
-      { title: "草稿", desc: "工具处理未保存内容" },
-      { title: "本地缓存", desc: "清理预览和临时图" },
-      { title: "灵感日记", desc: "查看已保存的每日灵感" },
-      { title: "工具作品", desc: "管理工具生成的作品" },
-      { title: "收藏", desc: "快速回看重点内容" },
-      { title: "隐私", desc: "账号与数据保护" },
-      { title: "关于和版本", desc: "当前小程序信息" }
-    ]
+    meCards: [
+      { iconKey: "file", title: "我的草稿", desc: "工具处理未保存内容" },
+      { iconKey: "download", title: "本地缓存", desc: "清理预览和临时图" }
+    ],
+    profileTabs: ["灵感册", "工具作品", "收藏"],
+    activeTab: "灵感册",
+    workImages: WORK_IMAGES
   },
 
   async onShow() {
@@ -150,5 +158,9 @@ Page({
 
   completeRegistration() {
     wx.navigateTo({ url: "/pages/register-complete/index" });
+  },
+
+  selectProfileTab(event) {
+    this.setData({ activeTab: event.currentTarget.dataset.tab || "灵感册" });
   }
 });

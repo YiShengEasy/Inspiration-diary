@@ -9,7 +9,8 @@
 
   <view class="profile">
     <view class="avatar">
-      <text>{{profile.avatarText}}</text>
+      <image wx:if="{{profile.avatarUrl}}" src="{{profile.avatarUrl}}" mode="aspectFill"></image>
+      <text wx:else>{{profile.avatarText}}</text>
     </view>
     <view class="profile-copy">
       <text class="name">{{profile.name}}</text>
@@ -64,13 +65,30 @@
     <button class="banner-button dark" bindtap="completeRegistration">完成注册</button>
   </view>
 
-  <view class="menu-list">
-    <view wx:for="{{menuRows}}" wx:key="title" class="menu-row">
-      <view>
-        <text class="menu-title">{{item.title}}</text>
-        <text class="menu-desc">{{item.desc}}</text>
-      </view>
-      <text class="chevron">›</text>
+  <view class="me-cards">
+    <button wx:for="{{meCards}}" wx:key="title" class="me-card">
+      <text class="me-card-icon icon-{{item.iconKey}}"></text>
+      <text class="me-card-title">{{item.title}}</text>
+      <text class="me-card-desc">{{item.desc}}</text>
+    </button>
+  </view>
+
+  <view class="profile-tabs">
+    <button
+      wx:for="{{profileTabs}}"
+      wx:key="*this"
+      class="profile-tab {{activeTab === item ? 'active' : ''}}"
+      data-tab="{{item}}"
+      bindtap="selectProfileTab"
+    >
+      {{item}}
+    </button>
+  </view>
+
+  <view class="work-grid">
+    <view wx:for="{{workImages}}" wx:key="*this" class="work-item">
+      <image src="{{item}}" mode="aspectFill"></image>
+      <text wx:if="{{index === 1}}" class="work-badge">草稿</text>
     </view>
   </view>
 </view>
