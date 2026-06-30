@@ -26,6 +26,28 @@ function splitTokens(value: string): string[] {
   return unique(normalizeText(value).split(/\s+/)).filter((token) => token.length >= 2);
 }
 
+function compactText(value: string): string {
+  return normalizeText(value).replace(/\s+/g, "");
+}
+
+function longestCommonChineseRun(a: string, b: string): number {
+  const left = Array.from(compactText(a));
+  const right = Array.from(compactText(b));
+  let longest = 0;
+
+  for (let i = 0; i < left.length; i += 1) {
+    for (let j = 0; j < right.length; j += 1) {
+      let length = 0;
+      while (left[i + length] && left[i + length] === right[j + length]) {
+        length += 1;
+      }
+      longest = Math.max(longest, length);
+    }
+  }
+
+  return longest;
+}
+
 function collectCardTexts(card: ImageCard): string[] {
   return unique([
     ...(card.terms || []),
@@ -59,8 +81,15 @@ function scoreTextAgainstBook(rawText: string, bookText: string, bookTokens: Set
   const partialOverlap = textTokens.some((token) => token.length >= 3 && bookText.includes(token));
   if (partialOverlap) return 1;
 
+  const commonChineseRun = longestCommonChineseRun(text, bookText);
+  if (commonChineseRun >= 4) return 7;
+  if (commonChineseRun >= 3) return 5;
+  if (commonChineseRun >= 2) return 4;
+
   const bookTokenInText = Array.from(bookTokens).some((token) => token.length >= 2 && text.includes(token));
-  return bookTokenInText ? 2 : 0;
+  if (bookTokenInText) return 2;
+
+  return 0;
 }
 
 function scoreBook(card: ImageCard, book: InspirationBook): BookSuggestionMatch | null {
@@ -91,7 +120,7 @@ export function findBestBookSuggestion(
   books: InspirationBook[],
   options: BookSuggestionOptions = {},
 ): BookSuggestionMatch | null {
-  const minScore = options.minScore ?? 6;
+  const minScore = options.minScore ?? 4;
   const best = books
     .map((book) => scoreBook(card, book))
     .filter((match): match is BookSuggestionMatch => Boolean(match))

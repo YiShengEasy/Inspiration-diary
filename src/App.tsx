@@ -33,6 +33,10 @@ import Markdown from "react-markdown";
 const ALL_CARDS_PAGE_SIZE = 12;
 const SMART_BOOK_SUGGEST_IMAGES_KEY = "smart_book_suggest_images";
 const SMART_BOOK_SUGGEST_MARKDOWN_KEY = "smart_book_suggest_markdown";
+type PendingSmartSuggestion = {
+  card: ImageCard;
+  match: BookSuggestionMatch;
+};
 
 export default function App() {
   const shouldShowMockTools = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK_TOOLS === "true";
@@ -70,10 +74,11 @@ export default function App() {
   const [smartSuggestImages, setSmartSuggestImages] = useState<boolean>(false);
   const [smartSuggestMarkdown, setSmartSuggestMarkdown] = useState<boolean>(false);
   const [smartSuggestSyncStatus, setSmartSuggestSyncStatus] = useState<"clean" | "saving" | "error">("clean");
-  const [smartSuggestion, setSmartSuggestion] = useState<{
-    card: ImageCard;
-    match: BookSuggestionMatch;
-  } | null>(null);
+  const smartSuggestImagesRef = useRef<boolean>(false);
+  const smartSuggestMarkdownRef = useRef<boolean>(false);
+  const smartSuggestionRef = useRef<PendingSmartSuggestion | null>(null);
+  const [smartSuggestion, setSmartSuggestion] = useState<PendingSmartSuggestion | null>(null);
+  const [queuedSmartSuggestions, setQueuedSmartSuggestions] = useState<PendingSmartSuggestion[]>([]);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => new Set());
   const [isApplyingSmartSuggestion, setIsApplyingSmartSuggestion] = useState<boolean>(false);
   const [smartSuggestionError, setSmartSuggestionError] = useState<string | null>(null);
@@ -192,6 +197,26 @@ export default function App() {
       }
     }).catch((err) => console.error("Failed to load settings from DB:", err));
   }, [authUser]);
+
+  useEffect(() => {
+    smartSuggestImagesRef.current = smartSuggestImages;
+  }, [smartSuggestImages]);
+
+  useEffect(() => {
+    smartSuggestMarkdownRef.current = smartSuggestMarkdown;
+  }, [smartSuggestMarkdown]);
+
+  useEffect(() => {
+    smartSuggestionRef.current = smartSuggestion;
+  }, [smartSuggestion]);
+
+  useEffect(() => {
+    if (smartSuggestion || queuedSmartSuggestions.length === 0) return;
+    const [nextSuggestion, ...remainingSuggestions] = queuedSmartSuggestions;
+    setQueuedSmartSuggestions(remainingSuggestions);
+    setSmartSuggestion(nextSuggestion);
+    setSmartSuggestionError(null);
+  }, [queuedSmartSuggestions, smartSuggestion]);
 
   // Handle Dark mode sync
   useEffect(() => {
@@ -349,27 +374,74 @@ export default function App() {
   };
 
   const handleSmartSuggestImagesChange = (enabled: boolean) => {
+    smartSuggestImagesRef.current = enabled;
     setSmartSuggestImages(enabled);
     void persistSmartSuggestSetting(SMART_BOOK_SUGGEST_IMAGES_KEY, enabled);
   };
 
   const handleSmartSuggestMarkdownChange = (enabled: boolean) => {
+    smartSuggestMarkdownRef.current = enabled;
     setSmartSuggestMarkdown(enabled);
     void persistSmartSuggestSetting(SMART_BOOK_SUGGEST_MARKDOWN_KEY, enabled);
   };
 
   const suggestionKey = (cardId: string, bookId: string) => `${cardId}:${bookId}`;
 
-  const maybeSuggestBookMembership = async (card: ImageCard) => {
-    const shouldSuggest = card.type === "md" ? smartSuggestMarkdown : smartSuggestImages;
-    if (!shouldSuggest || smartSuggestion) return;
+  const loadSmartBookHints = async (cardType: "image" | "md") => {
+    const shouldSuggest = cardType === "md" ? smartSuggestMarkdownRef.current : smartSuggestImagesRef.current;
+    if (!shouldSuggest) return [];
 
     try {
       const books = await loadBooks();
-      if (books.length === 0) return;
+      return books
+        .map((book) => [book.title, book.description].filter(Boolean).join("：").trim())
+        .filter(Boolean)
+        .slice(0, 20);
+    } catch (err) {
+      console.warn("Smart book hint loading skipped:", err);
+      return [];
+    }
+  };
+
+  const queueSmartSuggestion = (suggestion: PendingSmartSuggestion) => {
+    const nextKey = suggestionKey(suggestion.card.id, suggestion.match.book.id);
+    const activeSuggestion = smartSuggestionRef.current;
+    if (activeSuggestion && suggestionKey(activeSuggestion.card.id, activeSuggestion.match.book.id) === nextKey) {
+      return;
+    }
+
+    setQueuedSmartSuggestions((current) => {
+      if (current.some((item) => suggestionKey(item.card.id, item.match.book.id) === nextKey)) {
+        return current;
+      }
+      return [...current, suggestion];
+    });
+  };
+
+  const maybeSuggestBookMembership = async (card: ImageCard) => {
+    const shouldSuggest = card.type === "md" ? smartSuggestMarkdownRef.current : smartSuggestImagesRef.current;
+    if (!shouldSuggest) {
+      console.info("Smart book suggestion skipped: switch is off", { cardId: card.id, type: card.type || "image" });
+      return;
+    }
+
+    try {
+      const books = await loadBooks();
+      if (books.length === 0) {
+        console.info("Smart book suggestion skipped: no inspiration books", { cardId: card.id });
+        return;
+      }
 
       const match = findBestBookSuggestion(card, books);
-      if (!match) return;
+      if (!match) {
+        console.info("Smart book suggestion skipped: no matching book", {
+          cardId: card.id,
+          terms: card.terms,
+          mdName: card.mdName,
+          bookTitles: books.map((book) => book.title),
+        });
+        return;
+      }
 
       const key = suggestionKey(card.id, match.book.id);
       if (dismissedSuggestions.has(key)) return;
@@ -378,8 +450,7 @@ export default function App() {
       const alreadyContains = memberships.some((book) => book.id === match.book.id && book.containsCard);
       if (alreadyContains) return;
 
-      setSmartSuggestion({ card, match });
-      setSmartSuggestionError(null);
+      queueSmartSuggestion({ card, match });
     } catch (err) {
       console.warn("Smart book suggestion skipped:", err);
     }
@@ -559,6 +630,7 @@ export default function App() {
       };
 
       await saveCard(newCard);
+      void maybeSuggestBookMembership(newCard);
 
       const analyzeAndUpdateTerms = async () => {
         const controller = new AbortController();
@@ -567,6 +639,10 @@ export default function App() {
         try {
           const analyzeForm = new FormData();
           analyzeForm.append("image", analysisBlob, "analysis.jpg");
+          const bookHints = await loadSmartBookHints("image");
+          if (bookHints.length > 0) {
+            analyzeForm.append("bookHints", JSON.stringify(bookHints));
+          }
 
           const response = await authFetch("/api/analyze-image", {
             method: "POST",
@@ -639,10 +715,11 @@ export default function App() {
       let mdTerms = ["文档手稿", "Markdown"];
 
       try {
+        const bookHints = await loadSmartBookHints("md");
         const response = await authFetch("/api/summarize-md", {
           method: "POST",
           headers,
-          body: JSON.stringify({ markdown: text }),
+          body: JSON.stringify({ markdown: text, bookHints }),
         });
         if (response.ok) {
           const data = await response.json();
