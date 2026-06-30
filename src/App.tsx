@@ -1082,6 +1082,44 @@ export default function App() {
     };
   }, [zoomedCard, visibleCards]);
 
+  const renderSmartBookSwitch = (
+    label: string,
+    enabled: boolean,
+    onChange: (enabled: boolean) => void,
+  ) => (
+    <button
+      type="button"
+      onClick={() => onChange(!enabled)}
+      className={`inline-flex h-9 items-center gap-2 rounded-full border px-2.5 pr-3 text-[11px] font-bold shadow-sm transition-all active:scale-95 ${
+        enabled
+          ? "border-emerald-500/55 bg-emerald-500 text-white shadow-[0_10px_22px_rgba(16,185,129,0.22)] dark:border-emerald-300/70 dark:bg-emerald-400 dark:text-stone-950"
+          : "border-stone-900/12 bg-white/65 text-stone-500 hover:border-stone-900/22 hover:text-stone-800 dark:border-white/10 dark:bg-white/[0.06] dark:text-stone-400 dark:hover:text-stone-100"
+      }`}
+      title={`${label}${enabled ? "已开启" : "已关闭"}`}
+      aria-pressed={enabled}
+    >
+      <span
+        className={`relative h-5 w-9 rounded-full border transition-colors ${
+          enabled
+            ? "border-white/70 bg-white/25 dark:border-stone-950/35 dark:bg-stone-950/15"
+            : "border-stone-400/60 bg-stone-200/80 dark:border-white/20 dark:bg-stone-900"
+        }`}
+      >
+        <span
+          className={`absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full shadow-sm transition-transform ${
+            enabled
+              ? "translate-x-[18px] bg-white dark:bg-stone-950"
+              : "translate-x-[3px] bg-stone-500 dark:bg-stone-500"
+          }`}
+        />
+      </span>
+      <span>{label}</span>
+      <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${enabled ? "bg-white/22 text-white dark:bg-stone-950/12 dark:text-stone-950" : "bg-stone-900/6 text-stone-500 dark:bg-white/10 dark:text-stone-400"}`}>
+        {enabled ? "ON" : "OFF"}
+      </span>
+    </button>
+  );
+
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-stone-50 dark:bg-stone-950 flex items-center justify-center gap-2 text-stone-600 dark:text-stone-300">
@@ -1118,13 +1156,24 @@ export default function App() {
       <div className="max-w-7xl mx-auto w-full px-4 py-6 md:py-8 flex flex-col flex-grow relative z-10">
         
         {/* Secondary Navigation row with Theme control */}
-        <div className="flex items-center justify-between mb-4 px-2">
+        <div className="mb-4 flex flex-col gap-3 px-2 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2 text-stone-500 text-xs font-serif italic select-none">
             <BookOpen size={14} className="text-amber-800" />
             <span>AI Design Notebook</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center gap-2 rounded-full border border-stone-900/10 bg-white/60 px-2 py-1.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-stone-950/45">
+              <span className="pl-1 text-[11px] font-bold text-stone-700 dark:text-stone-200">智能入册</span>
+              {renderSmartBookSwitch("图", smartSuggestImages, handleSmartSuggestImagesChange)}
+              {renderSmartBookSwitch("MD", smartSuggestMarkdown, handleSmartSuggestMarkdownChange)}
+              {smartSuggestSyncStatus === "saving" ? (
+                <span className="pr-1 text-[10px] font-medium text-stone-500 dark:text-stone-500">同步中</span>
+              ) : smartSuggestSyncStatus === "error" ? (
+                <span className="pr-1 text-[10px] font-medium text-red-700 dark:text-red-300">同步失败</span>
+              ) : null}
+            </div>
+
             <button
               type="button"
               onClick={() => setMainView((current) => current === "books" ? "board" : "books")}
@@ -1586,11 +1635,6 @@ export default function App() {
             onDeleteTerm={handleDeleteTerm}
             onUpdateTerms={handleUpdateCardTerms}
             onBookMembershipChanged={handleBookMembershipChanged}
-            smartSuggestImages={smartSuggestImages}
-            smartSuggestMarkdown={smartSuggestMarkdown}
-            onSmartSuggestImagesChange={handleSmartSuggestImagesChange}
-            onSmartSuggestMarkdownChange={handleSmartSuggestMarkdownChange}
-            smartSuggestSyncStatus={smartSuggestSyncStatus}
           />
         )}
       </div>

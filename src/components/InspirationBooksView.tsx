@@ -12,11 +12,6 @@ interface InspirationBooksViewProps {
   onDeleteTerm: (cardId: string, termIndex: number) => void;
   onUpdateTerms: (cardId: string, terms: string[]) => void;
   onBookMembershipChanged: () => void;
-  smartSuggestImages?: boolean;
-  smartSuggestMarkdown?: boolean;
-  onSmartSuggestImagesChange?: (enabled: boolean) => void;
-  onSmartSuggestMarkdownChange?: (enabled: boolean) => void;
-  smartSuggestSyncStatus?: "clean" | "saving" | "error";
 }
 
 const BOOK_CARDS_PAGE_SIZE = 12;
@@ -27,11 +22,6 @@ export default function InspirationBooksView({
   onDeleteTerm,
   onUpdateTerms,
   onBookMembershipChanged,
-  smartSuggestImages = false,
-  smartSuggestMarkdown = false,
-  onSmartSuggestImagesChange,
-  onSmartSuggestMarkdownChange,
-  smartSuggestSyncStatus = "clean",
 }: InspirationBooksViewProps) {
   const [books, setBooks] = useState<InspirationBook[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
@@ -267,30 +257,6 @@ export default function InspirationBooksView({
     }
   };
 
-  const renderSmartToggle = (
-    label: string,
-    enabled: boolean,
-    onChange: ((enabled: boolean) => void) | undefined,
-  ) => (
-    <button
-      type="button"
-      onClick={() => onChange?.(!enabled)}
-      className={`inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-[11px] font-semibold transition-all ${
-        enabled
-          ? "border-stone-900/20 bg-stone-900 text-[#fbf7ed] shadow-sm dark:border-amber-200/40 dark:bg-amber-200 dark:text-stone-950"
-          : "border-stone-900/10 bg-white/45 text-stone-600 hover:border-stone-900/20 hover:text-stone-900 dark:border-white/10 dark:bg-white/[0.05] dark:text-stone-400 dark:hover:text-stone-100"
-      }`}
-      aria-pressed={enabled}
-    >
-      <span
-        className={`h-3.5 w-3.5 rounded-full border ${
-          enabled ? "border-[#fbf7ed] bg-[#fbf7ed] dark:border-stone-950 dark:bg-stone-950" : "border-current"
-        }`}
-      />
-      {label}
-    </button>
-  );
-
   return (
     <motion.section
       key="inspiration-books-view"
@@ -313,23 +279,6 @@ export default function InspirationBooksView({
           </p>
         </div>
 
-        <div className="mt-4 flex flex-col gap-2 rounded-[8px] border border-stone-900/10 bg-white/35 px-3 py-3 dark:border-white/10 dark:bg-white/[0.04] md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-[12px] font-semibold text-stone-900 dark:text-stone-100">智能建议收录</div>
-            <div className="mt-0.5 text-[11px] leading-snug text-stone-600 dark:text-stone-500">
-              上传后根据标签和灵感册名称/描述推荐入册。
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {renderSmartToggle("图片建议入册", smartSuggestImages, onSmartSuggestImagesChange)}
-            {renderSmartToggle("MD 建议入册", smartSuggestMarkdown, onSmartSuggestMarkdownChange)}
-            {smartSuggestSyncStatus === "saving" ? (
-              <span className="text-[10px] text-stone-500 dark:text-stone-500">同步中</span>
-            ) : smartSuggestSyncStatus === "error" ? (
-              <span className="text-[10px] text-red-700 dark:text-red-300">设置同步失败</span>
-            ) : null}
-          </div>
-        </div>
       </div>
 
       <div className="relative grid min-h-[560px] lg:grid-cols-[320px_minmax(0,1fr)]">
