@@ -1,6 +1,10 @@
 const { request, uploadImage, resolveAssetUrl } = require("../../utils/api");
 const { requireRegistered, refreshAccountStatus } = require("../../utils/auth");
 const { currentWeekId, days } = require("../../utils/dates");
+const { findBestBookSuggestion } = require("../../utils/bookSuggestion");
+const { loadSmartSettings } = require("../../utils/smartSettings");
+
+const dismissedSmartSuggestions = new Set();
 
 function todayDayIndex() {
   const day = new Date().getDay();
@@ -83,6 +87,17 @@ function cacheCards(cards) {
   });
 }
 
+function suggestionKey(cardId, bookId) {
+  return `${cardId}:${bookId}`;
+}
+
+function bookHintsFromBooks(books) {
+  return (books || [])
+    .map((book) => [book.title, book.description].filter(Boolean).join("：").trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 Page({
   data: {
     accountState: "guest",
@@ -160,6 +175,67 @@ Page({
     }
   },
 
+  async maybeSuggestBookMembership(card) {
+    try {
+      const settings = await loadSmartSettings();
+      const shouldSuggest = card.type === "md" ? settings.markdown : settings.images;
+      if (!shouldSuggest) return;
+
+      const booksBody = await request({ url: "/api/db/books" });
+      const books = Array.isArray(booksBody) ? booksBody : [];
+      if (!books.length) return;
+
+      const match = findBestBookSuggestion(card, books);
+      if (!match) return;
+
+      const key = suggestionKey(card.id, match.book.id);
+      if (dismissedSmartSuggestions.has(key)) return;
+
+      const memberships = await request({ url: `/api/db/cards/${encodeURIComponent(card.id)}/books` });
+      const alreadyContains = Array.isArray(memberships)
+        && memberships.some((book) => book.id === match.book.id && book.containsCard);
+      if (alreadyContains) return;
+
+      const confirmed = await new Promise((resolve) => {
+        wx.showModal({
+          title: "加入灵感册？",
+          content: `这条灵感可能适合加入《${match.book.title}》。`,
+          confirmText: "加入",
+          cancelText: "暂不",
+          success: (res) => resolve(Boolean(res.confirm)),
+          fail: () => resolve(false)
+        });
+      });
+
+      if (!confirmed) {
+        dismissedSmartSuggestions.add(key);
+        return;
+      }
+
+      await request({
+        url: `/api/db/books/${encodeURIComponent(match.book.id)}/cards`,
+        method: "POST",
+        data: { cardId: card.id }
+      });
+      wx.showToast({ title: "已加入灵感册", icon: "success" });
+      await this.loadBooks();
+    } catch (err) {
+      console.warn("Mini smart book suggestion skipped:", err);
+    }
+  },
+
+  async loadBookHintsForSmartImage() {
+    try {
+      const settings = await loadSmartSettings();
+      if (!settings.images) return [];
+      const booksBody = await request({ url: "/api/db/books" });
+      return bookHintsFromBooks(Array.isArray(booksBody) ? booksBody : []);
+    } catch (err) {
+      console.warn("Mini smart book hints skipped:", err);
+      return [];
+    }
+  },
+
   openDay(event) {
     wx.navigateTo({
       url: `/pages/day-detail/index?dayIndex=${event.currentTarget.dataset.index}&weekId=${encodeURIComponent(this.data.weekId)}`
@@ -228,11 +304,17 @@ Page({
           wx.setStorageSync(`miniCard:${cardId}`, normalizeCard(card));
           wx.showToast({ title: "已保存", icon: "success" });
           await this.loadCards();
+          await this.maybeSuggestBookMembership(card);
+
+          const bookHints = await this.loadBookHintsForSmartImage();
 
           uploadImage({
             url: "/api/analyze-image",
             filePath,
-            formData: { source: "miniprogram" }
+            formData: {
+              source: "miniprogram",
+              ...(bookHints.length ? { bookHints: JSON.stringify(bookHints) } : {})
+            }
           })
             .then((analysis) => {
               const terms = Array.isArray(analysis.terms) ? analysis.terms : [];
@@ -244,6 +326,7 @@ Page({
               }).then(() => {
                 const cached = wx.getStorageSync(`miniCard:${cardId}`) || card;
                 wx.setStorageSync(`miniCard:${cardId}`, normalizeCard({ ...cached, terms }));
+                return this.maybeSuggestBookMembership({ ...card, terms });
               });
             })
             .then(() => this.loadCards())

@@ -1,5 +1,11 @@
 const { refreshAccountStatus, wechatLogin } = require("../../utils/auth");
 const { request } = require("../../utils/api");
+const {
+  SMART_BOOK_SUGGEST_IMAGES_KEY,
+  SMART_BOOK_SUGGEST_MARKDOWN_KEY,
+  loadSmartSettings,
+  saveSmartSetting
+} = require("../../utils/smartSettings");
 
 const EMPTY_STATS = {
   inspirationCount: 0,
@@ -53,6 +59,10 @@ Page({
     debugIdentifier: "",
     debugPassword: "",
     debugLoading: false,
+    smartSettingsLoading: false,
+    smartSettingsSaving: false,
+    smartSuggestImages: false,
+    smartSuggestMarkdown: false,
     meCards: [
       { iconKey: "file", title: "我的草稿", desc: "工具处理未保存内容" },
       { iconKey: "download", title: "本地缓存", desc: "清理预览和临时图" }
@@ -84,11 +94,16 @@ Page({
       };
 
       if (accountState === "registered") {
-        const me = await request({ url: "/api/miniprogram/me" });
+        const [me, smartSettings] = await Promise.all([
+          request({ url: "/api/miniprogram/me" }),
+          loadSmartSettings().catch(() => ({ images: false, markdown: false }))
+        ]);
         const meUser = me.user || user;
         nextData.user = meUser;
         nextData.profile = buildProfile(accountState, meUser);
         nextData.stats = me.stats || EMPTY_STATS;
+        nextData.smartSuggestImages = smartSettings.images;
+        nextData.smartSuggestMarkdown = smartSettings.markdown;
       }
 
       this.setData(nextData);
@@ -162,5 +177,33 @@ Page({
 
   selectProfileTab(event) {
     this.setData({ activeTab: event.currentTarget.dataset.tab || "灵感册" });
+  },
+
+  async toggleSmartSuggestImages(event) {
+    await this.updateSmartSetting(SMART_BOOK_SUGGEST_IMAGES_KEY, event.detail.value, "smartSuggestImages");
+  },
+
+  async toggleSmartSuggestMarkdown(event) {
+    await this.updateSmartSetting(SMART_BOOK_SUGGEST_MARKDOWN_KEY, event.detail.value, "smartSuggestMarkdown");
+  },
+
+  async updateSmartSetting(key, value, dataKey) {
+    if (this.data.accountState !== "registered") {
+      wx.showToast({ title: "请先完成注册", icon: "none" });
+      this.setData({ [dataKey]: false });
+      return;
+    }
+
+    const previousValue = this.data[dataKey];
+    this.setData({ [dataKey]: value, smartSettingsSaving: true });
+    try {
+      await saveSmartSetting(key, value);
+      wx.showToast({ title: value ? "已开启" : "已关闭", icon: "success" });
+    } catch (err) {
+      this.setData({ [dataKey]: previousValue });
+      wx.showToast({ title: err.message || "设置保存失败", icon: "none" });
+    } finally {
+      this.setData({ smartSettingsSaving: false });
+    }
   }
 });
