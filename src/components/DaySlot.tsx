@@ -17,6 +17,8 @@ interface DaySlotProps {
   onZoom: (card: ImageCard) => void;
   onUpdateTerms: (cardId: string, terms: string[]) => void;
   onBookMembershipChanged?: () => void;
+  onBatchUploadStart?: () => void;
+  onBatchUploadEnd?: () => void;
 }
 
 type BatchFailure = {
@@ -45,6 +47,8 @@ export default function DaySlot({
   onZoom,
   onUpdateTerms,
   onBookMembershipChanged,
+  onBatchUploadStart,
+  onBatchUploadEnd,
 }: DaySlotProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
@@ -208,35 +212,40 @@ export default function DaySlot({
       done: false,
     });
 
-    for (const file of files) {
-      updateBatchProgress((current) => ({ ...current, currentFile: file.name || "未命名文件" }));
-      try {
-        if (isImageFile(file)) {
-          await processImageFileCore(file);
-        } else if (isMarkdownFile(file)) {
-          await processMdFileCore(file);
-        } else {
-          throw new Error("不支持的文件类型。");
-        }
+    onBatchUploadStart?.();
+    try {
+      for (const file of files) {
+        updateBatchProgress((current) => ({ ...current, currentFile: file.name || "未命名文件" }));
+        try {
+          if (isImageFile(file)) {
+            await processImageFileCore(file);
+          } else if (isMarkdownFile(file)) {
+            await processMdFileCore(file);
+          } else {
+            throw new Error("不支持的文件类型。");
+          }
 
-        updateBatchProgress((current) => ({
-          ...current,
-          completed: current.completed + 1,
-          succeeded: current.succeeded + 1,
-        }));
-      } catch (err: any) {
-        updateBatchProgress((current) => ({
-          ...current,
-          completed: current.completed + 1,
-          failed: [
-            ...current.failed,
-            {
-              filename: file.name || "未命名文件",
-              reason: err?.message || "导入失败。",
-            },
-          ],
-        }));
+          updateBatchProgress((current) => ({
+            ...current,
+            completed: current.completed + 1,
+            succeeded: current.succeeded + 1,
+          }));
+        } catch (err: any) {
+          updateBatchProgress((current) => ({
+            ...current,
+            completed: current.completed + 1,
+            failed: [
+              ...current.failed,
+              {
+                filename: file.name || "未命名文件",
+                reason: err?.message || "导入失败。",
+              },
+            ],
+          }));
+        }
       }
+    } finally {
+      onBatchUploadEnd?.();
     }
 
     setBatchStatus((current) => current ? { ...current, currentFile: "", done: true } : current);

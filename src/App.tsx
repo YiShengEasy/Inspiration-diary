@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ImageCard } from "./types";
+import { ImageCard, type InspirationBook } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 import {
   subscribeCards,
@@ -36,6 +36,13 @@ const SMART_BOOK_SUGGEST_MARKDOWN_KEY = "smart_book_suggest_markdown";
 type PendingSmartSuggestion = {
   card: ImageCard;
   match: BookSuggestionMatch;
+};
+
+type SmartSuggestionGroup = {
+  book: InspirationBook;
+  cards: ImageCard[];
+  matchedTerms: string[];
+  score: number;
 };
 
 export default function App() {
@@ -76,9 +83,11 @@ export default function App() {
   const [smartSuggestSyncStatus, setSmartSuggestSyncStatus] = useState<"clean" | "saving" | "error">("clean");
   const smartSuggestImagesRef = useRef<boolean>(false);
   const smartSuggestMarkdownRef = useRef<boolean>(false);
-  const smartSuggestionRef = useRef<PendingSmartSuggestion | null>(null);
-  const [smartSuggestion, setSmartSuggestion] = useState<PendingSmartSuggestion | null>(null);
-  const [queuedSmartSuggestions, setQueuedSmartSuggestions] = useState<PendingSmartSuggestion[]>([]);
+  const smartSuggestionRef = useRef<SmartSuggestionGroup | null>(null);
+  const smartBatchModeRef = useRef<boolean>(false);
+  const batchSmartSuggestionsRef = useRef<Map<string, SmartSuggestionGroup>>(new Map());
+  const [smartSuggestion, setSmartSuggestion] = useState<SmartSuggestionGroup | null>(null);
+  const [queuedSmartSuggestions, setQueuedSmartSuggestions] = useState<SmartSuggestionGroup[]>([]);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => new Set());
   const [isApplyingSmartSuggestion, setIsApplyingSmartSuggestion] = useState<boolean>(false);
   const [smartSuggestionError, setSmartSuggestionError] = useState<string | null>(null);
@@ -403,20 +412,73 @@ export default function App() {
     }
   };
 
+  const createSmartSuggestionGroup = (suggestion: PendingSmartSuggestion): SmartSuggestionGroup => ({
+    book: suggestion.match.book,
+    cards: [suggestion.card],
+    matchedTerms: suggestion.match.matchedTerms,
+    score: suggestion.match.score,
+  });
+
+  const mergeSmartSuggestionIntoGroup = (
+    group: SmartSuggestionGroup,
+    suggestion: PendingSmartSuggestion,
+  ): SmartSuggestionGroup => {
+    if (group.cards.some((card) => card.id === suggestion.card.id)) {
+      return {
+        ...group,
+        matchedTerms: Array.from(new Set([...group.matchedTerms, ...suggestion.match.matchedTerms])).slice(0, 6),
+        score: Math.max(group.score, suggestion.match.score),
+      };
+    }
+
+    return {
+      ...group,
+      cards: [...group.cards, suggestion.card],
+      matchedTerms: Array.from(new Set([...group.matchedTerms, ...suggestion.match.matchedTerms])).slice(0, 6),
+      score: Math.max(group.score, suggestion.match.score),
+    };
+  };
+
   const queueSmartSuggestion = (suggestion: PendingSmartSuggestion) => {
     const nextKey = suggestionKey(suggestion.card.id, suggestion.match.book.id);
     const activeSuggestion = smartSuggestionRef.current;
-    if (activeSuggestion && suggestionKey(activeSuggestion.card.id, activeSuggestion.match.book.id) === nextKey) {
+    if (activeSuggestion?.book.id === suggestion.match.book.id && activeSuggestion.cards.some((card) => card.id === suggestion.card.id)) {
       return;
     }
 
+    if (smartBatchModeRef.current) {
+      const batchSuggestions = batchSmartSuggestionsRef.current;
+      const existingGroup = batchSuggestions.get(suggestion.match.book.id);
+      batchSuggestions.set(
+        suggestion.match.book.id,
+        existingGroup ? mergeSmartSuggestionIntoGroup(existingGroup, suggestion) : createSmartSuggestionGroup(suggestion),
+      );
+      return;
+    }
+
+    const nextGroup = createSmartSuggestionGroup(suggestion);
     setQueuedSmartSuggestions((current) => {
-      if (current.some((item) => suggestionKey(item.card.id, item.match.book.id) === nextKey)) {
+      if (current.some((group) => group.book.id === suggestion.match.book.id && group.cards.some((card) => suggestionKey(card.id, group.book.id) === nextKey))) {
         return current;
       }
-      return [...current, suggestion];
+      return [...current, nextGroup];
     });
   };
+
+  const handleBatchUploadStart = useCallback(() => {
+    smartBatchModeRef.current = true;
+    batchSmartSuggestionsRef.current = new Map();
+  }, []);
+
+  const handleBatchUploadEnd = useCallback(() => {
+    smartBatchModeRef.current = false;
+    const batchSuggestions = Array.from(batchSmartSuggestionsRef.current.values())
+      .filter((group) => group.cards.length > 0);
+    batchSmartSuggestionsRef.current = new Map();
+    if (batchSuggestions.length > 0) {
+      setQueuedSmartSuggestions((current) => [...current, ...batchSuggestions]);
+    }
+  }, []);
 
   const maybeSuggestBookMembership = async (card: ImageCard) => {
     const shouldSuggest = card.type === "md" ? smartSuggestMarkdownRef.current : smartSuggestImagesRef.current;
@@ -458,8 +520,11 @@ export default function App() {
 
   const dismissSmartSuggestion = () => {
     if (smartSuggestion) {
-      const key = suggestionKey(smartSuggestion.card.id, smartSuggestion.match.book.id);
-      setDismissedSuggestions((current) => new Set(current).add(key));
+      setDismissedSuggestions((current) => {
+        const next = new Set(current);
+        smartSuggestion.cards.forEach((card) => next.add(suggestionKey(card.id, smartSuggestion.book.id)));
+        return next;
+      });
     }
     setSmartSuggestion(null);
     setSmartSuggestionError(null);
@@ -470,7 +535,9 @@ export default function App() {
     setIsApplyingSmartSuggestion(true);
     setSmartSuggestionError(null);
     try {
-      await setCardBookMembership(smartSuggestion.card.id, smartSuggestion.match.book.id, true);
+      await Promise.all(
+        smartSuggestion.cards.map((card) => setCardBookMembership(card.id, smartSuggestion.book.id, true)),
+      );
       handleBookMembershipChanged();
       dismissSmartSuggestion();
     } catch (err) {
@@ -673,7 +740,11 @@ export default function App() {
         }
       };
 
-      void analyzeAndUpdateTerms();
+      if (smartBatchModeRef.current) {
+        await analyzeAndUpdateTerms();
+      } else {
+        void analyzeAndUpdateTerms();
+      }
     } catch (error: any) {
       console.error("Aesthetic extracting terms error:", error);
       throw new Error(error.message || "Failed to parse terms with Gemini AI.");
@@ -1551,6 +1622,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onBatchUploadStart={handleBatchUploadStart}
+                    onBatchUploadEnd={handleBatchUploadEnd}
                   />
                   <DaySlot
                     dayIndex={1}
@@ -1564,6 +1637,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onBatchUploadStart={handleBatchUploadStart}
+                    onBatchUploadEnd={handleBatchUploadEnd}
                   />
                   <DaySlot
                     dayIndex={2}
@@ -1577,6 +1652,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onBatchUploadStart={handleBatchUploadStart}
+                    onBatchUploadEnd={handleBatchUploadEnd}
                   />
                 </div>
 
@@ -1594,6 +1671,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onBatchUploadStart={handleBatchUploadStart}
+                    onBatchUploadEnd={handleBatchUploadEnd}
                   />
                   <DaySlot
                     dayIndex={4}
@@ -1607,6 +1686,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onBatchUploadStart={handleBatchUploadStart}
+                    onBatchUploadEnd={handleBatchUploadEnd}
                   />
                   {/* Weekend combined cell */}
                   <DaySlot
@@ -1621,6 +1702,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onBatchUploadStart={handleBatchUploadStart}
+                    onBatchUploadEnd={handleBatchUploadEnd}
                   />
                 </div>
               </motion.div>
@@ -1794,19 +1877,21 @@ export default function App() {
                 </div>
                 <div className="min-w-0">
                   <h3 className="font-serif text-lg font-bold italic leading-snug">
-                    这条灵感可能适合加入《{smartSuggestion.match.book.title}》
+                    {smartSuggestion.cards.length > 1
+                      ? `发现 ${smartSuggestion.cards.length} 条灵感适合加入《${smartSuggestion.book.title}》`
+                      : `这条灵感可能适合加入《${smartSuggestion.book.title}》`}
                   </h3>
-                  {smartSuggestion.match.book.description ? (
+                  {smartSuggestion.book.description ? (
                     <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-                      {smartSuggestion.match.book.description}
+                      {smartSuggestion.book.description}
                     </p>
                   ) : null}
                 </div>
               </div>
 
-              {smartSuggestion.match.matchedTerms.length > 0 ? (
+              {smartSuggestion.matchedTerms.length > 0 ? (
                 <div className="mt-4 flex flex-wrap gap-1.5">
-                  {smartSuggestion.match.matchedTerms.map((term) => (
+                  {smartSuggestion.matchedTerms.map((term) => (
                     <span key={term} className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-900 dark:bg-amber-300/15 dark:text-amber-100">
                       {term}
                     </span>
@@ -1835,7 +1920,7 @@ export default function App() {
                   className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] bg-stone-900 px-3 text-sm font-semibold text-[#fbf7ed] transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-wait disabled:opacity-70 dark:bg-amber-200 dark:text-stone-950"
                 >
                   {isApplyingSmartSuggestion ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
-                  加入灵感册
+                  {smartSuggestion.cards.length > 1 ? "全部加入灵感册" : "加入灵感册"}
                 </button>
               </div>
             </motion.div>
