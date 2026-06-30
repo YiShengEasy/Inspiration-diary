@@ -16,7 +16,22 @@ interface DaySlotProps {
   onDeleteTerm: (cardId: string, termIndex: number) => void;
   onZoom: (card: ImageCard) => void;
   onUpdateTerms: (cardId: string, terms: string[]) => void;
+  onBookMembershipChanged?: () => void;
 }
+
+type BatchFailure = {
+  filename: string;
+  reason: string;
+};
+
+type BatchStatus = {
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: BatchFailure[];
+  currentFile: string;
+  done: boolean;
+};
 
 export default function DaySlot({
   dayIndex,
@@ -29,14 +44,15 @@ export default function DaySlot({
   onDeleteTerm,
   onZoom,
   onUpdateTerms,
+  onBookMembershipChanged,
 }: DaySlotProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mdInputRef = useRef<HTMLInputElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [batchStatus, setBatchStatus] = useState<BatchStatus | null>(null);
 
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [activeStackIndex, setActiveStackIndex] = useState(0);
@@ -68,113 +84,163 @@ export default function DaySlot({
     setActiveStackIndex((prev) => (prev + 1) % cards.length);
   };
 
-  const processMdFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".md") && file.type !== "text/markdown") {
-      setUploadError("Please provide a valid markdown file.");
-      return;
+  const isMarkdownFile = (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    return lowerName.endsWith(".md") || file.type === "text/markdown";
+  };
+
+  const isImageFile = (file: File) => file.type.startsWith("image/");
+
+  const updateBatchProgress = (updater: (current: BatchStatus) => BatchStatus) => {
+    setBatchStatus((current) => {
+      if (!current) return current;
+      return updater(current);
+    });
+  };
+
+  const processMdFileCore = async (file: File) => {
+    if (!isMarkdownFile(file)) {
+      throw new Error("不支持的 Markdown 文件。");
     }
 
+    const text = await file.text();
+    if (!text.trim()) {
+      throw new Error("Markdown 文件为空。");
+    }
+
+    if (!onUploadMd) {
+      throw new Error("当前页面不支持 Markdown 导入。");
+    }
+
+    await onUploadMd(dayIndex, text, file.name);
+  };
+
+  // Store the original image, but keep a smaller copy for AI analysis payloads.
+  const processImageFileCore = (file: File) => {
+    return new Promise<void>((resolve, reject) => {
+      if (!isImageFile(file)) {
+        reject(new Error("不支持的图片文件。"));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const originalBase64 = event.target?.result as string;
+        const img = new window.Image();
+        img.onload = async () => {
+          // Create canvas for compression
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 600;
+          const MAX_HEIGHT = 600;
+          let width = img.width;
+          let height = img.height;
+
+          // Calculate aspect ratios for shrinking
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            try {
+              await onUploadImage(dayIndex, file, file);
+              resolve();
+            } catch (err: any) {
+              reject(err);
+            }
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(async (blob) => {
+            try {
+              await onUploadImage(dayIndex, file, blob || file);
+              resolve();
+            } catch (err: any) {
+              reject(err);
+            }
+          }, "image/jpeg", 0.82);
+        };
+
+        img.onerror = () => reject(new Error("Could not load image reference."));
+        img.src = originalBase64;
+      };
+
+      reader.onerror = () => reject(new Error("Could not read image file."));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processImageFile = async (file: File) => {
     setIsUploading(true);
     setUploadError(null);
+    setBatchStatus(null);
     try {
-      const text = await file.text();
-      if (onUploadMd) {
-        await onUploadMd(dayIndex, text, file.name);
-      }
+      await processImageFileCore(file);
     } catch (err: any) {
-      setUploadError(err.message || "Failed to process Markdown document.");
+      setUploadError(err.message || "Failed to analyze image terms.");
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleMdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      void processMdFile(e.target.files[0]);
-    }
-    if (mdInputRef.current) mdInputRef.current.value = "";
-  };
-
-  const triggerMdSelect = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    mdInputRef.current?.click();
-  };
-
-  // Store the original image, but keep a smaller copy for AI analysis payloads.
-  const processImageFile = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      setUploadError("Please provide a valid image file.");
-      return;
-    }
+  const processBatchFiles = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
 
     setIsUploading(true);
     setUploadError(null);
+    setBatchStatus({
+      total: files.length,
+      completed: 0,
+      succeeded: 0,
+      failed: [],
+      currentFile: files[0]?.name || "",
+      done: false,
+    });
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const originalBase64 = event.target?.result as string;
-      const img = new window.Image();
-      img.onload = async () => {
-        // Create canvas for compression
-        const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 600;
-        const MAX_HEIGHT = 600;
-        let width = img.width;
-        let height = img.height;
-
-        // Calculate aspect ratios for shrinking
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
+    for (const file of files) {
+      updateBatchProgress((current) => ({ ...current, currentFile: file.name || "未命名文件" }));
+      try {
+        if (isImageFile(file)) {
+          await processImageFileCore(file);
+        } else if (isMarkdownFile(file)) {
+          await processMdFileCore(file);
         } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
+          throw new Error("不支持的文件类型。");
         }
 
-        canvas.width = width;
-        canvas.height = height;
+        updateBatchProgress((current) => ({
+          ...current,
+          completed: current.completed + 1,
+          succeeded: current.succeeded + 1,
+        }));
+      } catch (err: any) {
+        updateBatchProgress((current) => ({
+          ...current,
+          completed: current.completed + 1,
+          failed: [
+            ...current.failed,
+            {
+              filename: file.name || "未命名文件",
+              reason: err?.message || "导入失败。",
+            },
+          ],
+        }));
+      }
+    }
 
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          canvas.toBlob(async (blob) => {
-            try {
-              await onUploadImage(dayIndex, file, blob || file);
-            } catch (err: any) {
-              setUploadError(err.message || "Failed to analyze image terms.");
-            } finally {
-              setIsUploading(false);
-            }
-          }, "image/jpeg", 0.82);
-        } else {
-          try {
-            await onUploadImage(dayIndex, file, file);
-          } catch (err: any) {
-            setUploadError(err.message || "Failed to analyze image terms.");
-          } finally {
-            setIsUploading(false);
-          }
-        }
-      };
-      
-      img.onerror = () => {
-        setIsUploading(false);
-        setUploadError("Could not load image reference.");
-      };
-
-      img.src = originalBase64;
-    };
-
-    reader.onerror = () => {
-      setIsUploading(false);
-      setUploadError("Could not read image file.");
-    };
-
-    reader.readAsDataURL(file);
+    setBatchStatus((current) => current ? { ...current, currentFile: "", done: true } : current);
+    setIsUploading(false);
   };
 
   // Keyboard shortcut Paste listener (for clipboard screenshots paste!)
@@ -196,7 +262,7 @@ export default function DaySlot({
           const file = item.getAsFile();
           if (file) {
             e.preventDefault();
-            processImageFile(file);
+            void processImageFile(file);
             break;
           }
         }
@@ -224,13 +290,13 @@ export default function DaySlot({
     e.preventDefault();
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processImageFile(e.dataTransfer.files[0]);
+      void processBatchFiles(e.dataTransfer.files);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      processImageFile(e.target.files[0]);
+      void processBatchFiles(e.target.files);
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -258,15 +324,9 @@ export default function DaySlot({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.md,text/markdown"
+        multiple
         onChange={handleFileChange}
-        className="hidden"
-      />
-      <input
-        ref={mdInputRef}
-        type="file"
-        accept=".md,text/markdown"
-        onChange={handleMdChange}
         className="hidden"
       />
 
@@ -281,6 +341,29 @@ export default function DaySlot({
         {uploadError && (
           <div className="mb-2 text-[11px] font-medium text-red-600 bg-red-100/60 dark:bg-red-950/20 px-2 py-1 rounded">
             ⚠️ {uploadError}
+          </div>
+        )}
+        {batchStatus?.done && (
+          <div className={`mb-2 rounded px-2 py-1 text-[11px] font-medium ${
+            batchStatus.failed.length > 0
+              ? "bg-amber-100/70 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+              : "bg-emerald-100/70 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200"
+          }`}>
+            <div>
+              批量导入完成：成功 {batchStatus.succeeded} 个，失败 {batchStatus.failed.length} 个
+            </div>
+            {batchStatus.failed.length > 0 && (
+              <div className="mt-1 space-y-0.5">
+                {batchStatus.failed.slice(0, 3).map((failure) => (
+                  <div key={`${failure.filename}-${failure.reason}`} className="truncate">
+                    {failure.filename}: {failure.reason}
+                  </div>
+                ))}
+                {batchStatus.failed.length > 3 && (
+                  <div>还有 {batchStatus.failed.length - 3} 个文件导入失败。</div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -374,6 +457,7 @@ export default function DaySlot({
                         onZoom(c);
                       }}
                       onUpdateTerms={onUpdateTerms}
+                      onBookMembershipChanged={onBookMembershipChanged}
                     />
                   </motion.div>
                 </div>
@@ -422,52 +506,57 @@ export default function DaySlot({
         {isUploading && (
           <div className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-amber-500/30 rounded-xl bg-amber-500/5 animate-pulse min-h-[140px] w-full" id={`analysing-loader-${dayIndex}`}>
             <Loader2 size={24} className="animate-spin text-amber-600 dark:text-amber-400 mb-1.5" />
-            <div className="text-[11px] font-handwritten font-bold text-amber-800 dark:text-amber-300">
-              Gemini parsing aesthetic...
-            </div>
+            {batchStatus ? (
+              <>
+                <div className="text-[11px] font-handwritten font-bold text-amber-800 dark:text-amber-300">
+                  正在导入 {Math.min(batchStatus.completed + 1, batchStatus.total)}/{batchStatus.total}
+                </div>
+                {batchStatus.currentFile && (
+                  <div className="mt-1 max-w-full truncate text-[10px] text-stone-500 dark:text-stone-400">
+                    当前：{batchStatus.currentFile}
+                  </div>
+                )}
+                <div className="mt-2 text-[10px] text-stone-500 dark:text-stone-400">
+                  成功 {batchStatus.succeeded} 个，失败 {batchStatus.failed.length} 个
+                </div>
+              </>
+            ) : (
+              <div className="text-[11px] font-handwritten font-bold text-amber-800 dark:text-amber-300">
+                Gemini parsing aesthetic...
+              </div>
+            )}
             
             {/* Visual breakdown of parameters sent for real analysis */}
-            <div className="mt-3 p-2 bg-stone-100/60 dark:bg-stone-950/50 rounded-lg border border-stone-200/40 dark:border-white/5 text-[10px] text-stone-500 dark:text-stone-400 font-sans w-full text-left leading-relaxed">
-              <span className="font-semibold text-amber-700 dark:text-amber-400 block mb-0.5">🚀 已发送 API 分析请求</span>
-              <p className="opacity-80 text-[9px]">
-                <strong>发送提示词:</strong> "Analyze this image to extract evocative artistic inspirations..."
-              </p>
-            </div>
+            {!batchStatus && (
+              <div className="mt-3 p-2 bg-stone-100/60 dark:bg-stone-950/50 rounded-lg border border-stone-200/40 dark:border-white/5 text-[10px] text-stone-500 dark:text-stone-400 font-sans w-full text-left leading-relaxed">
+                <span className="font-semibold text-amber-700 dark:text-amber-400 block mb-0.5">🚀 已发送 API 分析请求</span>
+                <p className="opacity-80 text-[9px]">
+                  <strong>发送提示词:</strong> "Analyze this image to extract evocative artistic inspirations..."
+                </p>
+              </div>
+            )}
           </div>
         )}
 
         {/* Empty placeholder slot with double support (Drag & Drop + Clipboard Paste + Click) */}
         {!isUploading && cards.length === 0 && (
           <div className="w-full flex-grow flex flex-col items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-stone-200 dark:border-stone-800 hover:border-amber-400 group/dropzone bg-stone-50/40 dark:bg-stone-900/20 hover:bg-amber-50/10 transition-all text-center">
-            <div className="flex gap-4 items-center">
+            <div className="flex items-center">
               <div
                 onClick={triggerFileSelect}
-                className="flex flex-col items-center cursor-pointer group/imgbtn p-2 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                className="flex flex-col items-center cursor-pointer group/importbtn p-2 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
               >
-                <div className="p-2 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 group-hover/imgbtn:bg-amber-100 dark:group-hover/imgbtn:bg-amber-950/40 group-hover/imgbtn:text-amber-700 dark:group-hover/imgbtn:text-amber-300 transition-colors transform group-hover/imgbtn:-rotate-6 scale-100 group-hover/imgbtn:scale-110 duration-300">
-                  <Image size={16} strokeWidth={1.5} />
+                <div className="relative p-2 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 group-hover/importbtn:bg-amber-100 dark:group-hover/importbtn:bg-amber-950/40 group-hover/importbtn:text-amber-700 dark:group-hover/importbtn:text-amber-300 transition-colors transform group-hover/importbtn:-rotate-6 scale-100 group-hover/importbtn:scale-110 duration-300">
+                  <Image size={17} strokeWidth={1.5} />
+                  <Clipboard size={10} strokeWidth={1.8} className="absolute -right-1 -bottom-1 rounded-full bg-white text-teal-600 shadow-sm dark:bg-stone-950 dark:text-teal-300" />
                 </div>
-                <div className="mt-2 text-xs font-serif italic font-medium text-stone-500 group-hover/imgbtn:text-stone-800 dark:group-hover/imgbtn:text-stone-300">
-                  图片灵感
+                <div className="mt-2 text-xs font-serif italic font-medium text-stone-500 group-hover/importbtn:text-stone-800 dark:group-hover/importbtn:text-stone-300">
+                  批量导入
                 </div>
               </div>
-
-              {onUploadMd && (
-                <div
-                  onClick={triggerMdSelect}
-                  className="flex flex-col items-center cursor-pointer group/mdbtn p-2 rounded-xl hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors"
-                >
-                  <div className="p-2 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 group-hover/mdbtn:bg-teal-100 dark:group-hover/mdbtn:bg-teal-950/40 group-hover/mdbtn:text-teal-700 dark:group-hover/mdbtn:text-teal-300 transition-colors transform group-hover/mdbtn:rotate-6 scale-100 group-hover/mdbtn:scale-110 duration-300">
-                    <Clipboard size={16} strokeWidth={1.5} />
-                  </div>
-                  <div className="mt-2 text-xs font-serif italic font-medium text-stone-500 group-hover/mdbtn:text-stone-800 dark:group-hover/mdbtn:text-stone-300">
-                    随附手稿
-                  </div>
-                </div>
-              )}
             </div>
-            <p className="text-[10px] text-stone-400 dark:text-stone-500 max-w-[150px] mt-1 tracking-tight leading-normal">
-              留存光影、长文笔记，或直接粘贴唤醒灵感。
+            <p className="text-[10px] text-stone-400 dark:text-stone-500 max-w-[170px] mt-1 tracking-tight leading-normal">
+              多选图片或 MD，全部导入这一天。
             </p>
           </div>
         )}
@@ -480,19 +569,13 @@ export default function DaySlot({
             onClick={triggerFileSelect}
             className="w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center cursor-pointer shadow-md transform hover:scale-110 hover:rotate-12 transition-all"
             id={`add-more-btn-${dayIndex}`}
-            title="添加图片"
+            title="批量导入图片和MD"
           >
-            <Image size={12} strokeWidth={2} />
+            <span className="relative inline-flex">
+              <Image size={12} strokeWidth={2} />
+              <Clipboard size={7} strokeWidth={2.2} className="absolute -right-1.5 -bottom-1 rounded-full bg-amber-600 text-white" />
+            </span>
           </button>
-          {onUploadMd && (
-            <button
-              onClick={triggerMdSelect}
-              className="w-6 h-6 rounded-full bg-teal-500 hover:bg-teal-600 text-white flex items-center justify-center cursor-pointer shadow-md transform hover:scale-110 hover:-rotate-12 transition-all"
-              title="添加MD笔记"
-            >
-              <Clipboard size={12} strokeWidth={2} />
-            </button>
-          )}
         </div>
       )}
     </div>

@@ -14,6 +14,7 @@ export interface ImageCard {
   mdContent?: string;
   mdSummary?: string;
   mdName?: string;
+  insightNote?: string;
 }
 
 export interface WeeklyNote {
@@ -29,6 +30,7 @@ export interface InspirationBook {
   createdAt: number;
   updatedAt: number;
   cardCount: number;
+  coverCardId: string;
   coverCard: ImageCard | null;
 }
 

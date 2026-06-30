@@ -9,6 +9,7 @@ import {
   saveCard,
   deleteCard,
   updateCardTerms,
+  updateCardInsightNote,
   refreshCards,
   loadSettings,
   saveSettings,
@@ -17,15 +18,21 @@ import {
 import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
 import PolaroidCard from "./components/PolaroidCard";
+import InspirationBooksView from "./components/InspirationBooksView";
+import CardBookPopover from "./components/CardBookPopover";
 import LoginScreen from "./components/LoginScreen";
 import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
+import { loadBooks, loadCardBookMembership, setCardBookMembership } from "./lib/booksClient";
+import { findBestBookSuggestion, type BookSuggestionMatch } from "./lib/bookSuggestion";
 import Markdown from "react-markdown";
 
 const ALL_CARDS_PAGE_SIZE = 12;
+const SMART_BOOK_SUGGEST_IMAGES_KEY = "smart_book_suggest_images";
+const SMART_BOOK_SUGGEST_MARKDOWN_KEY = "smart_book_suggest_markdown";
 
 export default function App() {
   const shouldShowMockTools = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK_TOOLS === "true";
@@ -40,7 +47,17 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchScope, setSearchScope] = useState<"current" | "all">("current");
+  const [mainView, setMainView] = useState<"board" | "books">("board");
+  const [bookRefreshToken, setBookRefreshToken] = useState<number>(0);
   const [zoomedCard, setZoomedCard] = useState<ImageCard | null>(null);
+  const [isDetailBookPopoverOpen, setIsDetailBookPopoverOpen] = useState<boolean>(false);
+  const [detailInsightNote, setDetailInsightNote] = useState<string>("");
+  const [detailInsightSaveStatus, setDetailInsightSaveStatus] = useState<"clean" | "saving" | "error">("clean");
+  const [imageZoomScale, setImageZoomScale] = useState<number>(1);
+  const [imagePan, setImagePan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [imageViewMode, setImageViewMode] = useState<"fit" | "actual">("fit");
+  const imagePanStartRef = useRef<{ pointerId: number; startX: number; startY: number; panX: number; panY: number } | null>(null);
   const [isRefreshingCards, setIsRefreshingCards] = useState<boolean>(false);
   const [showWeeklyPreview, setShowWeeklyPreview] = useState<boolean>(false);
   const [cardToDelete, setCardToDelete] = useState<ImageCard | null>(null);
@@ -50,6 +67,16 @@ export default function App() {
   const [allCardsTotal, setAllCardsTotal] = useState<number>(0);
   const [allCardsTotalPages, setAllCardsTotalPages] = useState<number>(1);
   const [isLoadingAllCards, setIsLoadingAllCards] = useState<boolean>(false);
+  const [smartSuggestImages, setSmartSuggestImages] = useState<boolean>(false);
+  const [smartSuggestMarkdown, setSmartSuggestMarkdown] = useState<boolean>(false);
+  const [smartSuggestSyncStatus, setSmartSuggestSyncStatus] = useState<"clean" | "saving" | "error">("clean");
+  const [smartSuggestion, setSmartSuggestion] = useState<{
+    card: ImageCard;
+    match: BookSuggestionMatch;
+  } | null>(null);
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => new Set());
+  const [isApplyingSmartSuggestion, setIsApplyingSmartSuggestion] = useState<boolean>(false);
+  const [smartSuggestionError, setSmartSuggestionError] = useState<string | null>(null);
 
   // Custom AI parameter states
   const [customProvider, setCustomProvider] = useState<string>(() => {
@@ -97,6 +124,7 @@ export default function App() {
     setAllCardsTotal(0);
     setAllCardsTotalPages(1);
     setAllCardsPage(1);
+    setMainView("board");
     setZoomedCard(null);
   }, []);
 
@@ -156,6 +184,12 @@ export default function App() {
       if (dbSettings.custom_thirdparty_base_url !== undefined) { setThirdPartyBaseUrl(dbSettings.custom_thirdparty_base_url); localStorage.setItem("custom_thirdparty_base_url", dbSettings.custom_thirdparty_base_url); }
       if (dbSettings.custom_thirdparty_model !== undefined) { setThirdPartyModel(dbSettings.custom_thirdparty_model); localStorage.setItem("custom_thirdparty_model", dbSettings.custom_thirdparty_model); }
       if (dbSettings.custom_thirdparty_thinking !== undefined) { const v = dbSettings.custom_thirdparty_thinking === "true"; setThirdPartyThinking(v); localStorage.setItem("custom_thirdparty_thinking", String(v)); }
+      if (dbSettings[SMART_BOOK_SUGGEST_IMAGES_KEY] !== undefined) {
+        setSmartSuggestImages(dbSettings[SMART_BOOK_SUGGEST_IMAGES_KEY] === "true");
+      }
+      if (dbSettings[SMART_BOOK_SUGGEST_MARKDOWN_KEY] !== undefined) {
+        setSmartSuggestMarkdown(dbSettings[SMART_BOOK_SUGGEST_MARKDOWN_KEY] === "true");
+      }
     }).catch((err) => console.error("Failed to load settings from DB:", err));
   }, [authUser]);
 
@@ -172,6 +206,7 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return;
     if (!weekId) return;
+    if (mainView !== "board") return;
     if (searchScope === "all") return;
 
     const unsubscribe = subscribeCards(weekId, (fetchedCards) => {
@@ -179,7 +214,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [authUser, weekId, searchScope]);
+  }, [authUser, weekId, searchScope, mainView]);
 
   const loadHistoricalCardsPage = async (page = allCardsPage) => {
     setIsLoadingAllCards(true);
@@ -205,9 +240,10 @@ export default function App() {
 
   useEffect(() => {
     if (!authUser) return;
+    if (mainView !== "board") return;
     if (searchScope !== "all") return;
     void loadHistoricalCardsPage(allCardsPage);
-  }, [authUser, searchScope, allCardsPage, searchQuery]);
+  }, [authUser, mainView, searchScope, allCardsPage, searchQuery]);
 
   useEffect(() => {
     setAllCardsPage(1);
@@ -294,6 +330,82 @@ export default function App() {
       console.error("Failed to refresh cards:", err);
     } finally {
       setIsRefreshingCards(false);
+    }
+  };
+
+  const handleBookMembershipChanged = useCallback(() => {
+    setBookRefreshToken((current) => current + 1);
+  }, []);
+
+  const persistSmartSuggestSetting = async (key: string, value: boolean) => {
+    setSmartSuggestSyncStatus("saving");
+    try {
+      await saveSettings({ [key]: String(value) });
+      setSmartSuggestSyncStatus("clean");
+    } catch (err) {
+      console.error("Failed to save smart suggestion setting:", err);
+      setSmartSuggestSyncStatus("error");
+    }
+  };
+
+  const handleSmartSuggestImagesChange = (enabled: boolean) => {
+    setSmartSuggestImages(enabled);
+    void persistSmartSuggestSetting(SMART_BOOK_SUGGEST_IMAGES_KEY, enabled);
+  };
+
+  const handleSmartSuggestMarkdownChange = (enabled: boolean) => {
+    setSmartSuggestMarkdown(enabled);
+    void persistSmartSuggestSetting(SMART_BOOK_SUGGEST_MARKDOWN_KEY, enabled);
+  };
+
+  const suggestionKey = (cardId: string, bookId: string) => `${cardId}:${bookId}`;
+
+  const maybeSuggestBookMembership = async (card: ImageCard) => {
+    const shouldSuggest = card.type === "md" ? smartSuggestMarkdown : smartSuggestImages;
+    if (!shouldSuggest || smartSuggestion) return;
+
+    try {
+      const books = await loadBooks();
+      if (books.length === 0) return;
+
+      const match = findBestBookSuggestion(card, books);
+      if (!match) return;
+
+      const key = suggestionKey(card.id, match.book.id);
+      if (dismissedSuggestions.has(key)) return;
+
+      const memberships = await loadCardBookMembership(card.id);
+      const alreadyContains = memberships.some((book) => book.id === match.book.id && book.containsCard);
+      if (alreadyContains) return;
+
+      setSmartSuggestion({ card, match });
+      setSmartSuggestionError(null);
+    } catch (err) {
+      console.warn("Smart book suggestion skipped:", err);
+    }
+  };
+
+  const dismissSmartSuggestion = () => {
+    if (smartSuggestion) {
+      const key = suggestionKey(smartSuggestion.card.id, smartSuggestion.match.book.id);
+      setDismissedSuggestions((current) => new Set(current).add(key));
+    }
+    setSmartSuggestion(null);
+    setSmartSuggestionError(null);
+  };
+
+  const confirmSmartSuggestion = async () => {
+    if (!smartSuggestion) return;
+    setIsApplyingSmartSuggestion(true);
+    setSmartSuggestionError(null);
+    try {
+      await setCardBookMembership(smartSuggestion.card.id, smartSuggestion.match.book.id, true);
+      handleBookMembershipChanged();
+      dismissSmartSuggestion();
+    } catch (err) {
+      setSmartSuggestionError(err instanceof Error ? err.message : "加入灵感册失败");
+    } finally {
+      setIsApplyingSmartSuggestion(false);
     }
   };
 
@@ -470,9 +582,10 @@ export default function App() {
           }
 
           const resParsed = await response.json();
-          const extractedTerms = Array.isArray(resParsed.terms) ? resParsed.terms : [];
+          const extractedTerms = Array.isArray(resParsed.terms) ? resParsed.terms.slice(0, 5) : [];
           if (extractedTerms.length > 0) {
             await updateCardTerms(cardId, weekId, extractedTerms);
+            await maybeSuggestBookMembership({ ...newCard, terms: extractedTerms });
           }
         } catch (fetchErr: any) {
           const message = fetchErr?.name === "AbortError"
@@ -540,7 +653,7 @@ export default function App() {
             const terms = data.terms
               .filter((term: unknown): term is string => typeof term === "string" && term.trim().length > 0)
               .map((term: string) => term.trim())
-              .slice(0, 10);
+              .slice(0, 5);
             if (terms.length > 0) {
               mdTerms = terms;
             }
@@ -569,6 +682,7 @@ export default function App() {
       };
 
       await saveCard(newCard);
+      await maybeSuggestBookMembership(newCard);
     } catch (error: any) {
       console.error("Markdown upload error:", error);
       throw new Error(error.message || "Failed to save Markdown document.");
@@ -608,11 +722,13 @@ export default function App() {
   // Delete individual keyword term from tags list
   const handleDeleteTerm = async (cardId: string, termIndex: number) => {
     try {
-      const targetCard = cards.find((c) => c.id === cardId);
+      const targetCard = cards.find((c) => c.id === cardId)
+        || allCardsPageCards.find((c) => c.id === cardId)
+        || (zoomedCard?.id === cardId ? zoomedCard : null);
       if (targetCard) {
         const updatedTerms = [...targetCard.terms];
         updatedTerms.splice(termIndex, 1);
-        await updateCardTerms(cardId, weekId, updatedTerms);
+        await updateCardTerms(cardId, targetCard.weekId, updatedTerms);
       }
     } catch (err) {
       console.error("Tag deletion error:", err);
@@ -622,11 +738,20 @@ export default function App() {
   // Custom addition or absolute text keyword modifications
   const handleUpdateCardTerms = async (cardId: string, terms: string[]) => {
     try {
-      await updateCardTerms(cardId, weekId, terms);
+      const targetCard = cards.find((c) => c.id === cardId)
+        || allCardsPageCards.find((c) => c.id === cardId)
+        || (zoomedCard?.id === cardId ? zoomedCard : null);
+      await updateCardTerms(cardId, targetCard?.weekId || weekId, terms);
     } catch (err) {
       console.error("Failed to update custom terms list:", err);
     }
   };
+
+  const syncCardInsightNote = useCallback((cardId: string, insightNote: string) => {
+    setCards((current) => current.map((card) => card.id === cardId ? { ...card, insightNote } : card));
+    setAllCardsPageCards((current) => current.map((card) => card.id === cardId ? { ...card, insightNote } : card));
+    setZoomedCard((current) => current?.id === cardId ? { ...current, insightNote } : current);
+  }, []);
 
   // Populate the active week with gorgeous design mock-up data cards and notes
   const [isInjectingMock, setIsInjectingMock] = useState(false);
@@ -773,7 +898,7 @@ export default function App() {
     }
     return false;
   });
-  const visibleCards = searchScope === "all" ? allCardsPageCards : filteredCards;
+  const visibleCards = mainView === "books" ? [] : searchScope === "all" ? allCardsPageCards : filteredCards;
 
   const handlePrevZoomedCard = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -792,6 +917,95 @@ export default function App() {
     const nextIdx = (currentIdx + 1) % visibleCards.length;
     setZoomedCard(visibleCards[nextIdx]);
   };
+
+  const resetImageInspector = useCallback(() => {
+    setImageZoomScale(1);
+    setImagePan({ x: 0, y: 0 });
+    setImageNaturalSize(null);
+    setImageViewMode("fit");
+    imagePanStartRef.current = null;
+  }, []);
+
+  const updateImageZoom = (nextScale: number) => {
+    const clampedScale = Math.min(6, Math.max(0.25, nextScale));
+    setImageZoomScale(clampedScale);
+    if (clampedScale <= 1 && imageViewMode === "fit") {
+      setImagePan({ x: 0, y: 0 });
+    }
+  };
+
+  const handleImageWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const direction = e.deltaY > 0 ? -0.15 : 0.15;
+    updateImageZoom(imageZoomScale + direction);
+  };
+
+  const handleImagePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (imageZoomScale <= 1 && imageViewMode !== "actual") return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    imagePanStartRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      panX: imagePan.x,
+      panY: imagePan.y,
+    };
+  };
+
+  const handleImagePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const panStart = imagePanStartRef.current;
+    if (!panStart || panStart.pointerId !== e.pointerId) return;
+    setImagePan({
+      x: panStart.panX + e.clientX - panStart.startX,
+      y: panStart.panY + e.clientY - panStart.startY,
+    });
+  };
+
+  const handleImagePointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (imagePanStartRef.current?.pointerId === e.pointerId) {
+      imagePanStartRef.current = null;
+    }
+  };
+
+  const toggleActualSize = () => {
+    setImageViewMode((current) => current === "actual" ? "fit" : "actual");
+    setImageZoomScale(1);
+    setImagePan({ x: 0, y: 0 });
+  };
+
+  useEffect(() => {
+    resetImageInspector();
+  }, [zoomedCard?.id, resetImageInspector]);
+
+  useEffect(() => {
+    setIsDetailBookPopoverOpen(false);
+    setDetailInsightNote(zoomedCard?.insightNote || "");
+    setDetailInsightSaveStatus("clean");
+  }, [zoomedCard?.id]);
+
+  useEffect(() => {
+    if (!zoomedCard) return;
+    const initialNote = zoomedCard.insightNote || "";
+    if (detailInsightNote === initialNote) {
+      setDetailInsightSaveStatus("clean");
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      const targetCard = zoomedCard;
+      setDetailInsightSaveStatus("saving");
+      try {
+        await updateCardInsightNote(targetCard.id, targetCard.weekId, detailInsightNote);
+        syncCardInsightNote(targetCard.id, detailInsightNote);
+        setDetailInsightSaveStatus("clean");
+      } catch (err) {
+        console.error("Failed to update insight note:", err);
+        setDetailInsightSaveStatus("error");
+      }
+    }, 800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [detailInsightNote, syncCardInsightNote, zoomedCard]);
 
   const sanitizeDownloadName = (name: string) => {
     return name
@@ -912,6 +1126,26 @@ export default function App() {
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={() => setMainView((current) => current === "books" ? "board" : "books")}
+              className={`group relative inline-flex h-10 items-center justify-center overflow-hidden rounded-full p-[1px] text-xs font-bold transition-transform hover:scale-105 active:scale-95 ${
+                mainView === "books"
+                  ? "bg-gradient-to-r from-stone-950 via-slate-800 to-amber-700 text-white shadow-[0_12px_26px_rgba(28,25,23,0.30)] dark:from-amber-300 dark:via-sky-300 dark:to-violet-400 dark:text-stone-950 dark:shadow-[0_0_26px_rgba(251,191,36,0.26)]"
+                  : "bg-gradient-to-r from-slate-900 via-blue-700 to-violet-700 text-white shadow-[0_12px_26px_rgba(30,64,175,0.28)] dark:from-sky-400 dark:via-blue-500 dark:to-violet-500 dark:text-white dark:shadow-[0_0_22px_rgba(59,130,246,0.22)]"
+              }`}
+              title={mainView === "books" ? "返回灵感画板" : "打开灵感册"}
+              aria-pressed={mainView === "books"}
+            >
+              <span className="absolute inset-0 opacity-40 blur-md transition-opacity group-hover:opacity-90 bg-[radial-gradient(circle_at_20%_30%,rgba(255,255,255,0.9),transparent_18%),radial-gradient(circle_at_82%_60%,rgba(251,191,36,0.55),transparent_24%)]" />
+              <span className="relative inline-flex h-full items-center justify-center gap-2 rounded-full bg-black/18 px-4 py-2 text-inherit backdrop-blur-sm ring-1 ring-white/25 dark:bg-black/20">
+                <Sparkles size={15} className="fill-current opacity-90 transition-transform group-hover:rotate-12 group-hover:scale-110" />
+                <Sparkles size={7} className="absolute left-3 top-2 fill-current opacity-60 transition-opacity group-hover:opacity-100" />
+                <Sparkles size={6} className="absolute bottom-2 right-4 fill-current opacity-50 transition-opacity group-hover:opacity-100" />
+                <span>{mainView === "books" ? "返回画板" : "打开灵感册"}</span>
+              </span>
+            </button>
+
+            <button
               onClick={() => setShowSettings(true)}
               className="p-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-950 dark:text-amber-350 transition-colors shadow-sm cursor-pointer border border-amber-500/20 flex items-center justify-center gap-1.5 text-xs font-semibold"
               title="Configure AI service"
@@ -942,6 +1176,8 @@ export default function App() {
           </div>
         </div>
 
+        {mainView === "board" ? (
+          <>
         {/* Calendar Nav Header */}
         <TimelineHeader
           currentDate={currentDate}
@@ -1138,6 +1374,7 @@ export default function App() {
                           onDeleteTerm={handleDeleteTerm}
                           onZoom={setZoomedCard}
                           onUpdateTerms={handleUpdateCardTerms}
+                          onBookMembershipChanged={handleBookMembershipChanged}
                         />
                       </div>
                     ))}
@@ -1198,6 +1435,7 @@ export default function App() {
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
+                    onBookMembershipChanged={handleBookMembershipChanged}
                   />
                   <DaySlot
                     dayIndex={1}
@@ -1210,6 +1448,7 @@ export default function App() {
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
+                    onBookMembershipChanged={handleBookMembershipChanged}
                   />
                   <DaySlot
                     dayIndex={2}
@@ -1222,6 +1461,7 @@ export default function App() {
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
+                    onBookMembershipChanged={handleBookMembershipChanged}
                   />
                 </div>
 
@@ -1238,6 +1478,7 @@ export default function App() {
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
+                    onBookMembershipChanged={handleBookMembershipChanged}
                   />
                   <DaySlot
                     dayIndex={4}
@@ -1250,6 +1491,7 @@ export default function App() {
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
+                    onBookMembershipChanged={handleBookMembershipChanged}
                   />
                   {/* Weekend combined cell */}
                   <DaySlot
@@ -1263,6 +1505,7 @@ export default function App() {
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
+                    onBookMembershipChanged={handleBookMembershipChanged}
                   />
                 </div>
               </motion.div>
@@ -1335,6 +1578,21 @@ export default function App() {
             </div>
           </div>
         </div>
+          </>
+        ) : (
+          <InspirationBooksView
+            refreshToken={bookRefreshToken}
+            onZoom={setZoomedCard}
+            onDeleteTerm={handleDeleteTerm}
+            onUpdateTerms={handleUpdateCardTerms}
+            onBookMembershipChanged={handleBookMembershipChanged}
+            smartSuggestImages={smartSuggestImages}
+            smartSuggestMarkdown={smartSuggestMarkdown}
+            onSmartSuggestImagesChange={handleSmartSuggestImagesChange}
+            onSmartSuggestMarkdownChange={handleSmartSuggestMarkdownChange}
+            smartSuggestSyncStatus={smartSuggestSyncStatus}
+          />
+        )}
       </div>
 
       {/* AI Config modal */}
@@ -1402,6 +1660,78 @@ export default function App() {
           onClose={() => setShowWeeklyPreview(false)}
         />
       )}
+
+      <AnimatePresence>
+        {smartSuggestion && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-stone-950/45 backdrop-blur-sm"
+              onClick={dismissSmartSuggestion}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              className="relative w-full max-w-md rounded-[8px] border border-stone-900/10 bg-[#fbf7ed] p-5 text-stone-900 shadow-[0_24px_70px_rgba(28,25,23,0.25)] dark:border-white/10 dark:bg-stone-950 dark:text-stone-100"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-stone-900 text-[#fbf7ed] dark:bg-amber-200 dark:text-stone-950">
+                  <BookOpen size={18} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-serif text-lg font-bold italic leading-snug">
+                    这条灵感可能适合加入《{smartSuggestion.match.book.title}》
+                  </h3>
+                  {smartSuggestion.match.book.description ? (
+                    <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
+                      {smartSuggestion.match.book.description}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              {smartSuggestion.match.matchedTerms.length > 0 ? (
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {smartSuggestion.match.matchedTerms.map((term) => (
+                    <span key={term} className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-900 dark:bg-amber-300/15 dark:text-amber-100">
+                      {term}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {smartSuggestionError ? (
+                <div className="mt-4 rounded-[6px] bg-red-100 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">
+                  {smartSuggestionError}
+                </div>
+              ) : null}
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={dismissSmartSuggestion}
+                  className="h-9 rounded-[6px] border border-stone-900/10 px-3 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-900/[0.04] dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/[0.07]"
+                >
+                  暂不加入
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmSmartSuggestion}
+                  disabled={isApplyingSmartSuggestion}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] bg-stone-900 px-3 text-sm font-semibold text-[#fbf7ed] transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-wait disabled:opacity-70 dark:bg-amber-200 dark:text-stone-950"
+                >
+                  {isApplyingSmartSuggestion ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
+                  加入灵感册
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {cardToDelete && (
@@ -1499,7 +1829,7 @@ export default function App() {
               initial={{ scale: 0.93, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.93, y: 15 }}
-              className={`relative w-full bg-white dark:bg-stone-850 p-4 md:p-6 pb-6 md:pb-8 shadow-[0_24px_50px_rgba(0,0,0,0.6)] border border-amber-900/10 dark:border-white/10 select-text rounded-2xl flex flex-col md:flex-row gap-6 items-center md:items-start ${zoomedCard.type === "md" ? "max-w-5xl" : "max-w-3xl"}`}
+              className={`relative w-full bg-white dark:bg-stone-850 p-4 md:p-6 pb-6 md:pb-8 shadow-[0_24px_50px_rgba(0,0,0,0.6)] border border-amber-900/10 dark:border-white/10 select-text rounded-2xl flex flex-col md:flex-row gap-6 items-center md:items-start ${zoomedCard.type === "md" ? "max-w-5xl" : "max-w-7xl"}`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Close Button on top corner */}
@@ -1513,18 +1843,81 @@ export default function App() {
               </button>
 
               {/* Left Column: Picture or Markdown document */}
-              <div className={`w-full relative overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-inner rounded-xl group/zoomimage ${zoomedCard.type === "md" ? "md:w-3/4 h-[70vh] max-h-[800px]" : "md:w-3/5 aspect-square max-w-[420px]"}`}>
+              <div className={`w-full relative overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-inner rounded-xl group/zoomimage ${zoomedCard.type === "md" ? "md:w-3/4 h-[70vh] max-h-[800px]" : "md:w-[72%] h-[72vh] min-h-[420px]"}`}>
                 {zoomedCard.type === "md" ? (
                   <div className="w-full h-full overflow-y-auto p-6 md:p-10 bg-white dark:bg-stone-900 custom-scrollbar text-left text-sm md:text-base text-stone-800 dark:text-stone-100 shadow-inner break-words leading-relaxed [&_h1]:font-serif [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-stone-600 [&_a]:text-amber-600 [&_a]:underline [&_code]:rounded [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-amber-700 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-stone-950 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:text-stone-100 [&_img]:rounded-xl">
                     <Markdown>{zoomedCard.mdContent || ""}</Markdown>
                   </div>
                 ) : (
-                  <img
-                    src={zoomedCard.imageUrl}
-                    alt="Original Snippet View"
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-contain"
-                  />
+                  <>
+                    <div
+                      className={`relative z-10 flex h-full w-full items-center justify-center overflow-hidden touch-none ${imageZoomScale > 1 || imageViewMode === "actual" ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in"}`}
+                      onWheel={handleImageWheel}
+                      onPointerDown={handleImagePointerDown}
+                      onPointerMove={handleImagePointerMove}
+                      onPointerUp={handleImagePointerEnd}
+                      onPointerCancel={handleImagePointerEnd}
+                      onDoubleClick={toggleActualSize}
+                    >
+                      <img
+                        src={zoomedCard.imageUrl}
+                        alt="Original Snippet View"
+                        referrerPolicy="no-referrer"
+                        onLoad={(e) => {
+                          const img = e.currentTarget;
+                          setImageNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+                        }}
+                        className={`${imageViewMode === "actual" ? "max-w-none max-h-none object-none" : "h-full w-full object-contain"} select-none pointer-events-none transition-transform duration-150 ease-out`}
+                        style={{
+                          width: imageViewMode === "actual" && imageNaturalSize ? `${imageNaturalSize.width}px` : undefined,
+                          height: imageViewMode === "actual" && imageNaturalSize ? `${imageNaturalSize.height}px` : undefined,
+                          transform: `translate3d(${imagePan.x}px, ${imagePan.y}px, 0) scale(${imageZoomScale})`,
+                          transformOrigin: "center center",
+                        }}
+                      />
+                    </div>
+                    <div className="absolute left-3 top-3 z-30 flex items-center gap-2 rounded-full bg-stone-950/70 px-3 py-1.5 text-[11px] font-medium text-white shadow-lg backdrop-blur-sm">
+                      <span>{Math.round(imageZoomScale * 100)}%</span>
+                      <span className="text-white/70">{imageViewMode === "actual" ? "原始" : "适配"}</span>
+                      {imageNaturalSize && (
+                        <span className="text-white/70">
+                          {imageNaturalSize.width} x {imageNaturalSize.height}
+                        </span>
+                      )}
+                    </div>
+                    <div className="absolute right-3 top-3 z-30 flex items-center gap-1.5 rounded-full bg-stone-950/70 p-1.5 shadow-lg backdrop-blur-sm">
+                      <button
+                        type="button"
+                        onClick={() => updateImageZoom(imageZoomScale - 0.25)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-white hover:bg-white/15 active:scale-95 transition-all"
+                        title="缩小"
+                      >
+                        <ZoomOut size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={toggleActualSize}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-white hover:bg-white/15 active:scale-95 transition-all"
+                        title="切换原始大小"
+                      >
+                        <Maximize2 size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateImageZoom(imageZoomScale + 0.25)}
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-white hover:bg-white/15 active:scale-95 transition-all"
+                        title="放大"
+                      >
+                        <ZoomIn size={15} />
+                      </button>
+                    </div>
+                    {(imageZoomScale > 1 || imageViewMode === "actual") && (
+                      <div className="absolute bottom-3 left-3 z-30 inline-flex items-center gap-1.5 rounded-full bg-stone-950/60 px-3 py-1.5 text-[11px] font-medium text-white/80 shadow-lg backdrop-blur-sm">
+                        <Move size={12} />
+                        <span>拖动查看</span>
+                      </div>
+                    )}
+                  </>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/5 pointer-events-none" />
                 {zoomedCard.type !== "md" && visibleCards.length > 1 && (
@@ -1548,16 +1941,42 @@ export default function App() {
               </div>
 
               {/* Right Column: Key Details, Tag lists, info */}
-              <div className={`w-full flex flex-col h-full justify-between gap-5 self-stretch py-1 ${zoomedCard.type === "md" ? "md:w-1/4" : "md:w-2/5"}`}>
+              <div className={`w-full flex flex-col h-full justify-between gap-5 self-stretch py-1 ${zoomedCard.type === "md" ? "md:w-1/4" : "md:w-[28%]"}`}>
                 <div className="flex flex-col gap-4">
                   {/* Title / Mood heading */}
                   <div className="border-b border-dashed border-amber-900/15 dark:border-amber-100/10 pb-3">
-                    <span className="text-xs font-handwritten font-bold text-amber-800 dark:text-amber-400 tracking-wider block mb-1 uppercase">
-                      ★ Captured Inspiration ★
-                    </span>
-                    <h3 className="font-serif font-bold text-lg text-stone-900 dark:text-stone-100 italic leading-tight">
-                      {zoomedCard.type === "md" ? (zoomedCard.mdName || "Markdown 手稿") : `${getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录`}
-                    </h3>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <span className="text-xs font-handwritten font-bold text-amber-800 dark:text-amber-400 tracking-wider block mb-1 uppercase">
+                          ★ Captured Inspiration ★
+                        </span>
+                        <h3 className="font-serif font-bold text-lg text-stone-900 dark:text-stone-100 italic leading-tight">
+                          {zoomedCard.type === "md" ? (zoomedCard.mdName || "Markdown 手稿") : `${getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录`}
+                        </h3>
+                      </div>
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setIsDetailBookPopoverOpen((current) => !current)}
+                          className={`grid h-9 w-9 place-items-center rounded-full border shadow-sm transition-all active:scale-95 ${
+                            isDetailBookPopoverOpen
+                              ? "border-stone-900/25 bg-stone-900 text-[#fbf7ed] dark:border-amber-200/50 dark:bg-amber-200 dark:text-stone-950"
+                              : "border-stone-900/10 bg-[#fbf7ed] text-stone-700 hover:-translate-y-0.5 hover:border-stone-900/20 hover:bg-white dark:border-white/10 dark:bg-white/[0.07] dark:text-amber-100 dark:hover:border-amber-200/30 dark:hover:bg-white/[0.12]"
+                          }`}
+                          title="收录到灵感册"
+                          aria-label="收录到灵感册"
+                        >
+                          <BookOpen size={16} />
+                        </button>
+                        {isDetailBookPopoverOpen ? (
+                          <CardBookPopover
+                            cardId={zoomedCard.id}
+                            onClose={() => setIsDetailBookPopoverOpen(false)}
+                            onChanged={handleBookMembershipChanged}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
                     <p className="text-[10px] font-mono text-stone-400 dark:text-stone-500 mt-1.5">
                       记录时间： {new Date(zoomedCard.createdAt).toLocaleString()}
                     </p>
@@ -1589,39 +2008,71 @@ export default function App() {
                       )}
                     </div>
                   </div>
+
+                  <div>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h4 className="text-xs font-serif font-bold italic text-stone-600 dark:text-stone-300">
+                        感悟 / 备注：
+                      </h4>
+                      <span className="text-[10px] font-mono text-stone-400 dark:text-stone-500">
+                        {detailInsightSaveStatus === "saving" && "Saving..."}
+                        {detailInsightSaveStatus === "clean" && "Auto-saved"}
+                        {detailInsightSaveStatus === "error" && "Save failed"}
+                      </span>
+                    </div>
+                    <textarea
+                      value={detailInsightNote}
+                      onChange={(event) => setDetailInsightNote(event.target.value)}
+                      maxLength={4000}
+                      placeholder="写一点这张灵感给你的感觉、可复用的设计点，或后续要尝试的方向..."
+                      className="min-h-[116px] w-full resize-y rounded-[8px] border border-stone-900/10 bg-[#fbf7ed]/80 px-3 py-2.5 text-sm leading-relaxed text-stone-800 shadow-inner outline-none transition-colors placeholder:text-stone-400 focus:border-stone-800/30 dark:border-white/10 dark:bg-white/[0.055] dark:text-stone-100 dark:placeholder:text-stone-600 dark:focus:border-amber-200/35"
+                      style={{
+                        backgroundImage: isDarkMode
+                          ? "linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px)"
+                          : "radial-gradient(circle at 12% 16%, rgba(68,64,60,0.08), transparent 22%), linear-gradient(rgba(68,64,60,0.06) 1px, transparent 1px)",
+                        backgroundSize: isDarkMode ? "100% 1.75rem" : "auto, 100% 1.75rem",
+                        lineHeight: "1.75rem",
+                      }}
+                    />
+                    <div className="mt-1 text-right text-[10px] font-mono text-stone-400 dark:text-stone-600">
+                      {detailInsightNote.length} / 4000
+                    </div>
+                  </div>
                 </div>
 
                 {/* Footer instructions */}
                 <div className="mt-auto pt-4 border-t border-dashed border-amber-900/15 dark:border-amber-100/10 text-[11px] text-stone-400 dark:text-stone-500 leading-normal">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleDownloadCard(zoomedCard).catch((err) => {
-                        console.error("Download failed:", err);
-                        alert(err.message || "下载失败，请稍后重试。");
-                      });
-                    }}
-                    className="mb-3 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 text-xs font-semibold shadow-sm transition-all active:scale-95 cursor-pointer"
-                    title={zoomedCard.type === "md" ? "下载 Markdown 文件" : "下载原图"}
-                  >
-                    <Download size={13} />
-                    <span>{zoomedCard.type === "md" ? "下载 Markdown" : "下载图片"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const targetCard = zoomedCard;
-                      setZoomedCard(null);
-                      handleDeleteCard(targetCard.id);
-                    }}
-                    className="mb-3 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-red-500/90 hover:bg-red-600 text-white px-3 py-2 text-xs font-semibold shadow-sm transition-all active:scale-95 cursor-pointer"
-                    title="删除当前记录"
-                  >
-                    <Trash size={13} />
-                    <span>删除记录</span>
-                  </button>
+                  <div className="mb-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleDownloadCard(zoomedCard).catch((err) => {
+                          console.error("Download failed:", err);
+                          alert(err.message || "下载失败，请稍后重试。");
+                        });
+                      }}
+                      className="grid h-9 w-9 place-items-center rounded-full border border-amber-900/15 bg-amber-100/70 text-amber-900 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-amber-200 active:scale-95 dark:border-amber-100/10 dark:bg-amber-300/15 dark:text-amber-100 dark:hover:bg-amber-300/25"
+                      title={zoomedCard.type === "md" ? "下载 Markdown 文件" : "下载原图"}
+                      aria-label={zoomedCard.type === "md" ? "下载 Markdown 文件" : "下载原图"}
+                    >
+                      <Download size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetCard = zoomedCard;
+                        setZoomedCard(null);
+                        handleDeleteCard(targetCard.id);
+                      }}
+                      className="grid h-9 w-9 place-items-center rounded-full border border-red-900/15 bg-red-50 text-red-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-red-100 active:scale-95 dark:border-red-300/20 dark:bg-red-500/10 dark:text-red-200 dark:hover:bg-red-500/20"
+                      title="删除当前记录"
+                      aria-label="删除当前记录"
+                    >
+                      <Trash size={15} />
+                    </button>
+                  </div>
                   <span className="font-handwritten text-xs block text-stone-500 dark:text-stone-400 mb-1">提示：</span>
-                  在主页面悬停在 Polaroid 灵感相片右侧，可对关键词进行<strong>自定义新增</strong>或<strong>删除</strong>管理。
+                  在主页面悬停在 Polaroid 灵感相片底部，可对关键词进行<strong>自定义新增</strong>或<strong>删除</strong>管理。
                 </div>
               </div>
             </motion.div>

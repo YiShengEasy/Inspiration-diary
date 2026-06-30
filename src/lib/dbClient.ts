@@ -92,6 +92,20 @@ function updateCachedCardTerms(cardId: string, weekId: string, terms: string[]) 
   }
 }
 
+function updateCachedCardInsightNote(cardId: string, weekId: string, insightNote: string) {
+  const existing = activeWeekCardsMemory.get(weekId) || [];
+  const updated = existing.map((c) => c.id === cardId ? { ...c, insightNote } : c);
+  activeWeekCardsMemory.set(weekId, updated);
+  notifyCardsSubscribers(weekId, updated);
+
+  const allCards = activeWeekCardsMemory.get("all");
+  if (allCards) {
+    const nextAllCards = allCards.map((c) => c.id === cardId ? { ...c, insightNote } : c);
+    activeWeekCardsMemory.set("all", nextAllCards);
+    notifyCardsSubscribers("all", nextAllCards);
+  }
+}
+
 /**
  * Real-time or locally notified subscription to image cards for a given week identifier.
  */
@@ -345,6 +359,26 @@ export async function updateCardTerms(cardId: string, weekId: string, terms: str
     const cardRef = doc(db, "cards", cardId);
     updateDoc(cardRef, { terms }).catch((err) => {
       console.error("Firestore updateCardTerms error:", err);
+    });
+  }
+}
+
+export async function updateCardInsightNote(cardId: string, weekId: string, insightNote: string): Promise<void> {
+  if (isPostgresMode) {
+    const res = await authFetch(`/api/db/cards/${encodeURIComponent(cardId)}/insight-note`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ insightNote }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to update insight note via API: ${res.statusText}`);
+    }
+
+    updateCachedCardInsightNote(cardId, weekId, insightNote);
+  } else {
+    const cardRef = doc(db, "cards", cardId);
+    updateDoc(cardRef, { insightNote }).catch((err) => {
+      console.error("Firestore updateCardInsightNote error:", err);
     });
   }
 }

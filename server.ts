@@ -148,6 +148,7 @@ function mapCardRows(rows: any[], req: express.Request) {
     mdContent: row.md_content || "",
     mdSummary: row.md_summary || "",
     mdName: row.md_name || "",
+    insightNote: row.insight_note || "",
   }));
 }
 
@@ -159,6 +160,7 @@ function mapBookRow(row: any, req: express.Request) {
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
     cardCount: Number(row.card_count || 0),
+    coverCardId: row.cover_card_id || "",
     coverCard: row.cover_card ? mapCardRows([row.cover_card], req)[0] : null,
   };
 }
@@ -282,7 +284,8 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_content TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_summary TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_name VARCHAR(255);");
-        await client.query("UPDATE cards SET terms_text = array_to_string(terms, ' ') WHERE terms_text IS NULL OR terms_text = '';");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS insight_note TEXT;");
+        await client.query("UPDATE cards SET terms_text = CONCAT_WS(' ', array_to_string(terms, ' '), md_name, md_summary, insight_note) WHERE terms_text IS NULL OR terms_text = '';");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_created_at_desc ON cards (created_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_week_created_at ON cards (week_id, created_at);");
         try {
@@ -339,10 +342,12 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
             user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             title TEXT NOT NULL,
             description TEXT,
+            cover_card_id TEXT REFERENCES cards(id) ON DELETE SET NULL,
             created_at BIGINT NOT NULL,
             updated_at BIGINT NOT NULL
           );
         `);
+        await client.query("ALTER TABLE inspiration_books ADD COLUMN IF NOT EXISTS cover_card_id TEXT REFERENCES cards(id) ON DELETE SET NULL;");
         await client.query(`
           CREATE TABLE IF NOT EXISTS inspiration_book_cards (
             book_id TEXT NOT NULL REFERENCES inspiration_books(id) ON DELETE CASCADE,
@@ -352,6 +357,7 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
           );
         `);
         await client.query("CREATE INDEX IF NOT EXISTS idx_inspiration_books_user_updated_at ON inspiration_books(user_id, updated_at DESC);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_inspiration_books_user_cover_card ON inspiration_books(user_id, cover_card_id);");
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_inspiration_book_cards_unique ON inspiration_book_cards(user_id, book_id, card_id);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_inspiration_book_cards_user_book_added_at ON inspiration_book_cards(user_id, book_id, added_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_inspiration_book_cards_user_card ON inspiration_book_cards(user_id, card_id);");
@@ -1248,6 +1254,7 @@ app.get("/api/db/books", requirePostgresAuth, async (req, res) => {
          b.id,
          b.title,
          b.description,
+         b.cover_card_id,
          b.created_at,
          b.updated_at,
          COUNT(bc.card_id)::int AS card_count,
@@ -1255,11 +1262,13 @@ app.get("/api/db/books", requirePostgresAuth, async (req, res) => {
            SELECT row_to_json(c)
            FROM (
              SELECT c2.id, c2.week_id, c2.day_index, c2.image_url, c2.thumbnail_url, c2.photo_uid, c2.photo_hash,
-                    c2.terms, c2.deco_type, c2.angle, c2.created_at, c2.type, c2.md_content, c2.md_summary, c2.md_name
+                    c2.terms, c2.deco_type, c2.angle, c2.created_at, c2.type, c2.md_content, c2.md_summary, c2.md_name, c2.insight_note
              FROM inspiration_book_cards bc2
              INNER JOIN cards c2 ON c2.id = bc2.card_id AND c2.user_id = $1
              WHERE bc2.user_id = $1 AND bc2.book_id = b.id
-             ORDER BY bc2.added_at DESC
+               AND COALESCE(c2.type, 'image') <> 'md'
+               AND COALESCE(c2.image_url, '') <> ''
+             ORDER BY CASE WHEN bc2.card_id = b.cover_card_id THEN 0 ELSE 1 END, bc2.added_at ASC
              LIMIT 1
            ) c
          ) AS cover_card
@@ -1292,9 +1301,9 @@ app.post("/api/db/books", requirePostgresAuth, async (req, res) => {
     const now = Date.now();
     const id = `book_${Math.random().toString(36).slice(2, 12)}_${now.toString(36)}`;
     const result = await pgPool.query(
-      `INSERT INTO inspiration_books (id, user_id, title, description, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $5)
-       RETURNING id, title, description, created_at, updated_at, 0::int AS card_count, NULL::json AS cover_card`,
+      `INSERT INTO inspiration_books (id, user_id, title, description, cover_card_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NULL, $5, $5)
+       RETURNING id, title, description, cover_card_id, created_at, updated_at, 0::int AS card_count, NULL::json AS cover_card`,
       [id, authReq.user!.id, title, description, now]
     );
     return res.json(mapBookRow(result.rows[0], req));
@@ -1329,6 +1338,50 @@ app.put("/api/db/books/:bookId", requirePostgresAuth, async (req, res) => {
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error updating inspiration book:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/db/books/:bookId/cover", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user!.id;
+    const cardId = String(req.body.cardId || "").trim();
+    if (!cardId) {
+      return res.status(400).json({ error: "cardId is required." });
+    }
+
+    const owned = await pgPool.query(
+      `SELECT b.id AS book_id, c.id AS card_id
+       FROM inspiration_books b
+       INNER JOIN inspiration_book_cards bc ON bc.book_id = b.id AND bc.user_id = $1 AND bc.card_id = $2
+       INNER JOIN cards c ON c.id = bc.card_id AND c.user_id = $1
+       WHERE b.id = $3
+         AND b.user_id = $1
+         AND COALESCE(c.type, 'image') <> 'md'
+         AND COALESCE(c.image_url, '') <> ''`,
+      [userId, cardId, req.params.bookId]
+    );
+    if (owned.rowCount === 0) {
+      return res.status(404).json({ error: "Book image card not found" });
+    }
+
+    const result = await pgPool.query(
+      `UPDATE inspiration_books
+       SET cover_card_id = $1, updated_at = $2
+       WHERE id = $3 AND user_id = $4
+       RETURNING id`,
+      [cardId, Date.now(), req.params.bookId, userId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error updating inspiration book cover:", err);
     return res.status(500).json({ error: err.message });
   }
 });
@@ -1392,7 +1445,7 @@ app.get("/api/db/books/:bookId/cards", requirePostgresAuth, async (req, res) => 
     const offsetParam = values.length;
     const cardsResult = await pgPool.query(
       `SELECT c.id, c.week_id, c.day_index, c.image_url, c.thumbnail_url, c.photo_uid, c.photo_hash,
-              c.terms, c.deco_type, c.angle, c.created_at, c.type, c.md_content, c.md_summary, c.md_name
+              c.terms, c.deco_type, c.angle, c.created_at, c.type, c.md_content, c.md_summary, c.md_name, c.insight_note
        FROM inspiration_book_cards bc
        INNER JOIN cards c ON c.id = bc.card_id AND c.user_id = $1
        WHERE bc.user_id = $1 AND bc.book_id = $2 ${searchSql}
@@ -1439,7 +1492,20 @@ app.post("/api/db/books/:bookId/cards", requirePostgresAuth, async (req, res) =>
        ON CONFLICT (user_id, book_id, card_id) DO NOTHING`,
       [userId, req.params.bookId, cardId, now]
     );
-    await pgPool.query("UPDATE inspiration_books SET updated_at = $1 WHERE id = $2 AND user_id = $3", [now, req.params.bookId, userId]);
+    await pgPool.query(
+      `UPDATE inspiration_books b
+       SET cover_card_id = CASE
+             WHEN b.cover_card_id IS NULL
+              AND COALESCE(c.type, 'image') <> 'md'
+              AND COALESCE(c.image_url, '') <> ''
+             THEN $3
+             ELSE b.cover_card_id
+           END,
+           updated_at = $4
+       FROM cards c
+       WHERE b.id = $2 AND b.user_id = $1 AND c.id = $3 AND c.user_id = $1`,
+      [userId, req.params.bookId, cardId, now]
+    );
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error adding card to inspiration book:", err);
@@ -1463,7 +1529,26 @@ app.delete("/api/db/books/:bookId/cards/:cardId", requirePostgresAuth, async (re
       "DELETE FROM inspiration_book_cards WHERE user_id = $1 AND book_id = $2 AND card_id = $3",
       [userId, req.params.bookId, req.params.cardId]
     );
-    await pgPool.query("UPDATE inspiration_books SET updated_at = $1 WHERE id = $2 AND user_id = $3", [Date.now(), req.params.bookId, userId]);
+    await pgPool.query(
+      `UPDATE inspiration_books b
+       SET cover_card_id = CASE
+             WHEN b.cover_card_id = $3 THEN (
+               SELECT bc.card_id
+               FROM inspiration_book_cards bc
+               INNER JOIN cards c ON c.id = bc.card_id AND c.user_id = $1
+               WHERE bc.user_id = $1
+                 AND bc.book_id = $2
+                 AND COALESCE(c.type, 'image') <> 'md'
+                 AND COALESCE(c.image_url, '') <> ''
+               ORDER BY bc.added_at ASC
+               LIMIT 1
+             )
+             ELSE b.cover_card_id
+           END,
+           updated_at = $4
+       WHERE b.id = $2 AND b.user_id = $1`,
+      [userId, req.params.bookId, req.params.cardId, Date.now()]
+    );
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error removing card from inspiration book:", err);
@@ -1482,7 +1567,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
 
     if (weekId && weekId !== "all") {
       const result = await pgPool.query(
-        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name
+        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note
          FROM cards
          WHERE user_id = $1 AND week_id = $2
          ORDER BY day_index ASC, created_at DESC`,
@@ -1517,7 +1602,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const offsetParam = values.length;
 
     const result = await pgPool.query(
-      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note
        FROM cards
        ${whereSql}
        ORDER BY created_at DESC
@@ -1546,20 +1631,20 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
   }
   try {
     const authReq = req as AuthenticatedRequest;
-    const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, photoHash, terms, decoType, angle, createdAt, type, mdContent, mdSummary, mdName } = req.body;
+    const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, photoHash, terms, decoType, angle, createdAt, type, mdContent, mdSummary, mdName, insightNote } = req.body;
     const safeTerms = Array.isArray(terms) ? terms : [];
-    const termsText = [...safeTerms, mdName, mdSummary]
+    const termsText = [...safeTerms, mdName, mdSummary, insightNote]
       .filter((value) => typeof value === "string" && value.trim())
       .join(" ");
     await pgPool.query(
-      `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at, type, md_content, md_summary, md_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        ON CONFLICT (id)
        DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, image_url = EXCLUDED.image_url, 
                      thumbnail_url = EXCLUDED.thumbnail_url, photo_uid = EXCLUDED.photo_uid, photo_hash = EXCLUDED.photo_hash,
                      terms = EXCLUDED.terms, terms_text = EXCLUDED.terms_text, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle, 
                      created_at = EXCLUDED.created_at, type = EXCLUDED.type, md_content = EXCLUDED.md_content,
-                     md_summary = EXCLUDED.md_summary, md_name = EXCLUDED.md_name
+                     md_summary = EXCLUDED.md_summary, md_name = EXCLUDED.md_name, insight_note = EXCLUDED.insight_note
        WHERE cards.user_id = EXCLUDED.user_id`,
       [
         id,
@@ -1579,6 +1664,7 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
         mdContent || null,
         mdSummary || null,
         mdName || null,
+        insightNote || null,
       ]
     );
     return res.json({ success: true });
@@ -1595,7 +1681,7 @@ app.get("/api/db/cards/:id", requirePostgresAuth, async (req: AuthenticatedReque
   try {
     const result = await pgPool.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
-              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note
        FROM cards
        WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user!.id]
@@ -1718,16 +1804,47 @@ app.delete("/api/db/cards/:id", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
+  const client = await pgPool.connect();
   try {
     const authReq = req as AuthenticatedRequest;
-    const result = await pgPool.query("DELETE FROM cards WHERE id = $1 AND user_id = $2", [req.params.id, authReq.user!.id]);
+    const userId = authReq.user!.id;
+    await client.query("BEGIN");
+    const affectedBooks = await client.query(
+      "SELECT id FROM inspiration_books WHERE user_id = $1 AND cover_card_id = $2",
+      [userId, req.params.id]
+    );
+    const result = await client.query("DELETE FROM cards WHERE id = $1 AND user_id = $2", [req.params.id, userId]);
     if (result.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Card not found" });
     }
+    for (const book of affectedBooks.rows) {
+      await client.query(
+        `UPDATE inspiration_books b
+         SET cover_card_id = (
+               SELECT bc.card_id
+               FROM inspiration_book_cards bc
+               INNER JOIN cards c ON c.id = bc.card_id AND c.user_id = $1
+               WHERE bc.user_id = $1
+                 AND bc.book_id = $2
+                 AND COALESCE(c.type, 'image') <> 'md'
+                 AND COALESCE(c.image_url, '') <> ''
+               ORDER BY bc.added_at ASC
+               LIMIT 1
+             ),
+             updated_at = $3
+         WHERE b.id = $2 AND b.user_id = $1`,
+        [userId, book.id, Date.now()]
+      );
+    }
+    await client.query("COMMIT");
     return res.json({ success: true });
   } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => undefined);
     console.error("Error executing delete card query:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -1740,7 +1857,7 @@ app.put("/api/db/cards/:id/terms", requirePostgresAuth, async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     const { terms } = req.body;
     const result = await pgPool.query(
-      "UPDATE cards SET terms = $1, terms_text = array_to_string($1::text[], ' ') WHERE id = $2 AND user_id = $3",
+      "UPDATE cards SET terms = $1, terms_text = CONCAT_WS(' ', array_to_string($1::text[], ' '), md_name, md_summary, insight_note) WHERE id = $2 AND user_id = $3",
       [terms, req.params.id, authReq.user!.id]
     );
     if (result.rowCount === 0) {
@@ -1749,6 +1866,30 @@ app.put("/api/db/cards/:id/terms", requirePostgresAuth, async (req, res) => {
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Error executing update card tag terms query:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/db/cards/:id/insight-note", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const insightNote = String(req.body.insightNote || "").trim().slice(0, 4000);
+    const result = await pgPool.query(
+      `UPDATE cards
+       SET insight_note = $1,
+           terms_text = CONCAT_WS(' ', array_to_string(terms, ' '), md_name, md_summary, $1::text)
+       WHERE id = $2 AND user_id = $3`,
+      [insightNote || null, req.params.id, authReq.user!.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Card not found" });
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error updating insight note:", err);
     return res.status(500).json({ error: err.message });
   }
 });

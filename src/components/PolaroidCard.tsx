@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { ImageCard } from "../types";
-import { BookOpen, X, Plus } from "lucide-react";
-import CardBookPopover from "./CardBookPopover";
+import { X, Plus } from "lucide-react";
 
 interface PolaroidCardProps {
   key?: React.Key;
@@ -20,13 +19,11 @@ export default function PolaroidCard({
   onDeleteTerm,
   onZoom,
   onUpdateTerms,
-  onBookMembershipChanged,
   deleteCardTitle,
 }: PolaroidCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isAddingTerm, setIsAddingTerm] = useState(false);
   const [newTermInput, setNewTermInput] = useState("");
-  const [isBookPopoverOpen, setIsBookPopoverOpen] = useState(false);
 
   const handleCopy = (term: string) => {
     navigator.clipboard.writeText(term);
@@ -141,31 +138,6 @@ export default function PolaroidCard({
         >
           <X size={12} strokeWidth={2.5} />
         </button>
-
-        <div className="absolute -top-2 right-6 z-40">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              setIsBookPopoverOpen((current) => !current);
-            }}
-            className={`p-1.5 rounded-full border shadow-sm cursor-pointer transition-all ${
-              isBookPopoverOpen
-                ? "opacity-100 border-amber-200/60 bg-stone-950 text-amber-200 shadow-[0_0_24px_rgba(252,211,77,0.2)]"
-                : "opacity-0 group-hover/card:opacity-100 border-stone-200 bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-amber-600 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-amber-300"
-            }`}
-            title="收录到灵感册"
-          >
-            <BookOpen size={12} strokeWidth={2.4} />
-          </button>
-          {isBookPopoverOpen ? (
-            <CardBookPopover
-              cardId={card.id}
-              onClose={() => setIsBookPopoverOpen(false)}
-              onChanged={onBookMembershipChanged}
-            />
-          ) : null}
-        </div>
 
         {/* Polaroid Bottom Margin (Writable Area) with terms */}
         <div className="mt-2.5 min-h-[40px] flex flex-col w-full relative z-20 bg-white/50 dark:bg-stone-800/50">

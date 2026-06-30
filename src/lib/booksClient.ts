@@ -37,6 +37,15 @@ export async function deleteBook(bookId: string): Promise<void> {
   await parseJson<{ success: boolean }>(res);
 }
 
+export async function setBookCover(bookId: string, cardId: string): Promise<void> {
+  const res = await authFetch(`/api/db/books/${encodeURIComponent(bookId)}/cover`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cardId }),
+  });
+  await parseJson<{ success: boolean }>(res);
+}
+
 export async function loadBookCards(params: {
   bookId: string;
   page: number;
