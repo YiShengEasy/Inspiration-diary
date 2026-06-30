@@ -22,7 +22,7 @@ import InspirationBooksView from "./components/InspirationBooksView";
 import CardBookPopover from "./components/CardBookPopover";
 import LoginScreen from "./components/LoginScreen";
 import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move } from "lucide-react";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
@@ -1161,39 +1161,28 @@ export default function App() {
 
   const renderSmartBookSwitch = (
     label: string,
+    icon: React.ReactNode,
     enabled: boolean,
     onChange: (enabled: boolean) => void,
   ) => (
     <button
       type="button"
       onClick={() => onChange(!enabled)}
-      className={`inline-flex h-9 items-center gap-2 rounded-full border px-2.5 pr-3 text-[11px] font-bold shadow-sm transition-all active:scale-95 ${
+      className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-xl border shadow-sm transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-95 ${
         enabled
-          ? "border-emerald-500/55 bg-emerald-500 text-white shadow-[0_10px_22px_rgba(16,185,129,0.22)] dark:border-emerald-300/70 dark:bg-emerald-400 dark:text-stone-950"
-          : "border-stone-900/12 bg-white/65 text-stone-500 hover:border-stone-900/22 hover:text-stone-800 dark:border-white/10 dark:bg-white/[0.06] dark:text-stone-400 dark:hover:text-stone-100"
+          ? "border-amber-500/45 bg-amber-100 text-amber-900 dark:border-amber-200/40 dark:bg-amber-300/18 dark:text-amber-100"
+          : "border-stone-900/10 bg-white/45 text-stone-500 hover:border-stone-900/20 hover:bg-white/70 hover:text-stone-800 dark:border-white/10 dark:bg-white/[0.05] dark:text-stone-500 dark:hover:text-stone-200"
       }`}
       title={`${label}${enabled ? "已开启" : "已关闭"}`}
+      aria-label={`${label}${enabled ? "已开启" : "已关闭"}`}
       aria-pressed={enabled}
     >
+      {icon}
       <span
-        className={`relative h-5 w-9 rounded-full border transition-colors ${
-          enabled
-            ? "border-white/70 bg-white/25 dark:border-stone-950/35 dark:bg-stone-950/15"
-            : "border-stone-400/60 bg-stone-200/80 dark:border-white/20 dark:bg-stone-900"
+        className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full transition-colors ${
+          enabled ? "bg-amber-600 dark:bg-amber-200" : "bg-stone-300 dark:bg-stone-700"
         }`}
-      >
-        <span
-          className={`absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full shadow-sm transition-transform ${
-            enabled
-              ? "translate-x-[18px] bg-white dark:bg-stone-950"
-              : "translate-x-[3px] bg-stone-500 dark:bg-stone-500"
-          }`}
-        />
-      </span>
-      <span>{label}</span>
-      <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${enabled ? "bg-white/22 text-white dark:bg-stone-950/12 dark:text-stone-950" : "bg-stone-900/6 text-stone-500 dark:bg-white/10 dark:text-stone-400"}`}>
-        {enabled ? "ON" : "OFF"}
-      </span>
+      />
     </button>
   );
 
@@ -1240,14 +1229,14 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="flex flex-wrap items-center gap-2 rounded-full border border-stone-900/10 bg-white/60 px-2 py-1.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-stone-950/45">
-              <span className="pl-1 text-[11px] font-bold text-stone-700 dark:text-stone-200">智能入册</span>
-              {renderSmartBookSwitch("图", smartSuggestImages, handleSmartSuggestImagesChange)}
-              {renderSmartBookSwitch("MD", smartSuggestMarkdown, handleSmartSuggestMarkdownChange)}
+            <div className="flex h-10 items-center gap-1.5 rounded-xl border border-stone-900/10 bg-white/50 px-1.5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-stone-950/35">
+              <span className="px-1.5 text-[11px] font-semibold text-stone-600 dark:text-stone-300">智能入册</span>
+              {renderSmartBookSwitch("图片智能入册", <ImageIcon size={14} />, smartSuggestImages, handleSmartSuggestImagesChange)}
+              {renderSmartBookSwitch("MD 智能入册", <FileText size={14} />, smartSuggestMarkdown, handleSmartSuggestMarkdownChange)}
               {smartSuggestSyncStatus === "saving" ? (
-                <span className="pr-1 text-[10px] font-medium text-stone-500 dark:text-stone-500">同步中</span>
+                <Loader2 size={12} className="mr-1 animate-spin text-stone-500 dark:text-stone-400" />
               ) : smartSuggestSyncStatus === "error" ? (
-                <span className="pr-1 text-[10px] font-medium text-red-700 dark:text-red-300">同步失败</span>
+                <span className="mr-1 h-1.5 w-1.5 rounded-full bg-red-500" title="设置同步失败" />
               ) : null}
             </div>
 
