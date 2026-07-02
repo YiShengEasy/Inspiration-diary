@@ -46,17 +46,21 @@
           <text class="current-title">{{selectedBook.title || "灵感册"}}</text>
           <text class="current-desc">{{selectedBook.descriptionText}}</text>
         </view>
-        <button class="collect-button" bindtap="openCollect">▯ 收录</button>
+        <button class="collect-button" loading="{{uploading}}" bindtap="chooseUpload">⇪ 上传</button>
       </view>
 
       <view wx:if="{{selectedBook.tags && selectedBook.tags.length}}" class="book-tag-row">
         <text wx:for="{{selectedBook.tags}}" wx:key="*this">#{{item}}</text>
       </view>
 
+      <view wx:if="{{uploadStatus}}" class="upload-status {{uploading ? 'active' : ''}}">
+        <text>{{uploadStatus}}</text>
+      </view>
+
       <view wx:if="{{cardsLoading}}" class="state compact">正在加载内容...</view>
       <view wx:if="{{!cardsLoading && !cards.length}}" class="empty-state compact">
         <text class="empty-title">这个册子还没有收录</text>
-        <text class="empty-desc">后续可以从灵感详情里把内容收进来。</text>
+        <text class="empty-desc">可以直接上传图片或 Markdown 收进当前册。</text>
       </view>
 
       <view class="book-items">

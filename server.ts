@@ -92,6 +92,35 @@ function buildBookHintPrompt(hints: string[]): string {
   return ` When choosing terms, compare the content with these inspiration book names/descriptions and prefer their matching nouns when genuinely relevant: ${hints.join("；")}. Do not force a match if the content is unrelated.`;
 }
 
+function normalizeCustomTagHints(value: unknown): string[] {
+  let rawValue = value;
+  if (typeof value === "string") {
+    try {
+      rawValue = JSON.parse(value);
+    } catch {
+      rawValue = value.split(/\r?\n|,|，|；|;|、/);
+    }
+  }
+
+  if (!Array.isArray(rawValue)) return [];
+  const seen = new Set<string>();
+  return rawValue
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim().replace(/\s+/g, " "))
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 200);
+}
+
+function buildCustomTagHintPrompt(hints: string[]): string {
+  if (hints.length === 0) return "";
+  return ` The user maintains this custom tag library: ${hints.join("；")}. If the content is genuinely related, prefer exact terms from this library or generate very close variants. Do not force unrelated custom tags.`;
+}
+
 function getRequestOrigin(req: express.Request): string {
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
   const proto = forwardedProto || req.protocol || "http";
@@ -489,6 +518,7 @@ app.post("/api/analyze-image", requirePostgresAuth, upload.single("image"), asyn
     const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
     const thinkingEnabled = req.headers["x-thinking-enabled"] === "true";
     const bookHintPrompt = buildBookHintPrompt(normalizeBookHints(req.body?.bookHints));
+    const customTagHintPrompt = buildCustomTagHintPrompt(normalizeCustomTagHints(req.body?.customTagHints));
 
     console.log("=== API LOG: Analyze Image Request ===");
     console.log("provider:", provider);
@@ -556,6 +586,7 @@ app.post("/api/analyze-image", requirePostgresAuth, upload.single("image"), asyn
                   type: "text",
                   text: "You are a creative inspiration research assistant. Analyze this uploaded image to extract evocative artistic inspirations, creative concepts, design styles, mood terms, color palettes, and visual keywords (e.g. '复古工业风', '赛博朋克色调', '温柔莫兰迪色', '温暖松弛感', 'Wabi-Sabi 侘寂', 'Mid-century Modern', etc.). " +
                         bookHintPrompt +
+                        customTagHintPrompt +
                         "Provide exactly 5 highly relevant, inspirational, and creative keywords in Chinese (or standard English hybrid terms if highly descriptive) to help the user catalog their visual inspiration. " +
                         "Reply ONLY with a raw JSON object of the format: {\"terms\": [\"term1\", \"term2\", ...]} without any markdown code backticks or other text."
                 }
@@ -612,6 +643,7 @@ app.post("/api/analyze-image", requirePostgresAuth, upload.single("image"), asyn
                     text: "You are a creative inspiration research assistant. Analyze this uploaded screenshot or design reference image. " +
                           "Extract evocative artistic inspirations, creative concepts, design styles, mood terms, color palettes, and visual keywords (e.g., '复古工业风', '赛博朋克色调', '温柔莫兰迪色', '温暖松弛感', 'Wabi-Sabi 侘寂', 'Mid-century Modern'). " +
                           bookHintPrompt +
+                          customTagHintPrompt +
                           "Return exactly 5 highly relevant and imaginative keywords in Chinese (or standard English descriptors) as a JSON list in the key 'terms' to capture the visual inspiration. " +
                           "Respond ONLY with a raw JSON object of the format: {\"terms\": [\"term1\", \"term2\", ...]} without any markdown code backticks or other text."
                   }
@@ -631,6 +663,7 @@ app.post("/api/analyze-image", requirePostgresAuth, upload.single("image"), asyn
                     text: "You are a creative inspiration research assistant. Analyze this uploaded screenshot or design reference image. " +
                           "Extract evocative artistic inspirations, creative concepts, design styles, mood terms, color palettes, and visual keywords (e.g., '复古工业风', '赛博朋克色调', '温柔莫兰迪色', '温暖松弛感', 'Wabi-Sabi 侘寂', 'Mid-century Modern'). " +
                           bookHintPrompt +
+                          customTagHintPrompt +
                           "Return exactly 5 highly relevant and imaginative keywords in Chinese (or standard English descriptors) as a JSON list in the key 'terms' to capture the visual inspiration. " +
                           "Respond ONLY with a raw JSON object of the format: {\"terms\": [\"term1\", \"term2\", ...]} without any markdown code backticks or other text."
                   },
@@ -710,6 +743,7 @@ app.post("/api/analyze-image", requirePostgresAuth, upload.single("image"), asyn
           text: "You are a creative inspiration research assistant. Analyze this uploaded screenshot or design reference image. " +
                 "Extract evocative artistic inspirations, creative concepts, design styles, mood terms, color palettes, and visual keywords (e.g., '复古工业风', '赛博朋克色调', '温柔莫兰迪色', '温暖松弛感', 'Wabi-Sabi 侘寂', 'Mid-century Modern'). " +
                 bookHintPrompt +
+                customTagHintPrompt +
                 "Return exactly 5 highly relevant and imaginative keywords in Chinese (or standard English descriptors) as a JSON list in the key 'terms' to capture the visual inspiration."
         };
 
@@ -787,12 +821,16 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
     const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
     const thinkingEnabled = req.headers["x-thinking-enabled"] === "true";
     const bookHints = normalizeBookHints(req.body?.bookHints);
+    const customTagHints = normalizeCustomTagHints(req.body?.customTagHints);
 
     const prompt = [
       "你是一个文档整理与知识标签助手，不要按图片视觉风格分析。",
       "请阅读下面的 Markdown 文档，提炼文档的核心主题、结论、行动方向、项目线索和知识领域。",
       "输出必须是严格 JSON：{\"summary\":\"中文摘要，2到3句话\",\"terms\":[\"标签1\",\"标签2\",...]}。",
       "terms 必须正好 5 个，优先使用中文短标签；标签应描述文档内容，不要使用“光影、色彩、构图、视觉风格”等图片分析词，除非文档本身明确讨论这些主题。",
+      customTagHints.length > 0
+        ? `用户维护了自定义标签库：${customTagHints.join("；")}。如果内容确实相关，请优先使用这些标签库中的原词或非常接近的变体。不要强行使用无关标签。`
+        : "",
       bookHints.length > 0
         ? `如果内容确实相关，请优先参考这些灵感册名称/描述中的名词来生成标签：${bookHints.join("；")}。不要强行匹配无关灵感册。`
         : "",

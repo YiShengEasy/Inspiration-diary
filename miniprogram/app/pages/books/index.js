@@ -1,4 +1,6 @@
-const { request, resolveAssetUrl } = require("../../utils/api");
+const { request, uploadImage, resolveAssetUrl } = require("../../utils/api");
+const { requireRegistered } = require("../../utils/auth");
+const { currentWeekId } = require("../../utils/dates");
 
 function formatTermsText(terms) {
   const visibleTerms = terms.slice(0, 3);
@@ -34,6 +36,27 @@ function normalizeCard(card) {
   };
 }
 
+function todayDayIndex() {
+  const day = new Date().getDay();
+  if (day === 0 || day === 6) return 5;
+  return Math.max(0, day - 1);
+}
+
+function createMiniCardId() {
+  return `mini_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function fallbackMarkdownSummary(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*+]\s+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .slice(0, 160) || "已保存 Markdown 手稿，点击卡片查看完整内容。";
+}
+
 Page({
   data: {
     books: [],
@@ -47,6 +70,8 @@ Page({
     loading: false,
     cardsLoading: false,
     creating: false,
+    uploading: false,
+    uploadStatus: "",
     error: ""
   },
 
@@ -162,8 +187,227 @@ Page({
     wx.showToast({ title: "删除功能待补充", icon: "none" });
   },
 
-  openCollect() {
-    wx.showToast({ title: "收录功能待补充", icon: "none" });
+  chooseUpload() {
+    if (!requireRegistered() || this.data.uploading || !this.data.selectedBookId) return;
+
+    wx.showActionSheet({
+      itemList: ["上传图片", "导入 Markdown"],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          this.chooseBookImages();
+        } else if (res.tapIndex === 1) {
+          this.chooseBookMarkdown();
+        }
+      }
+    });
+  },
+
+  chooseBookImages() {
+    wx.chooseMedia({
+      count: 9,
+      mediaType: ["image"],
+      sourceType: ["album", "camera"],
+      success: (res) => {
+        const files = (res.tempFiles || []).filter((file) => file && file.tempFilePath);
+        if (!files.length) return;
+        this.importBookImages(files);
+      }
+    });
+  },
+
+  chooseBookMarkdown() {
+    if (typeof wx.chooseMessageFile !== "function") {
+      wx.showToast({ title: "当前微信版本不支持选择 Markdown", icon: "none" });
+      return;
+    }
+
+    wx.chooseMessageFile({
+      count: 10,
+      type: "file",
+      extension: ["md", "markdown"],
+      success: (res) => {
+        const files = (res.tempFiles || []).filter((file) => file && file.path);
+        if (!files.length) return;
+        this.importBookMarkdownFiles(files);
+      }
+    });
+  },
+
+  async importBookImages(files) {
+    const bookId = this.data.selectedBookId;
+    let succeeded = 0;
+    const failed = [];
+
+    this.setData({ uploading: true, error: "", uploadStatus: `正在导入 1 / ${files.length}` });
+
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      this.setData({ uploadStatus: `正在导入图片 ${index + 1} / ${files.length}` });
+      try {
+        await this.importBookImage(bookId, file.tempFilePath);
+        succeeded += 1;
+      } catch (err) {
+        failed.push(err.message || "图片导入失败");
+      }
+    }
+
+    await this.finishBookImport(bookId, succeeded, failed);
+  },
+
+  async importBookImage(bookId, filePath) {
+    const cardId = createMiniCardId();
+    const stored = await uploadImage({
+      url: "/api/store-image",
+      filePath,
+      formData: { source: "miniprogram" }
+    });
+    const card = {
+      id: cardId,
+      weekId: currentWeekId(),
+      dayIndex: todayDayIndex(),
+      imageUrl: stored.imageUrl,
+      thumbnailUrl: stored.thumbnailUrl || stored.imageUrl,
+      photoUid: stored.photoUid || "",
+      photoHash: stored.photoHash || "",
+      terms: ["灵感图片", "待分析"],
+      decoType: "tape",
+      angle: 0,
+      createdAt: Date.now(),
+      type: "image"
+    };
+
+    await request({ url: "/api/db/cards", method: "POST", data: card });
+    await request({
+      url: `/api/db/books/${encodeURIComponent(bookId)}/cards`,
+      method: "POST",
+      data: { cardId }
+    });
+    wx.setStorageSync(`miniCard:${cardId}`, normalizeCard(card));
+
+    uploadImage({
+      url: "/api/analyze-image",
+      filePath,
+      formData: { source: "miniprogram" }
+    })
+      .then((analysis) => {
+        const terms = Array.isArray(analysis.terms) ? analysis.terms : [];
+        if (!terms.length) return null;
+        return request({
+          url: `/api/db/cards/${encodeURIComponent(cardId)}/terms`,
+          method: "PUT",
+          data: { terms }
+        }).then(() => {
+          const cached = wx.getStorageSync(`miniCard:${cardId}`) || card;
+          wx.setStorageSync(`miniCard:${cardId}`, normalizeCard({ ...cached, terms }));
+        });
+      })
+      .then(() => this.loadBookCards(bookId))
+      .catch(() => undefined);
+  },
+
+  async importBookMarkdownFiles(files) {
+    const bookId = this.data.selectedBookId;
+    let succeeded = 0;
+    const failed = [];
+
+    this.setData({ uploading: true, error: "", uploadStatus: `正在导入 1 / ${files.length}` });
+
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      this.setData({ uploadStatus: `正在导入 Markdown ${index + 1} / ${files.length}` });
+      try {
+        await this.importBookMarkdown(bookId, file);
+        succeeded += 1;
+      } catch (err) {
+        failed.push(`${file.name || "Markdown"}：${err.message || "导入失败"}`);
+      }
+    }
+
+    await this.finishBookImport(bookId, succeeded, failed);
+  },
+
+  readMarkdownFile(filePath) {
+    return new Promise((resolve, reject) => {
+      wx.getFileSystemManager().readFile({
+        filePath,
+        encoding: "utf8",
+        success: (res) => resolve(res.data || ""),
+        fail: (err) => reject(new Error(err.errMsg || "Markdown 文件读取失败"))
+      });
+    });
+  },
+
+  async summarizeMarkdown(text) {
+    try {
+      const body = await request({
+        url: "/api/summarize-md",
+        method: "POST",
+        data: { markdown: text }
+      });
+      const terms = Array.isArray(body.terms)
+        ? body.terms.filter((term) => typeof term === "string" && term.trim()).slice(0, 5)
+        : [];
+      return {
+        summary: body.summary || fallbackMarkdownSummary(text),
+        terms: terms.length ? terms : ["文档手稿", "Markdown"]
+      };
+    } catch (err) {
+      return {
+        summary: fallbackMarkdownSummary(text),
+        terms: ["文档手稿", "Markdown"]
+      };
+    }
+  },
+
+  async importBookMarkdown(bookId, file) {
+    const text = await this.readMarkdownFile(file.path);
+    if (!String(text || "").trim()) {
+      throw new Error("Markdown 文件为空");
+    }
+
+    const cardId = createMiniCardId();
+    const summary = await this.summarizeMarkdown(text);
+    const card = {
+      id: cardId,
+      weekId: currentWeekId(),
+      dayIndex: todayDayIndex(),
+      imageUrl: "",
+      terms: summary.terms,
+      decoType: "washi",
+      angle: 0,
+      createdAt: Date.now(),
+      type: "md",
+      mdContent: text,
+      mdSummary: summary.summary,
+      mdName: file.name || "Markdown 手稿.md"
+    };
+
+    await request({ url: "/api/db/cards", method: "POST", data: card });
+    await request({
+      url: `/api/db/books/${encodeURIComponent(bookId)}/cards`,
+      method: "POST",
+      data: { cardId }
+    });
+    wx.setStorageSync(`miniCard:${cardId}`, normalizeCard(card));
+  },
+
+  async finishBookImport(bookId, succeeded, failed) {
+    const failedCount = failed.length;
+    this.setData({
+      uploading: false,
+      uploadStatus: failedCount
+        ? `导入完成：成功 ${succeeded} 个，失败 ${failedCount} 个`
+        : `导入完成：成功 ${succeeded} 个`
+    });
+    wx.showToast({
+      title: failedCount ? `成功 ${succeeded} 个，失败 ${failedCount} 个` : "已导入当前册",
+      icon: failedCount ? "none" : "success"
+    });
+    await this.load();
+    if (bookId) {
+      this.setData({ selectedBookId: bookId });
+      await this.loadBookCards(bookId);
+    }
   },
 
   openCard(event) {

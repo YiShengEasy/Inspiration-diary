@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ImageCard, type InspirationBook } from "./types";
+import { ImageCard, type CustomTagGroup, type InspirationBook } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 import {
   subscribeCards,
@@ -19,15 +19,17 @@ import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
 import PolaroidCard from "./components/PolaroidCard";
 import InspirationBooksView from "./components/InspirationBooksView";
+import CustomTagLibraryView from "./components/CustomTagLibraryView";
 import CardBookPopover from "./components/CardBookPopover";
 import LoginScreen from "./components/LoginScreen";
 import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText } from "lucide-react";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText, Tags } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
 import { loadBooks, loadCardBookMembership, setCardBookMembership } from "./lib/booksClient";
 import { findBestBookSuggestion, type BookSuggestionMatch } from "./lib/bookSuggestion";
+import { CUSTOM_TAG_LIBRARY_SETTINGS_KEY, flattenCustomTagGroups, normalizeCustomTagGroups } from "./lib/customTagLibrary";
 import Markdown from "react-markdown";
 
 const ALL_CARDS_PAGE_SIZE = 12;
@@ -45,6 +47,11 @@ type SmartSuggestionGroup = {
   score: number;
 };
 
+type UploadTargetOptions = {
+  targetWeekId?: string;
+  targetBookId?: string;
+};
+
 export default function App() {
   const shouldShowMockTools = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK_TOOLS === "true";
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -58,8 +65,10 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchScope, setSearchScope] = useState<"current" | "all">("current");
-  const [mainView, setMainView] = useState<"board" | "books">("board");
+  const [mainView, setMainView] = useState<"board" | "books" | "tags">("board");
   const [bookRefreshToken, setBookRefreshToken] = useState<number>(0);
+  const [customTagGroups, setCustomTagGroups] = useState<CustomTagGroup[]>([]);
+  const [customTagSyncStatus, setCustomTagSyncStatus] = useState<"clean" | "saving" | "error">("clean");
   const [zoomedCard, setZoomedCard] = useState<ImageCard | null>(null);
   const [isDetailBookPopoverOpen, setIsDetailBookPopoverOpen] = useState<boolean>(false);
   const [detailInsightNote, setDetailInsightNote] = useState<string>("");
@@ -177,6 +186,12 @@ export default function App() {
     return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
   };
 
+  const getDayIndexForDate = (date: Date): number => {
+    const day = date.getDay();
+    if (day === 0 || day === 6) return 5;
+    return day - 1;
+  };
+
   useEffect(() => {
     setWeekId(getWeekIdentifier(currentDate));
   }, [currentDate]);
@@ -203,6 +218,9 @@ export default function App() {
       }
       if (dbSettings[SMART_BOOK_SUGGEST_MARKDOWN_KEY] !== undefined) {
         setSmartSuggestMarkdown(dbSettings[SMART_BOOK_SUGGEST_MARKDOWN_KEY] === "true");
+      }
+      if (dbSettings[CUSTOM_TAG_LIBRARY_SETTINGS_KEY] !== undefined) {
+        setCustomTagGroups(normalizeCustomTagGroups(dbSettings[CUSTOM_TAG_LIBRARY_SETTINGS_KEY]));
       }
     }).catch((err) => console.error("Failed to load settings from DB:", err));
   }, [authUser]);
@@ -379,6 +397,20 @@ export default function App() {
     } catch (err) {
       console.error("Failed to save smart suggestion setting:", err);
       setSmartSuggestSyncStatus("error");
+    }
+  };
+
+  const handleSaveCustomTagGroups = async (groups: CustomTagGroup[]) => {
+    const normalizedGroups = normalizeCustomTagGroups(groups);
+    setCustomTagGroups(normalizedGroups);
+    setCustomTagSyncStatus("saving");
+    try {
+      await saveSettings({ [CUSTOM_TAG_LIBRARY_SETTINGS_KEY]: JSON.stringify(normalizedGroups) });
+      setCustomTagSyncStatus("clean");
+    } catch (err) {
+      console.error("Failed to save custom tag library:", err);
+      setCustomTagSyncStatus("error");
+      throw err;
     }
   };
 
@@ -596,9 +628,17 @@ export default function App() {
   };
 
   // Upload card and proxy call AI analysis API server-side
-  const handleUploadImage = async (dayIndex: number, originalFile: File, analysisBlob: Blob = originalFile) => {
+  const handleUploadImage = async (
+    dayIndex: number,
+    originalFile: File,
+    analysisBlob: Blob = originalFile,
+    options: UploadTargetOptions = {},
+  ) => {
     try {
-      if (!weekId) {
+      const targetWeekId = options.targetWeekId || weekId;
+      const targetBookId = options.targetBookId;
+
+      if (!targetWeekId) {
         throw new Error("当前周信息还在加载，请稍后再粘贴图片。");
       }
 
@@ -684,7 +724,7 @@ export default function App() {
 	      const cardId = createNewCardId();
 	      const newCard: ImageCard = {
 	        id: cardId,
-	        weekId,
+	        weekId: targetWeekId,
 	        dayIndex,
 	        imageUrl,
 	        thumbnailUrl,
@@ -697,7 +737,12 @@ export default function App() {
       };
 
       await saveCard(newCard);
-      void maybeSuggestBookMembership(newCard);
+      if (targetBookId) {
+        await setCardBookMembership(cardId, targetBookId, true);
+        handleBookMembershipChanged();
+      } else {
+        void maybeSuggestBookMembership(newCard);
+      }
 
       const analyzeAndUpdateTerms = async () => {
         const controller = new AbortController();
@@ -709,6 +754,10 @@ export default function App() {
           const bookHints = await loadSmartBookHints("image");
           if (bookHints.length > 0) {
             analyzeForm.append("bookHints", JSON.stringify(bookHints));
+          }
+          const customTagHints = flattenCustomTagGroups(customTagGroups);
+          if (customTagHints.length > 0) {
+            analyzeForm.append("customTagHints", JSON.stringify(customTagHints));
           }
 
           const response = await authFetch("/api/analyze-image", {
@@ -727,8 +776,10 @@ export default function App() {
           const resParsed = await response.json();
           const extractedTerms = Array.isArray(resParsed.terms) ? resParsed.terms.slice(0, 5) : [];
           if (extractedTerms.length > 0) {
-            await updateCardTerms(cardId, weekId, extractedTerms);
-            await maybeSuggestBookMembership({ ...newCard, terms: extractedTerms });
+            await updateCardTerms(cardId, targetWeekId, extractedTerms);
+            if (!targetBookId) {
+              await maybeSuggestBookMembership({ ...newCard, terms: extractedTerms });
+            }
           }
         } catch (fetchErr: any) {
           const message = fetchErr?.name === "AbortError"
@@ -751,9 +802,17 @@ export default function App() {
     }
   };
 
-  const handleUploadMd = async (dayIndex: number, text: string, filename: string) => {
+  const handleUploadMd = async (
+    dayIndex: number,
+    text: string,
+    filename: string,
+    options: UploadTargetOptions = {},
+  ) => {
     try {
-      if (!weekId) {
+      const targetWeekId = options.targetWeekId || weekId;
+      const targetBookId = options.targetBookId;
+
+      if (!targetWeekId) {
         throw new Error("当前周信息还在加载，请稍后再上传手稿。");
       }
 
@@ -787,10 +846,11 @@ export default function App() {
 
       try {
         const bookHints = await loadSmartBookHints("md");
+        const customTagHints = flattenCustomTagGroups(customTagGroups);
         const response = await authFetch("/api/summarize-md", {
           method: "POST",
           headers,
-          body: JSON.stringify({ markdown: text, bookHints }),
+          body: JSON.stringify({ markdown: text, bookHints, customTagHints }),
         });
         if (response.ok) {
           const data = await response.json();
@@ -816,7 +876,7 @@ export default function App() {
       const cardId = createNewCardId();
       const newCard: ImageCard = {
         id: cardId,
-        weekId,
+        weekId: targetWeekId,
         dayIndex,
         imageUrl: "",
         terms: mdTerms,
@@ -830,11 +890,32 @@ export default function App() {
       };
 
       await saveCard(newCard);
-      await maybeSuggestBookMembership(newCard);
+      if (targetBookId) {
+        await setCardBookMembership(cardId, targetBookId, true);
+        handleBookMembershipChanged();
+      } else {
+        await maybeSuggestBookMembership(newCard);
+      }
     } catch (error: any) {
       console.error("Markdown upload error:", error);
       throw new Error(error.message || "Failed to save Markdown document.");
     }
+  };
+
+  const handleUploadImageToBook = async (bookId: string, originalFile: File, analysisBlob: Blob = originalFile) => {
+    const today = new Date();
+    await handleUploadImage(getDayIndexForDate(today), originalFile, analysisBlob, {
+      targetWeekId: getWeekIdentifier(today),
+      targetBookId: bookId,
+    });
+  };
+
+  const handleUploadMdToBook = async (bookId: string, text: string, filename: string) => {
+    const today = new Date();
+    await handleUploadMd(getDayIndexForDate(today), text, filename, {
+      targetWeekId: getWeekIdentifier(today),
+      targetBookId: bookId,
+    });
   };
 
   // Trigger deletion prompt before absolute card removal.
@@ -1332,6 +1413,21 @@ export default function App() {
             </button>
 
             <button
+              type="button"
+              onClick={() => setMainView((current) => current === "tags" ? "board" : "tags")}
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-xs font-bold shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 ${
+                mainView === "tags"
+                  ? "bg-stone-900 text-[#fbf7ed] dark:bg-amber-200 dark:text-stone-950"
+                  : "border border-stone-900/10 bg-white/55 text-stone-700 hover:bg-white/80 dark:border-white/10 dark:bg-stone-950/35 dark:text-stone-200 dark:hover:bg-white/[0.08]"
+              }`}
+              title={mainView === "tags" ? "返回灵感画板" : "打开自定义标签库"}
+              aria-pressed={mainView === "tags"}
+            >
+              <Tags size={14} />
+              <span>{mainView === "tags" ? "返回画板" : "标签库"}</span>
+            </button>
+
+            <button
               onClick={() => setShowSettings(true)}
               className="p-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-950 dark:text-amber-350 transition-colors shadow-sm cursor-pointer border border-amber-500/20 flex items-center justify-center gap-1.5 text-xs font-semibold"
               title="Configure AI service"
@@ -1777,13 +1873,21 @@ export default function App() {
           </div>
         </div>
           </>
-        ) : (
+        ) : mainView === "books" ? (
           <InspirationBooksView
             refreshToken={bookRefreshToken}
             onZoom={setZoomedCard}
             onDeleteTerm={handleDeleteTerm}
             onUpdateTerms={handleUpdateCardTerms}
             onBookMembershipChanged={handleBookMembershipChanged}
+            onUploadImageToBook={handleUploadImageToBook}
+            onUploadMdToBook={handleUploadMdToBook}
+          />
+        ) : (
+          <CustomTagLibraryView
+            groups={customTagGroups}
+            syncStatus={customTagSyncStatus}
+            onSave={handleSaveCustomTagGroups}
           />
         )}
       </div>

@@ -49,3 +49,11 @@ export interface PaginatedBookCardsResult {
   pageSize: number;
   totalPages: number;
 }
+
+export interface CustomTagGroup {
+  id: string;
+  name: string;
+  terms: string[];
+  createdAt: number;
+  updatedAt: number;
+}

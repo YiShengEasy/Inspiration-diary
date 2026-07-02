@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { BookmarkCheck, BookOpen, Check, ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Loader2, Plus, Search, Trash, X } from "lucide-react";
+import { BookmarkCheck, BookOpen, Check, ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Loader2, Plus, Search, Trash, Upload, X } from "lucide-react";
 import type { ImageCard, InspirationBook } from "../types";
 import { createBook, deleteBook, loadBookCards, loadBooks, setBookCover, setCardBookMembership, updateBook } from "../lib/booksClient";
 import { updateCardTerms } from "../lib/dbClient";
@@ -12,9 +12,25 @@ interface InspirationBooksViewProps {
   onDeleteTerm: (cardId: string, termIndex: number) => void;
   onUpdateTerms: (cardId: string, terms: string[]) => void;
   onBookMembershipChanged: () => void;
+  onUploadImageToBook: (bookId: string, originalFile: File, analysisBlob?: Blob) => Promise<void>;
+  onUploadMdToBook: (bookId: string, text: string, filename: string) => Promise<void>;
 }
 
 const BOOK_CARDS_PAGE_SIZE = 12;
+
+type BatchFailure = {
+  filename: string;
+  reason: string;
+};
+
+type BatchStatus = {
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: BatchFailure[];
+  currentFile: string;
+  done: boolean;
+};
 
 export default function InspirationBooksView({
   refreshToken,
@@ -22,7 +38,10 @@ export default function InspirationBooksView({
   onDeleteTerm,
   onUpdateTerms,
   onBookMembershipChanged,
+  onUploadImageToBook,
+  onUploadMdToBook,
 }: InspirationBooksViewProps) {
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [books, setBooks] = useState<InspirationBook[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [cards, setCards] = useState<ImageCard[]>([]);
@@ -41,6 +60,8 @@ export default function InspirationBooksView({
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSavingBook, setIsSavingBook] = useState(false);
+  const [isUploadingToBook, setIsUploadingToBook] = useState(false);
+  const [batchStatus, setBatchStatus] = useState<BatchStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const selectedBook = useMemo(
@@ -254,6 +275,162 @@ export default function InspirationBooksView({
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "灵感词更新失败");
+    }
+  };
+
+  const isMarkdownFile = (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    return lowerName.endsWith(".md") || file.type === "text/markdown";
+  };
+
+  const isImageFile = (file: File) => file.type.startsWith("image/");
+
+  const updateBatchProgress = (updater: (current: BatchStatus) => BatchStatus) => {
+    setBatchStatus((current) => {
+      if (!current) return current;
+      return updater(current);
+    });
+  };
+
+  const processBookMdFile = async (bookId: string, file: File) => {
+    if (!isMarkdownFile(file)) {
+      throw new Error("不支持的 Markdown 文件。");
+    }
+
+    const text = await file.text();
+    if (!text.trim()) {
+      throw new Error("Markdown 文件为空。");
+    }
+
+    await onUploadMdToBook(bookId, text, file.name);
+  };
+
+  const processBookImageFile = (bookId: string, file: File) => {
+    return new Promise<void>((resolve, reject) => {
+      if (!isImageFile(file)) {
+        reject(new Error("不支持的图片文件。"));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const originalBase64 = event.target?.result as string;
+        const img = new window.Image();
+        img.onload = async () => {
+          const canvas = document.createElement("canvas");
+          const maxWidth = 600;
+          const maxHeight = 600;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height *= maxWidth / width;
+              width = maxWidth;
+            }
+          } else if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            try {
+              await onUploadImageToBook(bookId, file, file);
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(async (blob) => {
+            try {
+              await onUploadImageToBook(bookId, file, blob || file);
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          }, "image/jpeg", 0.82);
+        };
+
+        img.onerror = () => reject(new Error("图片读取失败。"));
+        img.src = originalBase64;
+      };
+
+      reader.onerror = () => reject(new Error("文件读取失败。"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processBookFiles = async (fileList: FileList | File[]) => {
+    if (!selectedBook) return;
+    const bookId = selectedBook.id;
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+
+    setIsUploadingToBook(true);
+    setError(null);
+    setBatchStatus({
+      total: files.length,
+      completed: 0,
+      succeeded: 0,
+      failed: [],
+      currentFile: files[0]?.name || "",
+      done: false,
+    });
+
+    for (const file of files) {
+      updateBatchProgress((current) => ({ ...current, currentFile: file.name || "未命名文件" }));
+      try {
+        if (isImageFile(file)) {
+          await processBookImageFile(bookId, file);
+        } else if (isMarkdownFile(file)) {
+          await processBookMdFile(bookId, file);
+        } else {
+          throw new Error("不支持的文件类型。");
+        }
+
+        updateBatchProgress((current) => ({
+          ...current,
+          completed: current.completed + 1,
+          succeeded: current.succeeded + 1,
+        }));
+      } catch (err: any) {
+        updateBatchProgress((current) => ({
+          ...current,
+          completed: current.completed + 1,
+          failed: [
+            ...current.failed,
+            {
+              filename: file.name || "未命名文件",
+              reason: err?.message || "导入失败。",
+            },
+          ],
+        }));
+      }
+    }
+
+    setBatchStatus((current) => current ? { ...current, currentFile: "", done: true } : current);
+    setIsUploadingToBook(false);
+    onBookMembershipChanged();
+    await refreshBooks(bookId);
+    if (page !== 1) {
+      setPage(1);
+    } else {
+      await refreshCurrentBookCards();
+    }
+  };
+
+  const handleUploadInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files.length > 0) {
+      void processBookFiles(event.target.files);
+    }
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = "";
     }
   };
 
@@ -508,6 +685,14 @@ export default function InspirationBooksView({
         <main className="flex min-w-0 flex-col p-4 md:p-6">
           {selectedBook ? (
             <>
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept="image/*,.md,text/markdown"
+                multiple
+                onChange={handleUploadInputChange}
+                className="hidden"
+              />
               <div className="mb-5 flex flex-col gap-4 border-b border-stone-900/10 pb-4 dark:border-white/10 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -522,6 +707,16 @@ export default function InspirationBooksView({
                 </div>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <button
+                    type="button"
+                    onClick={() => uploadInputRef.current?.click()}
+                    disabled={isUploadingToBook}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] bg-stone-900 px-3 text-sm font-bold text-[#fbf7ed] shadow-[0_12px_26px_rgba(68,64,60,0.12)] transition-all hover:-translate-y-0.5 hover:bg-stone-800 disabled:cursor-wait disabled:opacity-60 dark:bg-amber-200 dark:text-stone-950 dark:hover:bg-amber-100"
+                    title="上传到当前灵感册"
+                  >
+                    {isUploadingToBook ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                    上传
+                  </button>
                   <div className="relative min-w-[220px]">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500" />
                     <input
@@ -547,6 +742,35 @@ export default function InspirationBooksView({
 
               {error ? (
                 <div className="mb-4 rounded-[6px] border border-red-900/15 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-300/20 dark:bg-red-500/10 dark:text-red-200">{error}</div>
+              ) : null}
+
+              {batchStatus ? (
+                <div className={`mb-4 rounded-[6px] border px-3 py-2 text-xs ${
+                  batchStatus.done && batchStatus.failed.length === 0
+                    ? "border-emerald-900/15 bg-emerald-50 text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-500/10 dark:text-emerald-200"
+                    : "border-amber-900/15 bg-amber-50 text-amber-800 dark:border-amber-300/20 dark:bg-amber-500/10 dark:text-amber-100"
+                }`}>
+                  {batchStatus.done ? (
+                    <>
+                      <div className="font-semibold">导入完成：成功 {batchStatus.succeeded} 个，失败 {batchStatus.failed.length} 个</div>
+                      {batchStatus.failed.length > 0 ? (
+                        <div className="mt-1 space-y-0.5">
+                          {batchStatus.failed.slice(0, 3).map((failure) => (
+                            <div key={`${failure.filename}-${failure.reason}`} className="truncate">
+                              {failure.filename}: {failure.reason}
+                            </div>
+                          ))}
+                          {batchStatus.failed.length > 3 ? <div>还有 {batchStatus.failed.length - 3} 个文件导入失败。</div> : null}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 font-semibold">
+                      <Loader2 size={13} className="animate-spin" />
+                      正在导入 {batchStatus.completed + 1} / {batchStatus.total}：{batchStatus.currentFile || "处理中"}
+                    </div>
+                  )}
+                </div>
               ) : null}
 
               {isLoadingCards ? (
@@ -632,7 +856,7 @@ export default function InspirationBooksView({
                 <div className="flex flex-1 flex-col items-center justify-center rounded-[8px] border border-dashed border-stone-900/15 bg-white/20 px-4 py-20 text-center dark:border-white/12 dark:bg-transparent">
                   <BookOpen size={34} className="mb-3 text-stone-500/45 dark:text-amber-200/35" />
                   <p className="font-serif text-sm italic text-stone-500 dark:text-stone-400">
-                    {query ? "本册里没有匹配的灵感。" : "这本灵感册还是空的。打开灵感详情，用书册按钮收录。"}
+                    {query ? "本册里没有匹配的灵感。" : "这本灵感册还是空的。可以直接上传图片或 Markdown 收进本册。"}
                   </p>
                 </div>
               )}
