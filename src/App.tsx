@@ -2264,13 +2264,13 @@ export default function App() {
               initial={{ scale: 0.93, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.93, y: 15 }}
-              className={`relative w-full bg-white dark:bg-stone-850 p-4 md:p-6 pb-6 md:pb-8 shadow-[0_24px_50px_rgba(0,0,0,0.6)] border border-amber-900/10 dark:border-white/10 select-text rounded-2xl flex flex-col md:flex-row gap-6 items-center md:items-start ${zoomedCard.type === "md" ? "max-w-5xl" : "max-w-7xl"}`}
+              className={`relative flex max-h-[calc(100vh-1.5rem)] w-full flex-col items-stretch gap-4 overflow-y-auto rounded-2xl border border-amber-900/10 bg-white p-4 pb-5 shadow-[0_24px_50px_rgba(0,0,0,0.6)] select-text dark:border-white/10 dark:bg-stone-850 md:h-[calc(100vh-2rem)] md:flex-row md:gap-5 md:overflow-hidden md:p-5 ${zoomedCard.type === "md" ? "max-w-5xl" : "max-w-7xl"}`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Close Button on top corner */}
               <button
                 onClick={() => setZoomedCard(null)}
-                className="absolute top-3 right-3 text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-100 p-1.5 rounded-full bg-stone-100 dark:bg-stone-800 cursor-pointer hover:scale-105 transition-transform z-10"
+                className="absolute right-3 top-3 z-40 rounded-full bg-stone-100 p-1.5 text-stone-500 shadow-sm transition-transform hover:scale-105 hover:text-stone-800 dark:bg-stone-800 dark:text-stone-400 dark:hover:text-stone-100"
                 title="关闭视图"
                 id="close-zoom-modal-btn"
               >
@@ -2278,7 +2278,7 @@ export default function App() {
               </button>
 
               {/* Left Column: Picture or Markdown document */}
-              <div className={`w-full relative overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-inner rounded-xl group/zoomimage ${zoomedCard.type === "md" ? "md:w-3/4 h-[70vh] max-h-[800px]" : "md:w-[72%] h-[72vh] min-h-[420px]"}`}>
+              <div className={`relative w-full shrink-0 overflow-hidden rounded-xl border border-stone-200 bg-stone-100 shadow-inner group/zoomimage dark:border-stone-800 dark:bg-stone-900 md:h-full md:min-h-0 ${zoomedCard.type === "md" ? "h-[58vh] md:w-3/4" : "h-[56vh] min-h-[300px] md:w-[72%]"}`}>
                 {zoomedCard.type === "md" ? (
                   <div className="w-full h-full overflow-y-auto p-6 md:p-10 bg-white dark:bg-stone-900 custom-scrollbar text-left text-sm md:text-base text-stone-800 dark:text-stone-100 shadow-inner break-words leading-relaxed [&_h1]:font-serif [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-stone-600 [&_a]:text-amber-600 [&_a]:underline [&_code]:rounded [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-amber-700 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-stone-950 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:text-stone-100 [&_img]:rounded-xl">
                     <Markdown>{zoomedCard.mdContent || ""}</Markdown>
@@ -2393,50 +2393,51 @@ export default function App() {
               </div>
 
               {/* Right Column: Key Details, Tag lists, info */}
-              <div className={`w-full flex flex-col h-full justify-between gap-5 self-stretch py-1 ${zoomedCard.type === "md" ? "md:w-1/4" : "md:w-[28%]"}`}>
-                <div className="flex flex-col gap-4">
+              <div className={`flex min-h-[360px] w-full flex-col overflow-hidden rounded-xl border border-stone-900/10 bg-[#fbf7ed]/45 dark:border-white/10 dark:bg-white/[0.035] md:h-full md:min-h-0 ${zoomedCard.type === "md" ? "md:w-1/4" : "md:w-[28%]"}`}>
+                <div className="shrink-0 border-b border-dashed border-amber-900/15 px-3 pb-3 pt-1 pr-11 dark:border-amber-100/10 md:px-1 md:pb-3 md:pt-1 md:pr-9">
                   {/* Title / Mood heading */}
-                  <div className="border-b border-dashed border-amber-900/15 dark:border-amber-100/10 pb-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <span className="text-xs font-handwritten font-bold text-amber-800 dark:text-amber-400 tracking-wider block mb-1 uppercase">
-                          ★ Captured Inspiration ★
-                        </span>
-                        <h3 className="font-serif font-bold text-lg text-stone-900 dark:text-stone-100 italic leading-tight">
-                          {zoomedCard.type === "md"
-                            ? (zoomedCard.mdName || "Markdown 手稿")
-                            : zoomedCard.type === "video"
-                              ? (zoomedCard.videoAssets?.[0]?.originalName || "视频灵感")
-                              : `${getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录`}
-                        </h3>
-                      </div>
-                      <div className="relative shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setIsDetailBookPopoverOpen((current) => !current)}
-                          className={`grid h-9 w-9 place-items-center rounded-full border shadow-sm transition-all active:scale-95 ${
-                            isDetailBookPopoverOpen
-                              ? "border-stone-900/25 bg-stone-900 text-[#fbf7ed] dark:border-amber-200/50 dark:bg-amber-200 dark:text-stone-950"
-                              : "border-stone-900/10 bg-[#fbf7ed] text-stone-700 hover:-translate-y-0.5 hover:border-stone-900/20 hover:bg-white dark:border-white/10 dark:bg-white/[0.07] dark:text-amber-100 dark:hover:border-amber-200/30 dark:hover:bg-white/[0.12]"
-                          }`}
-                          title="收录到灵感册"
-                          aria-label="收录到灵感册"
-                        >
-                          <BookOpen size={16} />
-                        </button>
-                        {isDetailBookPopoverOpen ? (
-                          <CardBookPopover
-                            cardId={zoomedCard.id}
-                            onClose={() => setIsDetailBookPopoverOpen(false)}
-                            onChanged={handleBookMembershipChanged}
-                          />
-                        ) : null}
-                      </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="mb-1 block font-handwritten text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
+                        ★ Captured Inspiration ★
+                      </span>
+                      <h3 className="break-words font-serif text-lg font-bold italic leading-tight text-stone-900 dark:text-stone-100">
+                        {zoomedCard.type === "md"
+                          ? (zoomedCard.mdName || "Markdown 手稿")
+                          : zoomedCard.type === "video"
+                            ? (zoomedCard.videoAssets?.[0]?.originalName || "视频灵感")
+                            : `${getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录`}
+                      </h3>
                     </div>
-                    <p className="text-[10px] font-mono text-stone-400 dark:text-stone-500 mt-1.5">
-                      记录时间： {new Date(zoomedCard.createdAt).toLocaleString()}
-                    </p>
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setIsDetailBookPopoverOpen((current) => !current)}
+                        className={`grid h-9 w-9 place-items-center rounded-full border shadow-sm transition-all active:scale-95 ${
+                          isDetailBookPopoverOpen
+                            ? "border-stone-900/25 bg-stone-900 text-[#fbf7ed] dark:border-amber-200/50 dark:bg-amber-200 dark:text-stone-950"
+                            : "border-stone-900/10 bg-[#fbf7ed] text-stone-700 hover:-translate-y-0.5 hover:border-stone-900/20 hover:bg-white dark:border-white/10 dark:bg-white/[0.07] dark:text-amber-100 dark:hover:border-amber-200/30 dark:hover:bg-white/[0.12]"
+                        }`}
+                        title="收录到灵感册"
+                        aria-label="收录到灵感册"
+                      >
+                        <BookOpen size={16} />
+                      </button>
+                      {isDetailBookPopoverOpen ? (
+                        <CardBookPopover
+                          cardId={zoomedCard.id}
+                          onClose={() => setIsDetailBookPopoverOpen(false)}
+                          onChanged={handleBookMembershipChanged}
+                        />
+                      ) : null}
+                    </div>
                   </div>
+                  <p className="mt-1.5 font-mono text-[10px] text-stone-400 dark:text-stone-500">
+                    记录时间： {new Date(zoomedCard.createdAt).toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3 md:px-1">
 
                   {/* Active tags visualizer */}
                   <div>
@@ -2481,7 +2482,7 @@ export default function App() {
                       onChange={(event) => setDetailInsightNote(event.target.value)}
                       maxLength={4000}
                       placeholder="写一点这张灵感给你的感觉、可复用的设计点，或后续要尝试的方向..."
-                      className="min-h-[116px] w-full resize-y rounded-[8px] border border-stone-900/10 bg-[#fbf7ed]/80 px-3 py-2.5 text-sm leading-relaxed text-stone-800 shadow-inner outline-none transition-colors placeholder:text-stone-400 focus:border-stone-800/30 dark:border-white/10 dark:bg-white/[0.055] dark:text-stone-100 dark:placeholder:text-stone-600 dark:focus:border-amber-200/35"
+                      className="min-h-[104px] w-full resize-y rounded-[8px] border border-stone-900/10 bg-[#fbf7ed]/80 px-3 py-2.5 text-sm leading-relaxed text-stone-800 shadow-inner outline-none transition-colors placeholder:text-stone-400 focus:border-stone-800/30 dark:border-white/10 dark:bg-white/[0.055] dark:text-stone-100 dark:placeholder:text-stone-600 dark:focus:border-amber-200/35"
                       style={{
                         backgroundImage: isDarkMode
                           ? "linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px)"
@@ -2525,16 +2526,16 @@ export default function App() {
                     {zoomedCard.videoAssets && zoomedCard.videoAssets.length > 0 ? (
                       <div className="space-y-2">
                         {zoomedCard.videoAssets.map((video) => (
-                          <div key={video.id} className="rounded-[8px] border border-stone-900/10 bg-white/55 p-2 dark:border-white/10 dark:bg-white/[0.05]">
+                          <div key={video.id} className="grid gap-2 rounded-[8px] border border-stone-900/10 bg-white/65 p-2 dark:border-white/10 dark:bg-white/[0.05] lg:grid-cols-[112px_minmax(0,1fr)]">
                             <video
                               src={video.videoUrl}
-                              className="mb-2 aspect-video w-full rounded-[6px] bg-stone-950 object-contain"
+                              className="aspect-video w-full rounded-[6px] bg-stone-950 object-contain lg:w-28"
                               controls
                               playsInline
                               preload="metadata"
                             />
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0">
+                            <div className="flex min-w-0 items-center justify-between gap-2">
+                              <div className="min-w-0 self-center">
                                 <div className="truncate text-xs font-bold text-stone-800 dark:text-stone-100">{video.originalName}</div>
                                 <div className="mt-0.5 text-[10px] font-mono text-stone-500">{formatBytes(video.sizeBytes)}</div>
                               </div>
@@ -2573,7 +2574,7 @@ export default function App() {
                 </div>
 
                 {/* Footer instructions */}
-                <div className="mt-auto pt-4 border-t border-dashed border-amber-900/15 dark:border-amber-100/10 text-[11px] text-stone-400 dark:text-stone-500 leading-normal">
+                <div className="shrink-0 border-t border-dashed border-amber-900/15 px-3 py-3 text-[11px] leading-normal text-stone-400 dark:border-amber-100/10 dark:text-stone-500 md:px-1 md:pb-1">
                   <div className="mb-3 flex items-center gap-2">
                     <button
                       type="button"
