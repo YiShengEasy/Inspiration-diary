@@ -6,16 +6,19 @@ import { createCustomTagGroup, flattenCustomTagGroups, normalizeCustomTagGroups,
 
 interface CustomTagLibraryViewProps {
   groups: CustomTagGroup[];
+  libraryEnabled: boolean;
   syncStatus: "clean" | "saving" | "error";
   onSave: (groups: CustomTagGroup[]) => Promise<void>;
+  onLibraryEnabledChange: (enabled: boolean) => void;
 }
 
-export default function CustomTagLibraryView({ groups, syncStatus, onSave }: CustomTagLibraryViewProps) {
+export default function CustomTagLibraryView({ groups, libraryEnabled, syncStatus, onSave, onLibraryEnabledChange }: CustomTagLibraryViewProps) {
   const [draftGroups, setDraftGroups] = useState<CustomTagGroup[]>(() => normalizeCustomTagGroups(groups));
   const [selectedGroupId, setSelectedGroupId] = useState<string>(draftGroups[0]?.id || "");
   const [query, setQuery] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [newTermText, setNewTermText] = useState("");
+  const [groupToDelete, setGroupToDelete] = useState<CustomTagGroup | null>(null);
 
   useEffect(() => {
     const normalized = normalizeCustomTagGroups(groups);
@@ -28,6 +31,8 @@ export default function CustomTagLibraryView({ groups, syncStatus, onSave }: Cus
 
   const selectedGroup = draftGroups.find((group) => group.id === selectedGroupId) || draftGroups[0] || null;
   const allTerms = useMemo(() => flattenCustomTagGroups(draftGroups), [draftGroups]);
+  const enabledTerms = useMemo(() => flattenCustomTagGroups(draftGroups.filter((group) => group.enabled !== false)), [draftGroups]);
+  const effectiveTermCount = libraryEnabled ? enabledTerms.length : 0;
   const filteredGroups = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return draftGroups;
@@ -65,9 +70,20 @@ export default function CustomTagLibraryView({ groups, syncStatus, onSave }: Cus
   const handleDeleteGroup = async (groupId: string) => {
     const group = draftGroups.find((item) => item.id === groupId);
     if (!group) return;
-    const confirmed = window.confirm(`删除标签组「${group.name}」？组内标签词也会一并移除。`);
-    if (!confirmed) return;
-    await commitGroups(draftGroups.filter((item) => item.id !== groupId));
+    setGroupToDelete(group);
+  };
+
+  const confirmDeleteGroup = async () => {
+    if (!groupToDelete) return;
+    const deleteId = groupToDelete.id;
+    setGroupToDelete(null);
+    await commitGroups(draftGroups.filter((item) => item.id !== deleteId));
+  };
+
+  const handleToggleGroupEnabled = async (groupId: string, enabled: boolean) => {
+    await commitGroups(draftGroups.map((group) =>
+      group.id === groupId ? { ...group, enabled, updatedAt: Date.now() } : group,
+    ));
   };
 
   const handleAddTerms = async () => {
@@ -106,6 +122,7 @@ export default function CustomTagLibraryView({ groups, syncStatus, onSave }: Cus
     : [];
 
   return (
+    <>
     <motion.section
       key="custom-tag-library-view"
       initial={{ opacity: 0, y: 16 }}
@@ -126,9 +143,25 @@ export default function CustomTagLibraryView({ groups, syncStatus, onSave }: Cus
               维护你自己的设计词、材质词、风格词和情绪词。后续图片与 Markdown 识别会优先参考这些词，但不会强行套用无关标签。
             </p>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-[6px] border border-stone-900/10 bg-white/55 px-3 py-2 text-xs font-semibold text-stone-600 dark:border-white/10 dark:bg-white/[0.06] dark:text-stone-300">
-            {syncStatus === "saving" ? <Loader2 size={13} className="animate-spin" /> : <Library size={13} />}
-            {allTerms.length} 个标签词
+          <div className="flex flex-col gap-2 rounded-[8px] border border-stone-900/10 bg-white/55 px-3 py-2 text-xs font-semibold text-stone-600 dark:border-white/10 dark:bg-white/[0.06] dark:text-stone-300">
+            <button
+              type="button"
+              onClick={() => onLibraryEnabledChange(!libraryEnabled)}
+              className="flex items-center justify-between gap-3 text-left"
+              aria-pressed={libraryEnabled}
+              title={libraryEnabled ? "关闭标签库参与 AI 识别" : "开启标签库参与 AI 识别"}
+            >
+              <span className="inline-flex items-center gap-2">
+                {syncStatus === "saving" ? <Loader2 size={13} className="animate-spin" /> : <Library size={13} />}
+                {libraryEnabled ? "词库已启用" : "词库已关闭"}
+              </span>
+              <span className={`relative h-5 w-9 rounded-full transition-colors ${libraryEnabled ? "bg-stone-900 dark:bg-amber-200" : "bg-stone-300 dark:bg-stone-700"}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${libraryEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+              </span>
+            </button>
+            <div className="font-mono text-[10px] text-stone-500 dark:text-stone-500">
+              {effectiveTermCount} / {allTerms.length} 个词参与识别
+            </div>
           </div>
         </div>
       </div>
@@ -178,24 +211,40 @@ export default function CustomTagLibraryView({ groups, syncStatus, onSave }: Cus
 
           <div className="space-y-2">
             {filteredGroups.map((group) => (
-              <button
-                type="button"
+              <div
                 key={group.id}
-                onClick={() => setSelectedGroupId(group.id)}
-                className={`w-full rounded-[8px] border p-3 text-left transition-all ${
+                className={`flex w-full items-center gap-2 rounded-[8px] border p-2 transition-all ${
                   selectedGroup?.id === group.id
                     ? "border-stone-900/20 bg-white/70 shadow-[0_14px_32px_rgba(68,64,60,0.12)] dark:border-amber-200/45 dark:bg-amber-200/12"
                     : "border-stone-900/8 bg-white/35 hover:border-stone-900/16 hover:bg-white/55 dark:border-white/8 dark:bg-white/[0.04]"
                 }`}
               >
-                <div className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedGroupId(group.id)}
+                  className="min-w-0 flex-1 text-left"
+                >
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-bold text-stone-900 dark:text-stone-100">{group.name}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="truncate text-sm font-bold text-stone-900 dark:text-stone-100">{group.name}</div>
+                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${group.enabled !== false ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200" : "bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-500"}`}>
+                        {group.enabled !== false ? "启用" : "关闭"}
+                      </span>
+                    </div>
                     <div className="mt-1 text-[10px] font-mono text-stone-600 dark:text-stone-500">{group.terms.length} 个词</div>
                   </div>
-                  <Tags size={14} className="shrink-0 text-stone-500 dark:text-amber-100/70" />
-                </div>
-              </button>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleToggleGroupEnabled(group.id, group.enabled === false)}
+                  className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${group.enabled !== false ? "bg-stone-900 dark:bg-amber-200" : "bg-stone-300 dark:bg-stone-700"}`}
+                  title={group.enabled !== false ? "关闭这个标签组" : "启用这个标签组"}
+                  aria-label={group.enabled !== false ? `关闭标签组 ${group.name}` : `启用标签组 ${group.name}`}
+                  aria-pressed={group.enabled !== false}
+                >
+                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${group.enabled !== false ? "translate-x-4" : "translate-x-0.5"}`} />
+                </button>
+              </div>
             ))}
           </div>
 
@@ -224,16 +273,31 @@ export default function CustomTagLibraryView({ groups, syncStatus, onSave }: Cus
                     className="w-full max-w-xl rounded-[6px] border border-transparent bg-transparent px-0 py-1 font-serif text-xl font-bold italic text-stone-950 outline-none focus:border-stone-900/10 focus:bg-white/60 dark:text-white dark:focus:border-white/10 dark:focus:bg-white/[0.05]"
                     aria-label="标签组名称"
                   />
-                  <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">支持一次粘贴多个词，用逗号、顿号、分号或换行分隔。</p>
+                  <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                    支持一次粘贴多个词，用逗号、顿号、分号或换行分隔。当前分组{selectedGroup.enabled !== false ? "会" : "不会"}参与 AI 识别。
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteGroup(selectedGroup.id)}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-red-900/15 bg-red-50 px-3 text-xs font-bold text-red-700 transition-colors hover:bg-red-100 dark:border-red-300/20 dark:bg-red-500/10 dark:text-red-200 dark:hover:bg-red-500/20"
-                >
-                  <Trash size={13} />
-                  删除组
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleGroupEnabled(selectedGroup.id, selectedGroup.enabled === false)}
+                    className={`inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border px-3 text-xs font-bold transition-colors ${
+                      selectedGroup.enabled !== false
+                        ? "border-emerald-900/15 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-300/20 dark:bg-emerald-500/10 dark:text-emerald-200"
+                        : "border-stone-900/10 bg-stone-100 text-stone-600 hover:bg-stone-200 dark:border-white/10 dark:bg-white/[0.06] dark:text-stone-300"
+                    }`}
+                  >
+                    {selectedGroup.enabled !== false ? "已启用" : "已关闭"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteGroup(selectedGroup.id)}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-red-900/15 bg-red-50 px-3 text-xs font-bold text-red-700 transition-colors hover:bg-red-100 dark:border-red-300/20 dark:bg-red-500/10 dark:text-red-200 dark:hover:bg-red-500/20"
+                  >
+                    <Trash size={13} />
+                    删除组
+                  </button>
+                </div>
               </div>
 
               <div className="mb-4 flex flex-col gap-2 sm:flex-row">
@@ -311,5 +375,49 @@ export default function CustomTagLibraryView({ groups, syncStatus, onSave }: Cus
         </main>
       </div>
     </motion.section>
+    <AnimatePresence>
+      {groupToDelete ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setGroupToDelete(null)}
+            className="absolute inset-0 bg-stone-900/45 backdrop-blur-sm"
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            className="relative z-10 w-full max-w-sm rounded-2xl border border-stone-200 bg-stone-100 p-6 text-center shadow-xl dark:border-stone-800 dark:bg-stone-900"
+          >
+            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-200">
+              <Trash size={24} />
+            </div>
+            <h3 className="text-xl font-bold text-stone-800 dark:text-stone-100">删除标签组？</h3>
+            <p className="mt-2 text-sm leading-relaxed text-stone-500 dark:text-stone-400">
+              「{groupToDelete.name}」中的 {groupToDelete.terms.length} 个标签词也会一并移除。
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setGroupToDelete(null)}
+                className="flex-1 rounded-xl bg-stone-200 py-2.5 font-medium text-stone-600 transition hover:bg-stone-300 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeleteGroup()}
+                className="flex-1 rounded-xl bg-red-500 py-2.5 font-medium text-white transition hover:bg-red-600"
+              >
+                删除
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
+    </AnimatePresence>
+    </>
   );
 }

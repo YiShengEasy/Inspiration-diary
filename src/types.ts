@@ -68,6 +68,7 @@ export interface PaginatedBookCardsResult {
 export interface CustomTagGroup {
   id: string;
   name: string;
+  enabled: boolean;
   terms: string[];
   createdAt: number;
   updatedAt: number;

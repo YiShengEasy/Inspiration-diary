@@ -33,7 +33,7 @@ import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
 import { loadBooks, loadCardBookMembership, setCardBookMembership } from "./lib/booksClient";
 import { findBestBookSuggestion, type BookSuggestionMatch } from "./lib/bookSuggestion";
-import { CUSTOM_TAG_LIBRARY_SETTINGS_KEY, flattenCustomTagGroups, normalizeCustomTagGroups } from "./lib/customTagLibrary";
+import { CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY, CUSTOM_TAG_LIBRARY_SETTINGS_KEY, flattenEnabledCustomTagGroups, normalizeCustomTagGroups } from "./lib/customTagLibrary";
 import Markdown from "react-markdown";
 
 const ALL_CARDS_PAGE_SIZE = 12;
@@ -72,6 +72,7 @@ export default function App() {
   const [mainView, setMainView] = useState<"board" | "books" | "tags">("board");
   const [bookRefreshToken, setBookRefreshToken] = useState<number>(0);
   const [customTagGroups, setCustomTagGroups] = useState<CustomTagGroup[]>([]);
+  const [customTagLibraryEnabled, setCustomTagLibraryEnabled] = useState<boolean>(true);
   const [customTagSyncStatus, setCustomTagSyncStatus] = useState<"clean" | "saving" | "error">("clean");
   const [zoomedCard, setZoomedCard] = useState<ImageCard | null>(null);
   const [isDetailBookPopoverOpen, setIsDetailBookPopoverOpen] = useState<boolean>(false);
@@ -228,6 +229,9 @@ export default function App() {
       }
       if (dbSettings[CUSTOM_TAG_LIBRARY_SETTINGS_KEY] !== undefined) {
         setCustomTagGroups(normalizeCustomTagGroups(dbSettings[CUSTOM_TAG_LIBRARY_SETTINGS_KEY]));
+      }
+      if (dbSettings[CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY] !== undefined) {
+        setCustomTagLibraryEnabled(dbSettings[CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY] !== "false");
       }
     }).catch((err) => console.error("Failed to load settings from DB:", err));
   }, [authUser]);
@@ -419,6 +423,17 @@ export default function App() {
       setCustomTagSyncStatus("error");
       throw err;
     }
+  };
+
+  const handleCustomTagLibraryEnabledChange = (enabled: boolean) => {
+    setCustomTagLibraryEnabled(enabled);
+    setCustomTagSyncStatus("saving");
+    saveSettings({ [CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY]: String(enabled) })
+      .then(() => setCustomTagSyncStatus("clean"))
+      .catch((err) => {
+        console.error("Failed to save custom tag library enabled setting:", err);
+        setCustomTagSyncStatus("error");
+      });
   };
 
   const handleSmartSuggestImagesChange = (enabled: boolean) => {
@@ -762,7 +777,7 @@ export default function App() {
           if (bookHints.length > 0) {
             analyzeForm.append("bookHints", JSON.stringify(bookHints));
           }
-          const customTagHints = flattenCustomTagGroups(customTagGroups);
+          const customTagHints = customTagLibraryEnabled ? flattenEnabledCustomTagGroups(customTagGroups) : [];
           if (customTagHints.length > 0) {
             analyzeForm.append("customTagHints", JSON.stringify(customTagHints));
           }
@@ -853,7 +868,7 @@ export default function App() {
 
       try {
         const bookHints = await loadSmartBookHints("md");
-        const customTagHints = flattenCustomTagGroups(customTagGroups);
+        const customTagHints = customTagLibraryEnabled ? flattenEnabledCustomTagGroups(customTagGroups) : [];
         const response = await authFetch("/api/summarize-md", {
           method: "POST",
           headers,
@@ -2022,8 +2037,10 @@ export default function App() {
         ) : (
           <CustomTagLibraryView
             groups={customTagGroups}
+            libraryEnabled={customTagLibraryEnabled}
             syncStatus={customTagSyncStatus}
             onSave={handleSaveCustomTagGroups}
+            onLibraryEnabledChange={handleCustomTagLibraryEnabledChange}
           />
         )}
       </div>
@@ -2278,7 +2295,7 @@ export default function App() {
               </button>
 
               {/* Left Column: Picture or Markdown document */}
-              <div className={`relative w-full shrink-0 overflow-hidden rounded-xl border border-stone-200 bg-stone-100 shadow-inner group/zoomimage dark:border-stone-800 dark:bg-stone-900 md:h-full md:min-h-0 ${zoomedCard.type === "md" ? "h-[58vh] md:w-3/4" : "h-[56vh] min-h-[300px] md:w-[72%]"}`}>
+              <div className={`relative w-full shrink-0 overflow-hidden rounded-xl border border-stone-200 bg-stone-100 shadow-inner group/zoomimage dark:border-stone-800 dark:bg-stone-900 md:h-full md:min-h-0 ${zoomedCard.type === "md" ? "h-[58vh] md:w-[68%]" : "h-[56vh] min-h-[300px] md:w-[66%]"}`}>
                 {zoomedCard.type === "md" ? (
                   <div className="w-full h-full overflow-y-auto p-6 md:p-10 bg-white dark:bg-stone-900 custom-scrollbar text-left text-sm md:text-base text-stone-800 dark:text-stone-100 shadow-inner break-words leading-relaxed [&_h1]:font-serif [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-stone-600 [&_a]:text-amber-600 [&_a]:underline [&_code]:rounded [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-amber-700 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-stone-950 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:text-stone-100 [&_img]:rounded-xl">
                     <Markdown>{zoomedCard.mdContent || ""}</Markdown>
@@ -2393,7 +2410,7 @@ export default function App() {
               </div>
 
               {/* Right Column: Key Details, Tag lists, info */}
-              <div className={`flex min-h-[360px] w-full flex-col overflow-hidden rounded-xl border border-stone-900/10 bg-[#fbf7ed]/45 dark:border-white/10 dark:bg-white/[0.035] md:h-full md:min-h-0 ${zoomedCard.type === "md" ? "md:w-1/4" : "md:w-[28%]"}`}>
+              <div className={`flex min-h-[360px] w-full flex-col overflow-hidden rounded-xl border border-stone-900/10 bg-[#fbf7ed]/45 dark:border-white/10 dark:bg-white/[0.035] md:h-full md:min-h-0 ${zoomedCard.type === "md" ? "md:w-[32%]" : "md:w-[34%]"}`}>
                 <div className="shrink-0 border-b border-dashed border-amber-900/15 px-3 pb-3 pt-1 pr-11 dark:border-amber-100/10 md:px-1 md:pb-3 md:pt-1 md:pr-9">
                   {/* Title / Mood heading */}
                   <div className="flex items-start justify-between gap-3">
@@ -2444,18 +2461,18 @@ export default function App() {
                     <h4 className="text-xs font-serif font-bold italic text-stone-600 dark:text-stone-300 mb-2.5">
                       创意 / 灵感 关键词：
                     </h4>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1">
                       {zoomedCard.terms.map((term, index) => (
                         <div
                           key={`${term}-${index}`}
                           onClick={() => {
                             navigator.clipboard.writeText(term);
                           }}
-                          className="group inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-200/50 dark:border-amber-900/30 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                          className="group inline-flex max-w-full items-center gap-1 rounded-[5px] border border-amber-200/50 bg-amber-50 px-2 py-0.5 text-[11px] font-medium leading-5 text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-900/30 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/40"
                           title="点击复制关键词"
                         >
                           <span className="select-all">{term}</span>
-                          <Copy size={9} className="opacity-40 group-hover:opacity-100 flex-shrink-0" />
+                            <Copy size={8} className="flex-shrink-0 opacity-40 group-hover:opacity-100" />
                         </div>
                       ))}
                       {zoomedCard.terms.length === 0 && (
@@ -2526,10 +2543,10 @@ export default function App() {
                     {zoomedCard.videoAssets && zoomedCard.videoAssets.length > 0 ? (
                       <div className="space-y-2">
                         {zoomedCard.videoAssets.map((video) => (
-                          <div key={video.id} className="grid gap-2 rounded-[8px] border border-stone-900/10 bg-white/65 p-2 dark:border-white/10 dark:bg-white/[0.05] lg:grid-cols-[112px_minmax(0,1fr)]">
+                          <div key={video.id} className="rounded-[8px] border border-stone-900/10 bg-white/65 p-2 dark:border-white/10 dark:bg-white/[0.05]">
                             <video
                               src={video.videoUrl}
-                              className="aspect-video w-full rounded-[6px] bg-stone-950 object-contain lg:w-28"
+                              className="mb-2 aspect-video max-h-40 min-h-[128px] w-full rounded-[6px] bg-stone-950 object-contain"
                               controls
                               playsInline
                               preload="metadata"

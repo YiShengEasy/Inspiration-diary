@@ -1,12 +1,14 @@
 import type { CustomTagGroup } from "../types";
 
 export const CUSTOM_TAG_LIBRARY_SETTINGS_KEY = "custom_tag_library";
+export const CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY = "custom_tag_library_enabled";
 
 export function createCustomTagGroup(name = "新标签组"): CustomTagGroup {
   const now = Date.now();
   return {
     id: `tag_group_${now}_${Math.random().toString(36).slice(2, 8)}`,
     name,
+    enabled: true,
     terms: [],
     createdAt: now,
     updatedAt: now,
@@ -63,6 +65,7 @@ export function normalizeCustomTagGroups(value: unknown): CustomTagGroup[] {
           ? record.id
           : `tag_group_${now}_${Math.random().toString(36).slice(2, 8)}`,
         name,
+        enabled: record.enabled !== false,
         terms,
         createdAt: Number(record.createdAt) || now,
         updatedAt: Number(record.updatedAt) || now,
@@ -87,4 +90,8 @@ export function flattenCustomTagGroups(groups: CustomTagGroup[]): string[] {
   });
 
   return terms.slice(0, 200);
+}
+
+export function flattenEnabledCustomTagGroups(groups: CustomTagGroup[]): string[] {
+  return flattenCustomTagGroups(groups.filter((group) => group.enabled !== false));
 }
