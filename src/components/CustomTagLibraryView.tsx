@@ -143,21 +143,23 @@ export default function CustomTagLibraryView({ groups, libraryEnabled, syncStatu
               维护你自己的设计词、材质词、风格词和情绪词。后续图片与 Markdown 识别会优先参考这些词，但不会强行套用无关标签。
             </p>
           </div>
-          <div className="flex flex-col gap-2 rounded-[8px] border border-stone-900/10 bg-white/55 px-3 py-2 text-xs font-semibold text-stone-600 dark:border-white/10 dark:bg-white/[0.06] dark:text-stone-300">
+          <div className="flex min-w-[220px] flex-col gap-2 rounded-[8px] border border-stone-900/10 bg-white/55 px-3 py-2 text-xs font-semibold text-stone-600 dark:border-white/10 dark:bg-white/[0.06] dark:text-stone-300">
             <button
               type="button"
               onClick={() => onLibraryEnabledChange(!libraryEnabled)}
-              className="flex items-center justify-between gap-3 text-left"
+              className={`flex h-10 items-center justify-between gap-3 rounded-[7px] border px-3 text-left font-bold shadow-sm transition-all active:scale-[0.98] ${
+                libraryEnabled
+                  ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-200/30 dark:bg-amber-200/10 dark:text-amber-100 dark:hover:bg-amber-200/15"
+                  : "border-stone-900/10 bg-stone-200 text-stone-600 dark:border-white/10 dark:bg-stone-800 dark:text-stone-300"
+              }`}
               aria-pressed={libraryEnabled}
               title={libraryEnabled ? "关闭标签库参与 AI 识别" : "开启标签库参与 AI 识别"}
             >
               <span className="inline-flex items-center gap-2">
-                {syncStatus === "saving" ? <Loader2 size={13} className="animate-spin" /> : <Library size={13} />}
-                {libraryEnabled ? "词库已启用" : "词库已关闭"}
+                {syncStatus === "saving" ? <Loader2 size={14} className="animate-spin" /> : <span className={`h-2.5 w-2.5 rounded-full ${libraryEnabled ? "bg-emerald-500" : "bg-stone-400"}`} />}
+                {libraryEnabled ? "启用中" : "已关闭"}
               </span>
-              <span className={`relative h-5 w-9 rounded-full transition-colors ${libraryEnabled ? "bg-stone-900 dark:bg-amber-200" : "bg-stone-300 dark:bg-stone-700"}`}>
-                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${libraryEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
-              </span>
+              <Library size={14} />
             </button>
             <div className="font-mono text-[10px] text-stone-500 dark:text-stone-500">
               {effectiveTermCount} / {allTerms.length} 个词参与识别
@@ -202,7 +204,7 @@ export default function CustomTagLibraryView({ groups, libraryEnabled, syncStatu
             <button
               type="button"
               onClick={handleCreateGroup}
-              className="grid h-9 w-9 place-items-center rounded-[6px] bg-stone-900 text-[#fbf7ed] transition-all hover:bg-stone-800 dark:bg-amber-200 dark:text-stone-950"
+              className="grid h-9 w-9 place-items-center rounded-[6px] border border-amber-300 bg-amber-50 text-amber-800 transition-all hover:bg-amber-100 dark:border-amber-200/30 dark:bg-amber-200/10 dark:text-amber-100"
               title="新建标签组"
             >
               <Plus size={14} />
@@ -215,8 +217,12 @@ export default function CustomTagLibraryView({ groups, libraryEnabled, syncStatu
                 key={group.id}
                 className={`flex w-full items-center gap-2 rounded-[8px] border p-2 transition-all ${
                   selectedGroup?.id === group.id
-                    ? "border-stone-900/20 bg-white/70 shadow-[0_14px_32px_rgba(68,64,60,0.12)] dark:border-amber-200/45 dark:bg-amber-200/12"
-                    : "border-stone-900/8 bg-white/35 hover:border-stone-900/16 hover:bg-white/55 dark:border-white/8 dark:bg-white/[0.04]"
+                    ? group.enabled !== false
+                      ? "border-stone-900/25 bg-white/80 shadow-[0_14px_32px_rgba(68,64,60,0.12)] dark:border-amber-200/45 dark:bg-amber-200/12"
+                      : "border-stone-900/10 bg-stone-200/65 opacity-80 dark:border-white/10 dark:bg-white/[0.04]"
+                    : group.enabled !== false
+                      ? "border-stone-900/8 bg-white/35 hover:border-stone-900/16 hover:bg-white/55 dark:border-white/8 dark:bg-white/[0.04]"
+                      : "border-stone-900/5 bg-stone-200/45 opacity-70 hover:opacity-90 dark:border-white/5 dark:bg-white/[0.025]"
                 }`}
               >
                 <button
@@ -227,7 +233,8 @@ export default function CustomTagLibraryView({ groups, libraryEnabled, syncStatu
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <div className="truncate text-sm font-bold text-stone-900 dark:text-stone-100">{group.name}</div>
-                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${group.enabled !== false ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200" : "bg-stone-200 text-stone-500 dark:bg-white/10 dark:text-stone-500"}`}>
+                      <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${group.enabled !== false ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200" : "bg-stone-300 text-stone-600 dark:bg-white/10 dark:text-stone-500"}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${group.enabled !== false ? "bg-emerald-500" : "bg-stone-500"}`} />
                         {group.enabled !== false ? "启用" : "关闭"}
                       </span>
                     </div>
@@ -237,12 +244,16 @@ export default function CustomTagLibraryView({ groups, libraryEnabled, syncStatu
                 <button
                   type="button"
                   onClick={() => void handleToggleGroupEnabled(group.id, group.enabled === false)}
-                  className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${group.enabled !== false ? "bg-stone-900 dark:bg-amber-200" : "bg-stone-300 dark:bg-stone-700"}`}
+                  className={`inline-flex h-8 shrink-0 items-center justify-center rounded-[6px] border px-2.5 text-[11px] font-bold transition-all active:scale-95 ${
+                    group.enabled !== false
+                      ? "border-amber-300 bg-amber-50 text-amber-800 shadow-sm hover:bg-amber-100 dark:border-amber-200/30 dark:bg-amber-200/10 dark:text-amber-100"
+                      : "border-stone-900/10 bg-stone-200 text-stone-600 hover:bg-stone-300 dark:border-white/10 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700"
+                  }`}
                   title={group.enabled !== false ? "关闭这个标签组" : "启用这个标签组"}
                   aria-label={group.enabled !== false ? `关闭标签组 ${group.name}` : `启用标签组 ${group.name}`}
                   aria-pressed={group.enabled !== false}
                 >
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${group.enabled !== false ? "translate-x-4" : "translate-x-0.5"}`} />
+                  {group.enabled !== false ? "启用中" : "已关闭"}
                 </button>
               </div>
             ))}
@@ -281,13 +292,14 @@ export default function CustomTagLibraryView({ groups, libraryEnabled, syncStatu
                   <button
                     type="button"
                     onClick={() => void handleToggleGroupEnabled(selectedGroup.id, selectedGroup.enabled === false)}
-                    className={`inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border px-3 text-xs font-bold transition-colors ${
+                    className={`inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border px-3 text-xs font-bold shadow-sm transition-all active:scale-95 ${
                       selectedGroup.enabled !== false
-                        ? "border-emerald-900/15 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-300/20 dark:bg-emerald-500/10 dark:text-emerald-200"
-                        : "border-stone-900/10 bg-stone-100 text-stone-600 hover:bg-stone-200 dark:border-white/10 dark:bg-white/[0.06] dark:text-stone-300"
+                        ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-200/30 dark:bg-amber-200/10 dark:text-amber-100"
+                        : "border-stone-900/10 bg-stone-200 text-stone-600 hover:bg-stone-300 dark:border-white/10 dark:bg-stone-800 dark:text-stone-300"
                     }`}
                   >
-                    {selectedGroup.enabled !== false ? "已启用" : "已关闭"}
+                    <span className={`h-2 w-2 rounded-full ${selectedGroup.enabled !== false ? "bg-emerald-500" : "bg-stone-500"}`} />
+                    {selectedGroup.enabled !== false ? "启用中" : "已关闭"}
                   </button>
                   <button
                     type="button"
@@ -310,7 +322,7 @@ export default function CustomTagLibraryView({ groups, libraryEnabled, syncStatu
                 <button
                   type="button"
                   onClick={handleAddTerms}
-                  className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-[6px] bg-stone-900 px-4 text-sm font-bold text-[#fbf7ed] transition-all hover:bg-stone-800 dark:bg-amber-200 dark:text-stone-950 dark:hover:bg-amber-100 sm:w-32"
+                  className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-[6px] border border-amber-300 bg-amber-50 px-4 text-sm font-bold text-amber-800 transition-all hover:bg-amber-100 dark:border-amber-200/30 dark:bg-amber-200/10 dark:text-amber-100 dark:hover:bg-amber-200/15 sm:w-32"
                 >
                   <Plus size={14} />
                   添加
