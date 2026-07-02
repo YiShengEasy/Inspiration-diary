@@ -14,6 +14,7 @@ interface InspirationBooksViewProps {
   onBookMembershipChanged: () => void;
   onUploadImageToBook: (bookId: string, originalFile: File, analysisBlob?: Blob) => Promise<void>;
   onUploadMdToBook: (bookId: string, text: string, filename: string) => Promise<void>;
+  onUploadVideoToBook: (bookId: string, file: File) => Promise<void>;
 }
 
 const BOOK_CARDS_PAGE_SIZE = 12;
@@ -40,6 +41,7 @@ export default function InspirationBooksView({
   onBookMembershipChanged,
   onUploadImageToBook,
   onUploadMdToBook,
+  onUploadVideoToBook,
 }: InspirationBooksViewProps) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [books, setBooks] = useState<InspirationBook[]>([]);
@@ -284,6 +286,10 @@ export default function InspirationBooksView({
   };
 
   const isImageFile = (file: File) => file.type.startsWith("image/");
+  const isVideoFile = (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    return file.type.startsWith("video/") || lowerName.endsWith(".mp4") || lowerName.endsWith(".mov") || lowerName.endsWith(".webm");
+  };
 
   const updateBatchProgress = (updater: (current: BatchStatus) => BatchStatus) => {
     setBatchStatus((current) => {
@@ -366,6 +372,13 @@ export default function InspirationBooksView({
     });
   };
 
+  const processBookVideoFile = async (bookId: string, file: File) => {
+    if (!isVideoFile(file)) {
+      throw new Error("不支持的视频文件。");
+    }
+    await onUploadVideoToBook(bookId, file);
+  };
+
   const processBookFiles = async (fileList: FileList | File[]) => {
     if (!selectedBook) return;
     const bookId = selectedBook.id;
@@ -390,6 +403,8 @@ export default function InspirationBooksView({
           await processBookImageFile(bookId, file);
         } else if (isMarkdownFile(file)) {
           await processBookMdFile(bookId, file);
+        } else if (isVideoFile(file)) {
+          await processBookVideoFile(bookId, file);
         } else {
           throw new Error("不支持的文件类型。");
         }
@@ -688,7 +703,7 @@ export default function InspirationBooksView({
               <input
                 ref={uploadInputRef}
                 type="file"
-                accept="image/*,.md,text/markdown"
+                accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.md,text/markdown"
                 multiple
                 onChange={handleUploadInputChange}
                 className="hidden"

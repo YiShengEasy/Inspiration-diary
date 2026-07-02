@@ -12,6 +12,7 @@ interface DaySlotProps {
   cards: ImageCard[];
   onUploadImage: (dayIndex: number, originalFile: File, analysisBlob?: Blob) => Promise<void>;
   onUploadMd?: (dayIndex: number, text: string, filename: string) => Promise<void>;
+  onUploadVideo?: (dayIndex: number, file: File) => Promise<void>;
   onDeleteCard: (id: string) => void;
   onDeleteTerm: (cardId: string, termIndex: number) => void;
   onZoom: (card: ImageCard) => void;
@@ -42,6 +43,7 @@ export default function DaySlot({
   cards,
   onUploadImage,
   onUploadMd,
+  onUploadVideo,
   onDeleteCard,
   onDeleteTerm,
   onZoom,
@@ -94,6 +96,10 @@ export default function DaySlot({
   };
 
   const isImageFile = (file: File) => file.type.startsWith("image/");
+  const isVideoFile = (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    return file.type.startsWith("video/") || lowerName.endsWith(".mp4") || lowerName.endsWith(".mov") || lowerName.endsWith(".webm");
+  };
 
   const updateBatchProgress = (updater: (current: BatchStatus) => BatchStatus) => {
     setBatchStatus((current) => {
@@ -117,6 +123,16 @@ export default function DaySlot({
     }
 
     await onUploadMd(dayIndex, text, file.name);
+  };
+
+  const processVideoFileCore = async (file: File) => {
+    if (!isVideoFile(file)) {
+      throw new Error("不支持的视频文件。");
+    }
+    if (!onUploadVideo) {
+      throw new Error("当前页面不支持视频导入。");
+    }
+    await onUploadVideo(dayIndex, file);
   };
 
   // Store the original image, but keep a smaller copy for AI analysis payloads.
@@ -221,6 +237,8 @@ export default function DaySlot({
             await processImageFileCore(file);
           } else if (isMarkdownFile(file)) {
             await processMdFileCore(file);
+          } else if (isVideoFile(file)) {
+            await processVideoFileCore(file);
           } else {
             throw new Error("不支持的文件类型。");
           }
@@ -333,7 +351,7 @@ export default function DaySlot({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,.md,text/markdown"
+        accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.md,text/markdown"
         multiple
         onChange={handleFileChange}
         className="hidden"

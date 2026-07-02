@@ -10,11 +10,26 @@ export interface ImageCard {
   decoType: "tape" | "pin" | "paperclip" | "washi";
   angle: number; // Random value from -3 to 3 for polaroid tilt styling
   createdAt: number;
-  type?: "image" | "md";
+  type?: "image" | "md" | "video";
   mdContent?: string;
   mdSummary?: string;
   mdName?: string;
   insightNote?: string;
+  videoAssets?: VideoAsset[];
+}
+
+export interface VideoAsset {
+  id: string;
+  cardId: string;
+  storageProvider: "local" | "oss" | string;
+  storageKey: string;
+  videoUrl: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  durationMs: number;
+  posterUrl?: string;
+  createdAt: number;
 }
 
 export interface WeeklyNote {

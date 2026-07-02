@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { FileVideo, X } from "lucide-react";
 import { MasonryGrid } from "./ui/masonry-grid";
 import { ImageCard } from "../types";
 import { motion, AnimatePresence } from "motion/react";
@@ -81,6 +81,13 @@ export function WeeklyPreviewModal({ cards, onClose, weekRangeStr }: WeeklyPrevi
                         <p className="text-xs leading-relaxed text-stone-500 dark:text-stone-400">
                           {card.mdSummary || card.mdContent || "点击卡片查看完整手稿。"}
                         </p>
+                      </div>
+                    ) : card.type === "video" ? (
+                      <div className="flex min-h-48 flex-col items-center justify-center gap-3 bg-stone-950 p-5 text-white">
+                        <FileVideo size={34} className="text-amber-200" />
+                        <span className="max-w-full truncate text-xs font-semibold">
+                          {card.videoAssets?.[0]?.originalName || "视频灵感"}
+                        </span>
                       </div>
                     ) : (
                       <img

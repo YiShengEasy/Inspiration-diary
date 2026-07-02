@@ -1,6 +1,8 @@
 import express from "express";
 import crypto from "crypto";
 import path from "path";
+import fs from "fs/promises";
+import fsSync from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -15,10 +17,20 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const MAX_VIDEO_UPLOAD_BYTES = Number.parseInt(process.env.MAX_VIDEO_UPLOAD_BYTES || String(100 * 1024 * 1024), 10);
+const VIDEO_UPLOAD_ROOT = process.env.VIDEO_UPLOAD_ROOT || path.join(process.cwd(), "uploads", "videos");
+const SUPPORTED_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 25 * 1024 * 1024,
+    files: 1,
+  },
+});
+const videoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_VIDEO_UPLOAD_BYTES,
     files: 1,
   },
 });
@@ -121,6 +133,26 @@ function buildCustomTagHintPrompt(hints: string[]): string {
   return ` The user maintains this custom tag library: ${hints.join("；")}. If the content is genuinely related, prefer exact terms from this library or generate very close variants. Do not force unrelated custom tags.`;
 }
 
+function getVideoExtension(filename: string, mimeType: string): string {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".mov")) return "mov";
+  if (lower.endsWith(".webm")) return "webm";
+  if (lower.endsWith(".mp4")) return "mp4";
+  if (mimeType === "video/quicktime") return "mov";
+  if (mimeType === "video/webm") return "webm";
+  return "mp4";
+}
+
+function sanitizeStorageSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function storageKeyToLocalPath(storageKey: string): string {
+  const normalized = path.normalize(storageKey).replace(/^(\.\.(\/|\\|$))+/, "");
+  const relativeKey = normalized.replace(/^videos[\/\\]/, "");
+  return path.join(VIDEO_UPLOAD_ROOT, relativeKey);
+}
+
 function getRequestOrigin(req: express.Request): string {
   const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
   const proto = forwardedProto || req.protocol || "http";
@@ -192,6 +224,28 @@ function signedImageUrl(value: string | null | undefined, req: express.Request):
   return url.toString();
 }
 
+function mapVideoAssetRow(row: any, req: express.Request) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    cardId: row.card_id || "",
+    storageProvider: row.storage_provider || "local",
+    storageKey: row.storage_key || "",
+    videoUrl: absoluteUrl(`/api/videos/${encodeURIComponent(row.id)}`, req),
+    originalName: row.original_name || "video",
+    mimeType: row.mime_type || "video/mp4",
+    sizeBytes: Number(row.size_bytes || 0),
+    durationMs: Number(row.duration_ms || 0),
+    posterUrl: row.poster_url || "",
+    createdAt: Number(row.created_at || 0),
+  };
+}
+
+function mapVideoAssetsValue(value: any, req: express.Request) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => mapVideoAssetRow(item, req)).filter(Boolean);
+}
+
 function mapCardRows(rows: any[], req: express.Request) {
   return rows.map((row) => ({
     id: row.id,
@@ -210,6 +264,7 @@ function mapCardRows(rows: any[], req: express.Request) {
     mdSummary: row.md_summary || "",
     mdName: row.md_name || "",
     insightNote: row.insight_note || "",
+    videoAssets: mapVideoAssetsValue(row.video_assets, req),
   }));
 }
 
@@ -346,6 +401,23 @@ if (dbType === "postgres" || process.env.DATABASE_URL) {
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_summary TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_name VARCHAR(255);");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS insight_note TEXT;");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS video_assets (
+            id VARCHAR(80) PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            card_id VARCHAR(50) REFERENCES cards(id) ON DELETE CASCADE,
+            storage_provider VARCHAR(20) NOT NULL DEFAULT 'local',
+            storage_key TEXT NOT NULL,
+            original_name TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            size_bytes BIGINT NOT NULL,
+            duration_ms BIGINT DEFAULT 0,
+            poster_url TEXT,
+            created_at BIGINT NOT NULL
+          );
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_video_assets_user_card ON video_assets(user_id, card_id, created_at DESC);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_video_assets_storage_key ON video_assets(storage_provider, storage_key);");
         await client.query("UPDATE cards SET terms_text = CONCAT_WS(' ', array_to_string(terms, ' '), md_name, md_summary, insight_note) WHERE terms_text IS NULL OR terms_text = '';");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_created_at_desc ON cards (created_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_week_created_at ON cards (week_id, created_at);");
@@ -791,6 +863,121 @@ app.post("/api/store-image", requirePostgresAuth, upload.single("image"), async 
   } catch (error: any) {
     console.error("PhotoPrism image storage error:", error);
     return res.status(400).json({ error: error.message || "PhotoPrism image storage failed." });
+  }
+});
+
+app.post("/api/videos/upload", requirePostgresAuth, videoUpload.single("video"), async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  const authReq = req as AuthenticatedRequest;
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: "Missing video upload." });
+  }
+  if (!SUPPORTED_VIDEO_MIME_TYPES.has(file.mimetype)) {
+    return res.status(400).json({ error: "仅支持 mp4、mov、webm 视频。" });
+  }
+  if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
+    return res.status(413).json({ error: `视频不能超过 ${Math.round(MAX_VIDEO_UPLOAD_BYTES / 1024 / 1024)}MB。` });
+  }
+
+  const userId = authReq.user!.id;
+  const now = Date.now();
+  const assetId = `video_${crypto.randomBytes(8).toString("hex")}_${now.toString(36)}`;
+  const extension = getVideoExtension(file.originalname || "", file.mimetype);
+  const storageKey = `videos/${sanitizeStorageSegment(userId)}/${assetId}.${extension}`;
+  const localPath = storageKeyToLocalPath(storageKey);
+  const cardIdInput = String(req.body.cardId || "").trim();
+  const shouldCreateCard = !cardIdInput;
+  const cardId = cardIdInput || String(req.body.newCardId || `card_${crypto.randomBytes(8).toString("hex")}_${now.toString(36)}`).trim();
+  const weekId = String(req.body.weekId || "").trim();
+  const dayIndex = Number.parseInt(String(req.body.dayIndex ?? "0"), 10);
+  const bookId = String(req.body.bookId || "").trim();
+
+  const client = await pgPool.connect();
+  try {
+    await fs.mkdir(path.dirname(localPath), { recursive: true });
+    await fs.writeFile(localPath, file.buffer);
+
+    await client.query("BEGIN");
+    if (shouldCreateCard) {
+      if (!weekId) {
+        await client.query("ROLLBACK");
+        await fs.unlink(localPath).catch(() => undefined);
+        return res.status(400).json({ error: "weekId is required for standalone video cards." });
+      }
+
+      await client.query(
+        `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note)
+         VALUES ($1, $2, $3, $4, '', '', '', '', $5, $6, 'paperclip', 0, $7, 'video', NULL, NULL, NULL, NULL)
+         ON CONFLICT (id)
+         DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, terms = EXCLUDED.terms,
+                       terms_text = EXCLUDED.terms_text, created_at = EXCLUDED.created_at, type = 'video'
+         WHERE cards.user_id = EXCLUDED.user_id`,
+        [cardId, userId, weekId, Number.isFinite(dayIndex) ? dayIndex : 0, ["视频灵感", "待整理"], "视频灵感 待整理", now]
+      );
+    } else {
+      const card = await client.query("SELECT id FROM cards WHERE id = $1 AND user_id = $2", [cardId, userId]);
+      if (card.rowCount === 0) {
+        await client.query("ROLLBACK");
+        await fs.unlink(localPath).catch(() => undefined);
+        return res.status(404).json({ error: "Card not found." });
+      }
+    }
+
+    const assetResult = await client.query(
+      `INSERT INTO video_assets (id, user_id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, created_at)
+       VALUES ($1, $2, $3, 'local', $4, $5, $6, $7, $8, '', $9)
+       RETURNING id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, created_at`,
+      [
+        assetId,
+        userId,
+        cardId,
+        storageKey,
+        file.originalname || `${assetId}.${extension}`,
+        file.mimetype,
+        file.size,
+        Number.parseInt(String(req.body.durationMs || "0"), 10) || 0,
+        now,
+      ]
+    );
+
+    if (bookId && shouldCreateCard) {
+      const book = await client.query("SELECT id FROM inspiration_books WHERE id = $1 AND user_id = $2", [bookId, userId]);
+      if (book.rowCount > 0) {
+        await client.query(
+          `INSERT INTO inspiration_book_cards (user_id, book_id, card_id, added_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (user_id, book_id, card_id) DO NOTHING`,
+          [userId, bookId, cardId, now]
+        );
+        await client.query("UPDATE inspiration_books SET updated_at = $1 WHERE id = $2 AND user_id = $3", [now, bookId, userId]);
+      }
+    }
+
+    const cardResult = await client.query(
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
+               FROM video_assets va
+               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets
+       FROM cards
+       WHERE id = $1 AND user_id = $2`,
+      [cardId, userId]
+    );
+
+    await client.query("COMMIT");
+    return res.json({
+      card: mapCardRows(cardResult.rows, req)[0],
+      video: mapVideoAssetRow(assetResult.rows[0], req),
+    });
+  } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    await fs.unlink(localPath).catch(() => undefined);
+    console.error("Video upload error:", err);
+    return res.status(500).json({ error: err.message || "Video upload failed." });
+  } finally {
+    client.release();
   }
 });
 
@@ -1524,7 +1711,10 @@ app.get("/api/db/books/:bookId/cards", requirePostgresAuth, async (req, res) => 
     const offsetParam = values.length;
     const cardsResult = await pgPool.query(
       `SELECT c.id, c.week_id, c.day_index, c.image_url, c.thumbnail_url, c.photo_uid, c.photo_hash,
-              c.terms, c.deco_type, c.angle, c.created_at, c.type, c.md_content, c.md_summary, c.md_name, c.insight_note
+              c.terms, c.deco_type, c.angle, c.created_at, c.type, c.md_content, c.md_summary, c.md_name, c.insight_note,
+              (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
+               FROM video_assets va
+               WHERE va.user_id = c.user_id AND va.card_id = c.id) AS video_assets
        FROM inspiration_book_cards bc
        INNER JOIN cards c ON c.id = bc.card_id AND c.user_id = $1
        WHERE bc.user_id = $1 AND bc.book_id = $2 ${searchSql}
@@ -1646,7 +1836,10 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
 
     if (weekId && weekId !== "all") {
       const result = await pgPool.query(
-        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note
+        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+                (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
+                 FROM video_assets va
+                 WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets
          FROM cards
          WHERE user_id = $1 AND week_id = $2
          ORDER BY day_index ASC, created_at DESC`,
@@ -1681,7 +1874,10 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const offsetParam = values.length;
 
     const result = await pgPool.query(
-      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
+               FROM video_assets va
+               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets
        FROM cards
        ${whereSql}
        ORDER BY created_at DESC
@@ -1760,7 +1956,10 @@ app.get("/api/db/cards/:id", requirePostgresAuth, async (req: AuthenticatedReque
   try {
     const result = await pgPool.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
-              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
+               FROM video_assets va
+               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets
        FROM cards
        WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user!.id]
@@ -1772,6 +1971,104 @@ app.get("/api/db/cards/:id", requirePostgresAuth, async (req: AuthenticatedReque
   } catch (err: any) {
     console.error("Error fetching card detail:", err);
     return res.status(500).json({ error: err.message || "Failed to fetch card detail" });
+  }
+});
+
+app.get("/api/db/cards/:id/videos", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const card = await pgPool.query("SELECT id FROM cards WHERE id = $1 AND user_id = $2", [req.params.id, req.user!.id]);
+    if (card.rowCount === 0) {
+      return res.status(404).json({ error: "Card not found" });
+    }
+    const result = await pgPool.query(
+      `SELECT id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, created_at
+       FROM video_assets
+       WHERE card_id = $1 AND user_id = $2
+       ORDER BY created_at DESC`,
+      [req.params.id, req.user!.id]
+    );
+    return res.json(result.rows.map((row) => mapVideoAssetRow(row, req)));
+  } catch (err: any) {
+    console.error("Error fetching card videos:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch card videos" });
+  }
+});
+
+app.get("/api/videos/:videoId", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const result = await pgPool.query(
+      `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
+       FROM video_assets
+       WHERE id = $1 AND user_id = $2`,
+      [req.params.videoId, req.user!.id]
+    );
+    const asset = result.rows[0];
+    if (!asset) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+    if (asset.storage_provider !== "local") {
+      return res.status(501).json({ error: "OSS video delivery is not configured yet." });
+    }
+
+    const localPath = storageKeyToLocalPath(asset.storage_key);
+    const stat = await fs.stat(localPath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Content-Type", asset.mime_type || "video/mp4");
+    res.setHeader("Cache-Control", "private, max-age=300");
+
+    if (range) {
+      const match = range.match(/bytes=(\d*)-(\d*)/);
+      const start = match?.[1] ? Number.parseInt(match[1], 10) : 0;
+      const end = match?.[2] ? Number.parseInt(match[2], 10) : fileSize - 1;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= fileSize) {
+        res.setHeader("Content-Range", `bytes */${fileSize}`);
+        return res.status(416).end();
+      }
+      const safeEnd = Math.min(end, fileSize - 1);
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${start}-${safeEnd}/${fileSize}`);
+      res.setHeader("Content-Length", String(safeEnd - start + 1));
+      return fsSync.createReadStream(localPath, { start, end: safeEnd }).pipe(res);
+    }
+
+    res.setHeader("Content-Length", String(fileSize));
+    return fsSync.createReadStream(localPath).pipe(res);
+  } catch (err: any) {
+    console.error("Video stream error:", err);
+    return res.status(500).json({ error: err.message || "Video stream failed." });
+  }
+});
+
+app.delete("/api/videos/:videoId", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const result = await pgPool.query(
+      `DELETE FROM video_assets
+       WHERE id = $1 AND user_id = $2
+       RETURNING storage_provider, storage_key`,
+      [req.params.videoId, req.user!.id]
+    );
+    const asset = result.rows[0];
+    if (!asset) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+    if (asset.storage_provider === "local") {
+      await fs.unlink(storageKeyToLocalPath(asset.storage_key)).catch(() => undefined);
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Video delete error:", err);
+    return res.status(500).json({ error: err.message || "Video delete failed." });
   }
 });
 
@@ -1892,6 +2189,10 @@ app.delete("/api/db/cards/:id", requirePostgresAuth, async (req, res) => {
       "SELECT id FROM inspiration_books WHERE user_id = $1 AND cover_card_id = $2",
       [userId, req.params.id]
     );
+    const videoAssets = await client.query(
+      "SELECT storage_provider, storage_key FROM video_assets WHERE user_id = $1 AND card_id = $2",
+      [userId, req.params.id]
+    );
     const result = await client.query("DELETE FROM cards WHERE id = $1 AND user_id = $2", [req.params.id, userId]);
     if (result.rowCount === 0) {
       await client.query("ROLLBACK");
@@ -1917,6 +2218,11 @@ app.delete("/api/db/cards/:id", requirePostgresAuth, async (req, res) => {
       );
     }
     await client.query("COMMIT");
+    for (const asset of videoAssets.rows) {
+      if (asset.storage_provider === "local") {
+        await fs.unlink(storageKeyToLocalPath(asset.storage_key)).catch(() => undefined);
+      }
+    }
     return res.json({ success: true });
   } catch (err: any) {
     await client.query("ROLLBACK").catch(() => undefined);
@@ -2018,7 +2324,7 @@ app.post("/api/db/settings", requirePostgresAuth, async (req, res) => {
 app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (err instanceof multer.MulterError) {
     return res.status(413).json({
-      error: err.code === "LIMIT_FILE_SIZE" ? "图片过大，请压缩后重试" : err.message,
+      error: err.code === "LIMIT_FILE_SIZE" ? "文件过大，请压缩后重试" : err.message,
     });
   }
   return next(err);

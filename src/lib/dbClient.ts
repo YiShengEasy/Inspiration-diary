@@ -10,7 +10,7 @@ import {
   deleteDoc,
   updateDoc,
 } from "firebase/firestore";
-import { ImageCard, WeeklyNote } from "../types";
+import { ImageCard, type VideoAsset, WeeklyNote } from "../types";
 import { authFetch } from "./authClient";
 
 // Detect if we are in PostgreSQL Mode
@@ -294,6 +294,77 @@ export function createNewCardId(): string {
     return "card_" + Math.random().toString(36).substring(2, 15) + "_" + Date.now().toString(36);
   } else {
     return doc(collection(db, "cards")).id;
+  }
+}
+
+export const MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+export function isSupportedVideoFile(file: File): boolean {
+  const lowerName = file.name.toLowerCase();
+  return file.type === "video/mp4"
+    || file.type === "video/quicktime"
+    || file.type === "video/webm"
+    || lowerName.endsWith(".mp4")
+    || lowerName.endsWith(".mov")
+    || lowerName.endsWith(".webm");
+}
+
+export async function uploadVideoAsset(params: {
+  file: File;
+  cardId?: string;
+  newCardId?: string;
+  weekId?: string;
+  dayIndex?: number;
+  bookId?: string;
+  durationMs?: number;
+}): Promise<{ card: ImageCard; video: VideoAsset }> {
+  if (!isPostgresMode) {
+    throw new Error("当前存储模式不支持视频上传。");
+  }
+  if (!isSupportedVideoFile(params.file)) {
+    throw new Error("仅支持 mp4、mov、webm 视频。");
+  }
+  if (params.file.size > MAX_VIDEO_UPLOAD_BYTES) {
+    throw new Error("视频不能超过 100MB。");
+  }
+
+  const form = new FormData();
+  form.append("video", params.file, params.file.name || "video.mp4");
+  if (params.cardId) form.append("cardId", params.cardId);
+  if (params.newCardId) form.append("newCardId", params.newCardId);
+  if (params.weekId) form.append("weekId", params.weekId);
+  if (typeof params.dayIndex === "number") form.append("dayIndex", String(params.dayIndex));
+  if (params.bookId) form.append("bookId", params.bookId);
+  if (typeof params.durationMs === "number") form.append("durationMs", String(params.durationMs));
+
+  const res = await authFetch("/api/videos/upload", {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `视频上传失败：${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function loadCardVideos(cardId: string): Promise<VideoAsset[]> {
+  if (!isPostgresMode) return [];
+  const res = await authFetch(`/api/db/cards/${encodeURIComponent(cardId)}/videos`);
+  if (!res.ok) {
+    throw new Error(`视频列表加载失败：${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteVideoAsset(videoId: string): Promise<void> {
+  if (!isPostgresMode) return;
+  const res = await authFetch(`/api/videos/${encodeURIComponent(videoId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `视频删除失败：${res.statusText}`);
   }
 }
 

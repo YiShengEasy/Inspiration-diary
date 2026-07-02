@@ -14,6 +14,10 @@ import {
   loadSettings,
   saveSettings,
   loadAllCardsPage,
+  uploadVideoAsset,
+  MAX_VIDEO_UPLOAD_BYTES,
+  loadCardVideos,
+  deleteVideoAsset,
 } from "./lib/dbClient";
 import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
@@ -23,7 +27,7 @@ import CustomTagLibraryView from "./components/CustomTagLibraryView";
 import CardBookPopover from "./components/CardBookPopover";
 import LoginScreen from "./components/LoginScreen";
 import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText, Tags } from "lucide-react";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText, Tags, FileVideo, Upload } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
@@ -73,11 +77,14 @@ export default function App() {
   const [isDetailBookPopoverOpen, setIsDetailBookPopoverOpen] = useState<boolean>(false);
   const [detailInsightNote, setDetailInsightNote] = useState<string>("");
   const [detailInsightSaveStatus, setDetailInsightSaveStatus] = useState<"clean" | "saving" | "error">("clean");
+  const [isBindingVideo, setIsBindingVideo] = useState<boolean>(false);
+  const [videoBindError, setVideoBindError] = useState<string>("");
   const [imageZoomScale, setImageZoomScale] = useState<number>(1);
   const [imagePan, setImagePan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [imageViewMode, setImageViewMode] = useState<"fit" | "actual">("fit");
   const imagePanStartRef = useRef<{ pointerId: number; startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const detailVideoInputRef = useRef<HTMLInputElement>(null);
   const [isRefreshingCards, setIsRefreshingCards] = useState<boolean>(false);
   const [showWeeklyPreview, setShowWeeklyPreview] = useState<boolean>(false);
   const [cardToDelete, setCardToDelete] = useState<ImageCard | null>(null);
@@ -918,6 +925,52 @@ export default function App() {
     });
   };
 
+  const handleUploadVideo = async (dayIndex: number, file: File, options: UploadTargetOptions = {}) => {
+    if (!weekId && !options.targetWeekId) {
+      throw new Error("当前周信息还在加载，请稍后再上传视频。");
+    }
+    if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
+      throw new Error("视频不能超过 100MB。");
+    }
+
+    const targetWeekId = options.targetWeekId || weekId;
+    const result = await uploadVideoAsset({
+      file,
+      weekId: targetWeekId,
+      dayIndex,
+      bookId: options.targetBookId,
+    });
+
+    if (result.card.weekId === weekId) {
+      setCards((current) => {
+        const next = [result.card, ...current.filter((card) => card.id !== result.card.id)];
+        return next.sort((a, b) => {
+          if (a.dayIndex !== b.dayIndex) return a.dayIndex - b.dayIndex;
+          return b.createdAt - a.createdAt;
+        });
+      });
+    }
+    if (options.targetBookId) {
+      handleBookMembershipChanged();
+    }
+  };
+
+  const handleUploadVideoToBook = async (bookId: string, file: File) => {
+    const today = new Date();
+    await handleUploadVideo(getDayIndexForDate(today), file, {
+      targetWeekId: getWeekIdentifier(today),
+      targetBookId: bookId,
+    });
+  };
+
+  const handleBindVideoToCard = async (cardId: string, file: File) => {
+    if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
+      throw new Error("视频不能超过 100MB。");
+    }
+    const result = await uploadVideoAsset({ file, cardId });
+    syncCardVideoAssets(result.card);
+  };
+
   // Trigger deletion prompt before absolute card removal.
   const handleDeleteCard = (cardId: string) => {
     const card = cards.find((c) => c.id === cardId)
@@ -980,6 +1033,12 @@ export default function App() {
     setCards((current) => current.map((card) => card.id === cardId ? { ...card, insightNote } : card));
     setAllCardsPageCards((current) => current.map((card) => card.id === cardId ? { ...card, insightNote } : card));
     setZoomedCard((current) => current?.id === cardId ? { ...current, insightNote } : current);
+  }, []);
+
+  const syncCardVideoAssets = useCallback((card: ImageCard) => {
+    setCards((current) => current.map((item) => item.id === card.id ? card : item));
+    setAllCardsPageCards((current) => current.map((item) => item.id === card.id ? card : item));
+    setZoomedCard((current) => current?.id === card.id ? card : current);
   }, []);
 
   // Populate the active week with gorgeous design mock-up data cards and notes
@@ -1210,7 +1269,25 @@ export default function App() {
     setIsDetailBookPopoverOpen(false);
     setDetailInsightNote(zoomedCard?.insightNote || "");
     setDetailInsightSaveStatus("clean");
+    setVideoBindError("");
   }, [zoomedCard?.id]);
+
+  useEffect(() => {
+    if (!zoomedCard) return;
+    let alive = true;
+    loadCardVideos(zoomedCard.id)
+      .then((videoAssets) => {
+        if (!alive) return;
+        const nextCard = { ...zoomedCard, videoAssets };
+        syncCardVideoAssets(nextCard);
+      })
+      .catch((err) => {
+        console.warn("Failed to refresh card videos:", err);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [syncCardVideoAssets, zoomedCard?.id]);
 
   useEffect(() => {
     if (!zoomedCard) return;
@@ -1244,6 +1321,13 @@ export default function App() {
       .slice(0, 120) || "inspiration";
   };
 
+  const formatBytes = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB";
+    const mb = bytes / 1024 / 1024;
+    if (mb >= 1) return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
+    return `${(bytes / 1024).toFixed(0)} KB`;
+  };
+
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -1260,6 +1344,20 @@ export default function App() {
       const filename = sanitizeDownloadName(card.mdName || `${card.weekId}-${getDayLabelForDayIndex(card.dayIndex)}.md`);
       const safeFilename = filename.toLowerCase().endsWith(".md") ? filename : `${filename}.md`;
       downloadBlob(new Blob([card.mdContent || ""], { type: "text/markdown;charset=utf-8" }), safeFilename);
+      return;
+    }
+
+    if (card.type === "video") {
+      const primaryVideo = card.videoAssets?.[0];
+      if (!primaryVideo) {
+        throw new Error("当前视频卡没有可下载的视频文件。");
+      }
+      const response = await authFetch(primaryVideo.videoUrl);
+      if (!response.ok) {
+        throw new Error("视频下载失败，请稍后重试。");
+      }
+      const blob = await response.blob();
+      downloadBlob(blob, sanitizeDownloadName(primaryVideo.originalName || `${card.id}.mp4`));
       return;
     }
 
@@ -1280,6 +1378,37 @@ export default function App() {
           : "jpg";
     const filename = sanitizeDownloadName(`${card.weekId}-${getDayLabelForDayIndex(card.dayIndex)}-${card.id}.${extension}`);
     downloadBlob(blob, filename);
+  };
+
+  const handleDetailVideoInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (detailVideoInputRef.current) {
+      detailVideoInputRef.current.value = "";
+    }
+    if (!file || !zoomedCard) return;
+
+    setIsBindingVideo(true);
+    setVideoBindError("");
+    try {
+      await handleBindVideoToCard(zoomedCard.id, file);
+    } catch (err: any) {
+      setVideoBindError(err?.message || "视频绑定失败");
+    } finally {
+      setIsBindingVideo(false);
+    }
+  };
+
+  const handleDeleteBoundVideo = async (videoId: string) => {
+    if (!zoomedCard) return;
+    const confirmed = window.confirm("删除这个绑定视频？");
+    if (!confirmed) return;
+    try {
+      await deleteVideoAsset(videoId);
+      const videoAssets = await loadCardVideos(zoomedCard.id);
+      syncCardVideoAssets({ ...zoomedCard, videoAssets });
+    } catch (err: any) {
+      setVideoBindError(err?.message || "视频删除失败");
+    }
   };
 
   useEffect(() => {
@@ -1713,6 +1842,7 @@ export default function App() {
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 0)}
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
+                    onUploadVideo={handleUploadVideo}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1728,6 +1858,7 @@ export default function App() {
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 1)}
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
+                    onUploadVideo={handleUploadVideo}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1743,6 +1874,7 @@ export default function App() {
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 2)}
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
+                    onUploadVideo={handleUploadVideo}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1762,6 +1894,7 @@ export default function App() {
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 3)}
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
+                    onUploadVideo={handleUploadVideo}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1777,6 +1910,7 @@ export default function App() {
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 4)}
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
+                    onUploadVideo={handleUploadVideo}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1793,6 +1927,7 @@ export default function App() {
                     cards={filteredCards.filter((c) => c.weekId === weekId && c.dayIndex === 5)}
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
+                    onUploadVideo={handleUploadVideo}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1882,6 +2017,7 @@ export default function App() {
             onBookMembershipChanged={handleBookMembershipChanged}
             onUploadImageToBook={handleUploadImageToBook}
             onUploadMdToBook={handleUploadMdToBook}
+            onUploadVideoToBook={handleUploadVideoToBook}
           />
         ) : (
           <CustomTagLibraryView
@@ -2147,6 +2283,23 @@ export default function App() {
                   <div className="w-full h-full overflow-y-auto p-6 md:p-10 bg-white dark:bg-stone-900 custom-scrollbar text-left text-sm md:text-base text-stone-800 dark:text-stone-100 shadow-inner break-words leading-relaxed [&_h1]:font-serif [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-stone-600 [&_a]:text-amber-600 [&_a]:underline [&_code]:rounded [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-amber-700 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-stone-950 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:text-stone-100 [&_img]:rounded-xl">
                     <Markdown>{zoomedCard.mdContent || ""}</Markdown>
                   </div>
+                ) : zoomedCard.type === "video" ? (
+                  <div className="flex h-full w-full items-center justify-center bg-stone-950">
+                    {zoomedCard.videoAssets?.[0] ? (
+                      <video
+                        src={zoomedCard.videoAssets[0].videoUrl}
+                        className="h-full w-full object-contain"
+                        controls
+                        playsInline
+                        preload="metadata"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-3 text-stone-400">
+                        <FileVideo size={42} />
+                        <span className="text-sm">视频文件不存在或仍在加载。</span>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <>
                     <div
@@ -2219,7 +2372,7 @@ export default function App() {
                   </>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/5 pointer-events-none" />
-                {zoomedCard.type !== "md" && visibleCards.length > 1 && (
+                {zoomedCard.type !== "md" && zoomedCard.type !== "video" && visibleCards.length > 1 && (
                   <>
                     <button
                       onClick={handlePrevZoomedCard}
@@ -2250,7 +2403,11 @@ export default function App() {
                           ★ Captured Inspiration ★
                         </span>
                         <h3 className="font-serif font-bold text-lg text-stone-900 dark:text-stone-100 italic leading-tight">
-                          {zoomedCard.type === "md" ? (zoomedCard.mdName || "Markdown 手稿") : `${getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录`}
+                          {zoomedCard.type === "md"
+                            ? (zoomedCard.mdName || "Markdown 手稿")
+                            : zoomedCard.type === "video"
+                              ? (zoomedCard.videoAssets?.[0]?.originalName || "视频灵感")
+                              : `${getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录`}
                         </h3>
                       </div>
                       <div className="relative shrink-0">
@@ -2337,6 +2494,82 @@ export default function App() {
                       {detailInsightNote.length} / 4000
                     </div>
                   </div>
+
+                  <div>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h4 className="text-xs font-serif font-bold italic text-stone-600 dark:text-stone-300">
+                        绑定视频：
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => detailVideoInputRef.current?.click()}
+                        disabled={isBindingVideo}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-[6px] bg-stone-900 px-2.5 text-[11px] font-bold text-[#fbf7ed] transition-colors hover:bg-stone-800 disabled:cursor-wait disabled:opacity-60 dark:bg-amber-200 dark:text-stone-950"
+                      >
+                        {isBindingVideo ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                        上传
+                      </button>
+                      <input
+                        ref={detailVideoInputRef}
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+                        onChange={handleDetailVideoInputChange}
+                        className="hidden"
+                      />
+                    </div>
+                    {videoBindError ? (
+                      <div className="mb-2 rounded-[6px] border border-red-900/15 bg-red-50 px-2 py-1.5 text-[11px] font-semibold text-red-700 dark:border-red-300/20 dark:bg-red-500/10 dark:text-red-200">
+                        {videoBindError}
+                      </div>
+                    ) : null}
+                    {zoomedCard.videoAssets && zoomedCard.videoAssets.length > 0 ? (
+                      <div className="space-y-2">
+                        {zoomedCard.videoAssets.map((video) => (
+                          <div key={video.id} className="rounded-[8px] border border-stone-900/10 bg-white/55 p-2 dark:border-white/10 dark:bg-white/[0.05]">
+                            <video
+                              src={video.videoUrl}
+                              className="mb-2 aspect-video w-full rounded-[6px] bg-stone-950 object-contain"
+                              controls
+                              playsInline
+                              preload="metadata"
+                            />
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="truncate text-xs font-bold text-stone-800 dark:text-stone-100">{video.originalName}</div>
+                                <div className="mt-0.5 text-[10px] font-mono text-stone-500">{formatBytes(video.sizeBytes)}</div>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const response = await authFetch(video.videoUrl);
+                                    if (!response.ok) return;
+                                    downloadBlob(await response.blob(), sanitizeDownloadName(video.originalName || `${video.id}.mp4`));
+                                  }}
+                                  className="grid h-7 w-7 place-items-center rounded-full bg-stone-900/[0.06] text-stone-600 hover:bg-stone-900/[0.10] dark:bg-white/[0.08] dark:text-stone-300"
+                                  title="下载视频"
+                                >
+                                  <Download size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteBoundVideo(video.id)}
+                                  className="grid h-7 w-7 place-items-center rounded-full bg-red-500/10 text-red-700 hover:bg-red-500/20 dark:text-red-200"
+                                  title="删除绑定视频"
+                                >
+                                  <Trash size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-[8px] border border-dashed border-stone-900/15 px-3 py-4 text-center text-[11px] text-stone-500 dark:border-white/12 dark:text-stone-500">
+                        暂无绑定视频，可上传一个视频作为这张卡的补充素材。
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Footer instructions */}
@@ -2351,8 +2584,8 @@ export default function App() {
                         });
                       }}
                       className="grid h-9 w-9 place-items-center rounded-full border border-amber-900/15 bg-amber-100/70 text-amber-900 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-amber-200 active:scale-95 dark:border-amber-100/10 dark:bg-amber-300/15 dark:text-amber-100 dark:hover:bg-amber-300/25"
-                      title={zoomedCard.type === "md" ? "下载 Markdown 文件" : "下载原图"}
-                      aria-label={zoomedCard.type === "md" ? "下载 Markdown 文件" : "下载原图"}
+                      title={zoomedCard.type === "md" ? "下载 Markdown 文件" : zoomedCard.type === "video" ? "下载视频" : "下载原图"}
+                      aria-label={zoomedCard.type === "md" ? "下载 Markdown 文件" : zoomedCard.type === "video" ? "下载视频" : "下载原图"}
                     >
                       <Download size={15} />
                     </button>
