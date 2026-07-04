@@ -17,7 +17,9 @@ import { createImageAssetStorage, createVideoStorage, storePrimaryImage } from "
 
 dotenv.config();
 dotenv.config({
-  path: process.env.APP_ENV
+  path: process.env.APP_ENV_FILE
+    ? process.env.APP_ENV_FILE
+    : process.env.APP_ENV
     ? `.env.${process.env.APP_ENV}`
     : process.env.NODE_ENV === "production"
       ? ".env.production"
@@ -387,6 +389,10 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 const apiKey = process.env.GEMINI_API_KEY;
+const defaultThirdPartyBaseUrl = process.env.THIRD_PARTY_BASE_URL || process.env.OPENAI_COMPATIBLE_BASE_URL || "";
+const defaultThirdPartyApiKey = process.env.THIRD_PARTY_API_KEY || process.env.OPENAI_API_KEY || "";
+const defaultThirdPartyModel = process.env.THIRD_PARTY_MODEL || "doubao-seed-2.0-code";
+const defaultThirdPartyThinking = process.env.THIRD_PARTY_THINKING === "true";
 let ai: GoogleGenAI | null = null;
 if (apiKey) {
   ai = new GoogleGenAI({
@@ -397,8 +403,8 @@ if (apiKey) {
       }
     }
   });
-} else {
-  console.warn("GEMINI_API_KEY environment variable is not defined!");
+} else if (!defaultThirdPartyApiKey || !defaultThirdPartyBaseUrl) {
+  console.warn("No default AI provider is configured. Set THIRD_PARTY_BASE_URL and THIRD_PARTY_API_KEY, or configure AI settings in the app.");
 }
 
 // ==========================================
@@ -799,17 +805,18 @@ app.post("/api/analyze-image", requirePostgresAuth, upload.single("image"), asyn
 
     } else {
       // Check if custom base url is a third-party non-Google gateway
-      const isThirdParty = customGeminiBaseUrl && 
-        (!customGeminiBaseUrl.toLowerCase().includes("googleapis.com") && !customGeminiBaseUrl.toLowerCase().includes("google.com"));
+      const thirdPartyBaseUrl = (customGeminiBaseUrl || defaultThirdPartyBaseUrl).trim();
+      const isThirdParty = thirdPartyBaseUrl &&
+        (!thirdPartyBaseUrl.toLowerCase().includes("googleapis.com") && !thirdPartyBaseUrl.toLowerCase().includes("google.com"));
 
       if (isThirdParty) {
-        const activeApiKey = (customApiKey || apiKey || "").trim();
+        const activeApiKey = (customApiKey || defaultThirdPartyApiKey || apiKey || "").trim();
         if (!activeApiKey) {
           return res.status(400).json({ error: "Third-party API key is not defined. Please configure your API key in Settings." });
         }
 
-        const completionsUrl = getCompletionsUrl(customGeminiBaseUrl);
-        const selectedModel = (customModelName || "doubao-seed-2.0-code").trim();
+        const completionsUrl = getCompletionsUrl(thirdPartyBaseUrl);
+        const selectedModel = (customModelName || defaultThirdPartyModel).trim();
 
         console.log(`Routing image analysis via OpenAI/Third-party protocol to: ${completionsUrl} using model: ${selectedModel}`);
 
@@ -870,9 +877,10 @@ app.post("/api/analyze-image", requirePostgresAuth, upload.single("image"), asyn
 
         // Apply thinking mode based on user preference header
         const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
+        const effectiveThinkingEnabled = req.headers["x-thinking-enabled"] === undefined ? defaultThirdPartyThinking : thinkingEnabled;
         if (isArkOrDoubaoOrDeepseek && !isVolcengineResponsesFormat) {
           payload.thinking = {
-            type: thinkingEnabled ? "enabled" : "disabled"
+            type: effectiveThinkingEnabled ? "enabled" : "disabled"
           };
         }
 
@@ -1289,23 +1297,25 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
         return res.json(normalizeResult(doc.content?.[0]?.text || "{}"));
       }
 
-      const isThirdParty = customGeminiBaseUrl &&
-        (!customGeminiBaseUrl.toLowerCase().includes("googleapis.com") && !customGeminiBaseUrl.toLowerCase().includes("google.com"));
+      const thirdPartyBaseUrl = (customGeminiBaseUrl || defaultThirdPartyBaseUrl).trim();
+      const isThirdParty = thirdPartyBaseUrl &&
+        (!thirdPartyBaseUrl.toLowerCase().includes("googleapis.com") && !thirdPartyBaseUrl.toLowerCase().includes("google.com"));
 
       if (isThirdParty) {
-        const activeApiKey = (customApiKey || apiKey || "").trim();
+        const activeApiKey = (customApiKey || defaultThirdPartyApiKey || apiKey || "").trim();
         if (!activeApiKey) return res.json(fallback);
 
-        const completionsUrl = getCompletionsUrl(customGeminiBaseUrl);
-        const selectedModel = (customModelName || "doubao-seed-2.0-code").trim();
+        const completionsUrl = getCompletionsUrl(thirdPartyBaseUrl);
+        const selectedModel = (customModelName || defaultThirdPartyModel).trim();
         const payload: any = {
           model: selectedModel,
           messages: [{ role: "user", content: prompt }],
           max_tokens: 1200,
         };
         const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
+        const effectiveThinkingEnabled = req.headers["x-thinking-enabled"] === undefined ? defaultThirdPartyThinking : thinkingEnabled;
         if (isArkOrDoubaoOrDeepseek) {
-          payload.thinking = { type: thinkingEnabled ? "enabled" : "disabled" };
+          payload.thinking = { type: effectiveThinkingEnabled ? "enabled" : "disabled" };
         }
 
         const thirdPartyResponse = await fetch(completionsUrl, {
@@ -1367,6 +1377,7 @@ app.post("/api/test-model", requirePostgresAuth, async (req, res) => {
     const customApiKey = req.headers["x-api-key"] as string | undefined;
     const customModelName = req.headers["x-model-name"] as string | undefined;
     const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
+    const thinkingEnabled = req.headers["x-thinking-enabled"] === "true";
 
     // We will run a text test AND a vision test and return both statuses
     let textStatus = { ok: false, error: "", response: "" };
@@ -1468,23 +1479,25 @@ app.post("/api/test-model", requirePostgresAuth, async (req, res) => {
 
     } else {
       // Gemini or Third-party OpenAI provider
-      const activeApiKey = customApiKey || process.env.GEMINI_API_KEY;
-      const isThirdParty = customGeminiBaseUrl && 
-        (!customGeminiBaseUrl.toLowerCase().includes("googleapis.com") && !customGeminiBaseUrl.toLowerCase().includes("google.com"));
+      const thirdPartyBaseUrl = (customGeminiBaseUrl || defaultThirdPartyBaseUrl).trim();
+      const activeApiKey = customApiKey || defaultThirdPartyApiKey || process.env.GEMINI_API_KEY;
+      const isThirdParty = thirdPartyBaseUrl &&
+        (!thirdPartyBaseUrl.toLowerCase().includes("googleapis.com") && !thirdPartyBaseUrl.toLowerCase().includes("google.com"));
 
       if (isThirdParty) {
         if (!activeApiKey) {
           return res.status(400).json({ error: "Third-party API key is not configured." });
         }
 
-        const completionsUrl = getCompletionsUrl(customGeminiBaseUrl);
-        const selectedModel = (customModelName || "doubao-seed-2.0-code").trim();
+        const completionsUrl = getCompletionsUrl(thirdPartyBaseUrl);
+        const selectedModel = (customModelName || defaultThirdPartyModel).trim();
 
         console.log(`Running diagnostic tests via OpenAI/Third-party directly to: ${completionsUrl} using model: ${selectedModel}`);
 
         const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
         const isVolcengineResponsesFormat = completionsUrl.includes("/responses");
         const activeApiKeyTrimmed = (activeApiKey || "").trim();
+        const effectiveThinkingEnabled = req.headers["x-thinking-enabled"] === undefined ? defaultThirdPartyThinking : thinkingEnabled;
 
         // 1. Text test
         try {
@@ -1511,7 +1524,7 @@ app.post("/api/test-model", requirePostgresAuth, async (req, res) => {
               max_tokens: 50,
             };
             if (isArkOrDoubaoOrDeepseek) {
-              textPayload.thinking = { type: "disabled" };
+              textPayload.thinking = { type: effectiveThinkingEnabled ? "enabled" : "disabled" };
             }
           }
 
@@ -1581,7 +1594,7 @@ app.post("/api/test-model", requirePostgresAuth, async (req, res) => {
               max_tokens: 50,
             };
             if (isArkOrDoubaoOrDeepseek) {
-              visionPayload.thinking = { type: "disabled" };
+              visionPayload.thinking = { type: effectiveThinkingEnabled ? "enabled" : "disabled" };
             }
           }
 

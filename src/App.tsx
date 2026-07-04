@@ -119,7 +119,7 @@ export default function App() {
 
   // Custom AI parameter states
   const [customProvider, setCustomProvider] = useState<string>(() => {
-    return localStorage.getItem("custom_provider") || "gemini";
+    return localStorage.getItem("custom_provider") || "thirdparty";
   });
   const [customApiKey, setCustomApiKey] = useState<string>(() => {
     return localStorage.getItem("custom_gemini_api_key") || "";
@@ -146,7 +146,7 @@ export default function App() {
     return localStorage.getItem("custom_thirdparty_base_url") || "";
   });
   const [thirdPartyModel, setThirdPartyModel] = useState<string>(() => {
-    return localStorage.getItem("custom_thirdparty_model") || "";
+    return localStorage.getItem("custom_thirdparty_model") || "doubao-seed-2.0-code";
   });
   const [thirdPartyThinking, setThirdPartyThinking] = useState<boolean>(() => {
     return localStorage.getItem("custom_thirdparty_thinking") === "true";
@@ -828,7 +828,7 @@ export default function App() {
       }
     } catch (error: any) {
       console.error("Aesthetic extracting terms error:", error);
-      throw new Error(error.message || "Failed to parse terms with Gemini AI.");
+      throw new Error(error.message || "Failed to parse terms with the configured AI provider.");
     }
   };
 

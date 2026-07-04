@@ -2,11 +2,9 @@
 <img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
 </div>
 
-# Run and deploy your AI Studio app
+# Inspiration Diary
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/4fac7d8a-8766-4021-9c15-3411fbe6f652
+This repository contains the web app, backend API, and native WeChat mini program for Inspiration Diary.
 
 ## Run Locally
 
@@ -15,7 +13,7 @@ View your app in AI Studio: https://ai.studio/apps/4fac7d8a-8766-4021-9c15-3411f
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set the third-party AI API values in [.env.local](.env.local): `THIRD_PARTY_BASE_URL`, `THIRD_PARTY_API_KEY`, and `THIRD_PARTY_MODEL`
 3. Run the app:
    `npm run dev`
 
@@ -42,7 +40,7 @@ After local Docker starts, open:
 http://localhost:3005
 ```
 
-Production Docker uses `.env.production` and `docker-compose.production.yml`:
+Production uses `.env.production`, a host PostgreSQL database, and either a host Node process or the app-only production container:
 
 ```bash
 cp .env.production.example .env.production
@@ -57,6 +55,15 @@ Production should identify itself explicitly:
 ```env
 APP_ENV=production
 DEPLOYMENT_PROFILE=production
+```
+
+Production AI defaults should use the third-party OpenAI-compatible API:
+
+```env
+THIRD_PARTY_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+THIRD_PARTY_API_KEY=<third-party-api-key>
+THIRD_PARTY_MODEL=doubao-seed-2.0-code
+THIRD_PARTY_THINKING=false
 ```
 
 Production storage settings should stay on OSS:
@@ -91,7 +98,7 @@ See [docs/deployment/alibaba-cloud-ecs.md](/Users/yisheng/Documents/SLUAN/Inspir
 
 ## Local Authentication
 
-The production app uses local PostgreSQL-backed users and server-side sessions. Register the first user from the login screen, or set `AUTH_BOOTSTRAP_EMAIL` and `AUTH_BOOTSTRAP_PASSWORD` before the first Docker start to create a local administrator account.
+The production app uses local PostgreSQL-backed users and server-side sessions. Register the first user from the login screen, or set `AUTH_BOOTSTRAP_EMAIL` and `AUTH_BOOTSTRAP_PASSWORD` before the first production start to create a local administrator account.
 
 All card, note, settings, AI, upload, and photo proxy APIs require login. Sessions are stored in PostgreSQL and sent to the browser as an `HttpOnly` cookie named `inspiration_session`.
 

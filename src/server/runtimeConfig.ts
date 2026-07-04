@@ -34,6 +34,11 @@ export interface RuntimeConfig {
     publicBaseUrl: string;
     signedUrlTtlSeconds: number;
   };
+  thirdPartyAi: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  };
 }
 
 function readEnv(name: string): string {
@@ -111,6 +116,11 @@ export function getRuntimeConfig(): RuntimeConfig {
       publicBaseUrl: readEnv("OSS_PUBLIC_BASE_URL"),
       signedUrlTtlSeconds: readNumber("OSS_SIGNED_URL_TTL_SECONDS", 900),
     },
+    thirdPartyAi: {
+      baseUrl: readEnv("THIRD_PARTY_BASE_URL") || readEnv("OPENAI_COMPATIBLE_BASE_URL"),
+      apiKey: readEnv("THIRD_PARTY_API_KEY") || readEnv("OPENAI_API_KEY"),
+      model: readEnv("THIRD_PARTY_MODEL") || "doubao-seed-2.0-code",
+    },
   };
 }
 
@@ -152,6 +162,9 @@ export function validateRuntimeConfig(config = getRuntimeConfig()): string[] {
     if (config.primaryImageStorageProvider !== "oss") errors.push("IMAGE_STORAGE_PROVIDER must be oss when DEPLOYMENT_PROFILE=production.");
     if (config.videoStorageProvider !== "oss") errors.push("VIDEO_STORAGE_PROVIDER must be oss when DEPLOYMENT_PROFILE=production.");
     if (config.imageAssetStorageProvider !== "oss") errors.push("IMAGE_ASSET_STORAGE_PROVIDER must be oss when DEPLOYMENT_PROFILE=production.");
+    if (!config.thirdPartyAi.baseUrl) errors.push("THIRD_PARTY_BASE_URL is required when DEPLOYMENT_PROFILE=production.");
+    if (!config.thirdPartyAi.apiKey) errors.push("THIRD_PARTY_API_KEY is required when DEPLOYMENT_PROFILE=production.");
+    if (!config.thirdPartyAi.model) errors.push("THIRD_PARTY_MODEL is required when DEPLOYMENT_PROFILE=production.");
   }
 
   if (config.deploymentProfile === "local-docker") {

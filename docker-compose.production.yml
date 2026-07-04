@@ -1,21 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    env_file:
-      - ${APP_ENV_FILE:-.env.production}
-    environment:
-      POSTGRES_DB: notebook
-      POSTGRES_USER: postgres
-    volumes:
-      - postgres-production-data:/var/lib/postgresql/data
-      - postgres-backups:/backups
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d notebook"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   app:
     build:
       context: .
@@ -29,13 +12,5 @@ services:
       APP_ENV: production
       DEPLOYMENT_PROFILE: production
       NODE_ENV: production
-    ports:
-      - "3005:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    network_mode: host
     restart: unless-stopped
-
-volumes:
-  postgres-production-data:
-  postgres-backups:

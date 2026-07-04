@@ -7,7 +7,37 @@ Target instance:
 - Disk: 40 GiB
 - Bandwidth: 3 Mbps fixed bandwidth
 
-This ECS instance should run only the app container, PostgreSQL, and the host reverse proxy. Do not run PhotoPrism in production. Media files must use Alibaba Cloud OSS so playback and downloads do not consume the ECS disk or the 3 Mbps bandwidth budget.
+This ECS instance should run only the app, host PostgreSQL, and the host reverse proxy. Do not run PhotoPrism in production. Media files must use Alibaba Cloud OSS so playback and downloads do not consume the ECS disk or the 3 Mbps bandwidth budget.
+
+## Host PostgreSQL
+
+Install PostgreSQL on the ECS host and keep it bound to localhost:
+
+```bash
+sudo dnf install -y postgresql-server postgresql-contrib
+sudo postgresql-setup --initdb
+sudo systemctl enable --now postgresql
+```
+
+Create the app database and user:
+
+```bash
+sudo -u postgres psql
+```
+
+```sql
+CREATE USER inspiration WITH PASSWORD '<strong-password>';
+CREATE DATABASE notebook OWNER inspiration;
+GRANT ALL PRIVILEGES ON DATABASE notebook TO inspiration;
+```
+
+Use this connection string in `.env.production`:
+
+```env
+DATABASE_TYPE=postgres
+DATABASE_URL=postgresql://inspiration:<strong-password>@127.0.0.1:5432/notebook
+DATABASE_SSL=false
+```
 
 ## First Deploy
 
@@ -22,6 +52,10 @@ Edit `.env.production` on the ECS and fill in real values there. Do not commit r
 ```env
 APP_ENV=production
 DEPLOYMENT_PROFILE=production
+THIRD_PARTY_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+THIRD_PARTY_API_KEY=<third-party-api-key>
+THIRD_PARTY_MODEL=doubao-seed-2.0-code
+THIRD_PARTY_THINKING=false
 IMAGE_STORAGE_PROVIDER=oss
 VIDEO_STORAGE_PROVIDER=oss
 IMAGE_ASSET_STORAGE_PROVIDER=oss
@@ -33,12 +67,13 @@ OSS_ACCESS_KEY_SECRET=<ram-access-key-secret>
 OSS_PUBLIC_BASE_URL=https://<bucket-name>.oss-cn-hangzhou.aliyuncs.com
 ```
 
-Validate and start production Docker:
+Validate and start production:
 
 ```bash
 npm run config:production
-npm run docker:production:detached
-docker compose -f docker-compose.production.yml ps
+npm ci
+npm run build
+NODE_ENV=production APP_ENV_FILE=.env.production npm run start
 ```
 
 The app is exposed on the host at:
@@ -79,7 +114,7 @@ Recommended OSS setup:
 
 ## Backups
 
-Run a PostgreSQL dump on the ECS:
+Run a PostgreSQL dump on the ECS host:
 
 ```bash
 ./scripts/backup-postgres.sh
@@ -110,9 +145,8 @@ Suggested cadence:
 After deploy or update:
 
 ```bash
-docker compose -f docker-compose.production.yml ps
-docker compose -f docker-compose.production.yml logs --tail=100 app
 npm run config:production
+curl -fsS http://127.0.0.1:3005/ >/dev/null
 ```
 
 For the ECS size above, keep memory pressure low:
