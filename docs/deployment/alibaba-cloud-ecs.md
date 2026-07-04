@@ -92,6 +92,15 @@ http://127.0.0.1:3005
 
 Keep the Docker app port bound for local reverse proxy traffic only where possible. Avoid exposing PostgreSQL to the public network.
 
+When testing through a plain HTTP IP address, browsers will not send cookies marked `Secure`. You can temporarily set:
+
+```env
+AUTH_COOKIE_SECURE=false
+ALLOW_INSECURE_COOKIE=true
+```
+
+Switch back to `AUTH_COOKIE_SECURE=true` and remove the insecure override after HTTPS is enabled.
+
 ## Production Storage Policy
 
 Production must use OSS for user media:

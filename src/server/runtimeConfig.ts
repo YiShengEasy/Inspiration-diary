@@ -153,7 +153,9 @@ export function validateRuntimeConfig(config = getRuntimeConfig()): string[] {
   }
 
   if (config.appEnv === "production") {
-    if (config.authCookieSecure !== true) errors.push("AUTH_COOKIE_SECURE must be true in production.");
+    if (config.authCookieSecure !== true && readEnv("ALLOW_INSECURE_COOKIE") !== "true") {
+      errors.push("AUTH_COOKIE_SECURE must be true in production unless ALLOW_INSECURE_COOKIE=true is set for temporary HTTP testing.");
+    }
     if (config.databaseType !== "postgres") errors.push("DATABASE_TYPE must be postgres in production.");
   }
 
