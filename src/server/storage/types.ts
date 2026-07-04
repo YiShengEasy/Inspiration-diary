@@ -17,6 +17,6 @@ export interface StoredObject {
 
 export interface ObjectStorageProvider {
   putObject(input: UploadObjectInput): Promise<StoredObject>;
-  getSignedReadUrl(storageKey: string): Promise<string>;
+  getSignedReadUrl(storageKey: string, options?: { process?: string }): Promise<string>;
   deleteObject(storageKey: string): Promise<void>;
 }

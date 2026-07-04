@@ -44,10 +44,11 @@ export function createOssStorageProvider(config: RuntimeConfig): ObjectStoragePr
       };
     },
 
-    async getSignedReadUrl(storageKey: string): Promise<string> {
+    async getSignedReadUrl(storageKey: string, options?: { process?: string }): Promise<string> {
       return client.signatureUrl(storageKey, {
         expires: config.oss.signedUrlTtlSeconds,
         method: "GET",
+        ...(options?.process ? { process: options.process } : {}),
       });
     },
 

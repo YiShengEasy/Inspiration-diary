@@ -37,6 +37,7 @@ const app = express();
 const PORT = runtimeConfig.port;
 const MAX_VIDEO_UPLOAD_BYTES = Number.parseInt(process.env.MAX_VIDEO_UPLOAD_BYTES || String(100 * 1024 * 1024), 10);
 const MAX_IMAGE_ASSET_UPLOAD_BYTES = Number.parseInt(process.env.MAX_IMAGE_ASSET_UPLOAD_BYTES || String(25 * 1024 * 1024), 10);
+const OSS_PRIMARY_THUMB_PROCESS = process.env.OSS_PRIMARY_THUMB_PROCESS || "image/resize,w_480/quality,q_80/format,webp";
 const VIDEO_UPLOAD_ROOT = path.isAbsolute(runtimeConfig.localStorage.videoUploadRoot)
   ? runtimeConfig.localStorage.videoUploadRoot
   : path.join(process.cwd(), runtimeConfig.localStorage.videoUploadRoot);
@@ -349,13 +350,21 @@ function mapImageAssetsValue(value: any, req: express.Request) {
   return value.map((item) => mapImageAssetRow(item, req)).filter(Boolean);
 }
 
+function primaryObjectProxyUrl(storageKey: string, req: express.Request, variant: "primary" | "primary-thumb" = "primary") {
+  return absoluteUrl(`/api/objects/${variant}/${encodeURIComponent(storageKey)}`, req);
+}
+
+function shouldUseOssPrimaryProxy(row: any) {
+  return runtimeConfig.primaryImageStorageProvider === "oss" && typeof row.photo_uid === "string" && row.photo_uid.startsWith("primary-images/");
+}
+
 function mapCardRows(rows: any[], req: express.Request) {
   return rows.map((row) => ({
     id: row.id,
     weekId: row.week_id,
     dayIndex: row.day_index,
-    imageUrl: signedImageUrl(row.image_url, req),
-    thumbnailUrl: signedImageUrl(row.thumbnail_url, req),
+    imageUrl: shouldUseOssPrimaryProxy(row) ? primaryObjectProxyUrl(row.photo_uid, req) : signedImageUrl(row.image_url, req),
+    thumbnailUrl: shouldUseOssPrimaryProxy(row) ? primaryObjectProxyUrl(row.photo_uid, req, "primary-thumb") : signedImageUrl(row.thumbnail_url, req),
     photoUid: row.photo_uid || "",
     photoHash: row.photo_hash || "",
     terms: row.terms || [],
@@ -979,14 +988,13 @@ app.post("/api/store-image", requirePostgresAuth, upload.single("image"), async 
     const image = normalizeImageUpload(req);
     const stored = await storePrimaryImage(runtimeConfig, image);
     if (stored.storageProvider === "oss") {
-      const objectUrl = `/api/objects/primary/${encodeURIComponent(stored.storageKey)}`;
       return res.json({
         photoUid: stored.storageKey,
         photoHash: "",
         storageProvider: stored.storageProvider,
         storageKey: stored.storageKey,
-        imageUrl: absoluteUrl(objectUrl, req),
-        thumbnailUrl: absoluteUrl(objectUrl, req),
+        imageUrl: primaryObjectProxyUrl(stored.storageKey, req),
+        thumbnailUrl: primaryObjectProxyUrl(stored.storageKey, req, "primary-thumb"),
       });
     }
 
@@ -2455,7 +2463,7 @@ app.get("/api/photos/hash/:photoHash/:variant(thumb|full)", requirePostgresAuthO
   }
 });
 
-app.get("/api/objects/primary/:storageKey", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+async function handlePrimaryObjectProxy(req: AuthenticatedRequest, res: express.Response, variant: "full" | "thumb") {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
@@ -2480,12 +2488,20 @@ app.get("/api/objects/primary/:storageKey", requirePostgresAuth, async (req: Aut
     const signedUrl = await createVideoStorage({
       ...runtimeConfig,
       videoStorageProvider: "oss",
-    }).getSignedReadUrl(storageKey);
+    }).getSignedReadUrl(storageKey, variant === "thumb" ? { process: OSS_PRIMARY_THUMB_PROCESS } : undefined);
     return res.redirect(302, signedUrl);
   } catch (err: any) {
-    console.error("Primary object proxy error:", err);
+    console.error(`Primary object ${variant} proxy error:`, err);
     return res.status(502).json({ error: err.message || "Primary object proxy failed." });
   }
+}
+
+app.get("/api/objects/primary/:storageKey", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  return handlePrimaryObjectProxy(req, res, "full");
+});
+
+app.get("/api/objects/primary-thumb/:storageKey", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  return handlePrimaryObjectProxy(req, res, "thumb");
 });
 
 app.get("/api/db/cards/:cardId/books", requirePostgresAuth, async (req, res) => {
