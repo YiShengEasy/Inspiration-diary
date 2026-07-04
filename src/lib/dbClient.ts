@@ -10,7 +10,7 @@ import {
   deleteDoc,
   updateDoc,
 } from "firebase/firestore";
-import { ImageCard, type VideoAsset, WeeklyNote } from "../types";
+import { ImageCard, type ImageAsset, type VideoAsset, WeeklyNote } from "../types";
 import { authFetch } from "./authClient";
 
 // Detect if we are in PostgreSQL Mode
@@ -298,6 +298,7 @@ export function createNewCardId(): string {
 }
 
 export const MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024;
+export const MAX_IMAGE_ASSET_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 export function isSupportedVideoFile(file: File): boolean {
   const lowerName = file.name.toLowerCase();
@@ -365,6 +366,68 @@ export async function deleteVideoAsset(videoId: string): Promise<void> {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `视频删除失败：${res.statusText}`);
+  }
+}
+
+export function isSupportedImageAssetFile(file: File): boolean {
+  const lowerName = file.name.toLowerCase();
+  return file.type === "image/jpeg"
+    || file.type === "image/png"
+    || file.type === "image/webp"
+    || file.type === "image/gif"
+    || lowerName.endsWith(".jpg")
+    || lowerName.endsWith(".jpeg")
+    || lowerName.endsWith(".png")
+    || lowerName.endsWith(".webp")
+    || lowerName.endsWith(".gif");
+}
+
+export async function uploadImageAsset(params: {
+  file: File;
+  cardId: string;
+}): Promise<{ image: ImageAsset }> {
+  if (!isPostgresMode) {
+    throw new Error("当前存储模式不支持图片附件上传。");
+  }
+  if (!isSupportedImageAssetFile(params.file)) {
+    throw new Error("仅支持 jpg、png、webp、gif 图片。");
+  }
+  if (params.file.size > MAX_IMAGE_ASSET_UPLOAD_BYTES) {
+    throw new Error("图片不能超过 25MB。");
+  }
+
+  const form = new FormData();
+  form.append("image", params.file, params.file.name || "image.jpg");
+  form.append("cardId", params.cardId);
+
+  const res = await authFetch("/api/images/upload", {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `图片上传失败：${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function loadCardImages(cardId: string): Promise<ImageAsset[]> {
+  if (!isPostgresMode) return [];
+  const res = await authFetch(`/api/db/cards/${encodeURIComponent(cardId)}/images`);
+  if (!res.ok) {
+    throw new Error(`图片列表加载失败：${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteImageAsset(imageId: string): Promise<void> {
+  if (!isPostgresMode) return;
+  const res = await authFetch(`/api/images/${encodeURIComponent(imageId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `图片删除失败：${res.statusText}`);
   }
 }
 

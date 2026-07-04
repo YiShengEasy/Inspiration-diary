@@ -6,6 +6,11 @@ const {
   loadSmartSettings,
   saveSmartSetting
 } = require("../../utils/smartSettings");
+const {
+  flattenCustomTagGroups,
+  flattenEnabledCustomTagGroups,
+  loadCustomTagLibrary
+} = require("../../utils/customTagLibrary");
 
 const EMPTY_STATS = {
   inspirationCount: 0,
@@ -63,6 +68,9 @@ Page({
     smartSettingsSaving: false,
     smartSuggestImages: false,
     smartSuggestMarkdown: false,
+    customTagLibraryEnabled: true,
+    customTagTotalCount: 0,
+    customTagEnabledCount: 0,
     meCards: [
       { iconKey: "file", title: "我的草稿", desc: "工具处理未保存内容" },
       { iconKey: "download", title: "本地缓存", desc: "清理预览和临时图" }
@@ -94,9 +102,10 @@ Page({
       };
 
       if (accountState === "registered") {
-        const [me, smartSettings] = await Promise.all([
+        const [me, smartSettings, customTagLibrary] = await Promise.all([
           request({ url: "/api/miniprogram/me" }),
-          loadSmartSettings().catch(() => ({ images: false, markdown: false }))
+          loadSmartSettings().catch(() => ({ images: false, markdown: false })),
+          loadCustomTagLibrary().catch(() => ({ enabled: true, groups: [] }))
         ]);
         const meUser = me.user || user;
         nextData.user = meUser;
@@ -104,6 +113,10 @@ Page({
         nextData.stats = me.stats || EMPTY_STATS;
         nextData.smartSuggestImages = smartSettings.images;
         nextData.smartSuggestMarkdown = smartSettings.markdown;
+        const groups = customTagLibrary.groups || [];
+        nextData.customTagLibraryEnabled = customTagLibrary.enabled !== false;
+        nextData.customTagTotalCount = flattenCustomTagGroups(groups).length;
+        nextData.customTagEnabledCount = customTagLibrary.enabled !== false ? flattenEnabledCustomTagGroups(groups).length : 0;
       }
 
       this.setData(nextData);
@@ -205,5 +218,13 @@ Page({
     } finally {
       this.setData({ smartSettingsSaving: false });
     }
+  },
+
+  openCustomTags() {
+    if (this.data.accountState !== "registered") {
+      wx.showToast({ title: "请先完成注册", icon: "none" });
+      return;
+    }
+    wx.navigateTo({ url: "/pages/custom-tags/index" });
   }
 });

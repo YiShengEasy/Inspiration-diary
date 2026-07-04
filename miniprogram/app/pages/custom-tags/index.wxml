@@ -1,0 +1,91 @@
+<view class="page tag-page">
+  <view class="page-head">
+    <view>
+      <text class="eyebrow">CUSTOM TAGS</text>
+      <text class="page-title">标签库</text>
+      <text class="page-desc">管理 AI 识别图片和 Markdown 时可参考的自定义词。</text>
+    </view>
+    <text wx:if="{{saving || loading}}" class="sync-text">{{saving ? '同步中' : '加载中'}}</text>
+  </view>
+
+  <view class="tag-card">
+    <view class="tag-master-row">
+      <view>
+        <text class="tag-row-title">词库参与识别</text>
+        <text class="tag-row-desc">{{enabledCount}} / {{totalCount}} 个词参与识别</text>
+      </view>
+      <switch
+        checked="{{libraryEnabled}}"
+        disabled="{{accountState !== 'registered' || saving}}"
+        color="#8b916f"
+        bindchange="toggleLibrary"
+      />
+    </view>
+
+    <view class="tag-create-row">
+      <input
+        class="tag-input"
+        value="{{newGroupName}}"
+        placeholder="新标签组"
+        disabled="{{accountState !== 'registered' || saving}}"
+        bindinput="onNewGroupNameInput"
+      />
+      <button class="tag-small-button" loading="{{saving}}" bindtap="createGroup">新建</button>
+    </view>
+
+    <view wx:if="{{groups.length}}" class="tag-group-list">
+      <view
+        wx:for="{{groups}}"
+        wx:key="id"
+        class="tag-group {{selectedGroupId === item.id ? 'active' : ''}} {{item.enabled === false ? 'disabled' : ''}}"
+      >
+        <view class="tag-group-copy" data-id="{{item.id}}" bindtap="selectGroup">
+          <view class="tag-group-title-line">
+            <text class="tag-group-name">{{item.name}}</text>
+            <text class="tag-group-pill {{item.enabled === false ? 'off' : ''}}">{{item.enabled === false ? '关闭' : '启用'}}</text>
+          </view>
+          <text class="tag-group-meta">{{item.terms.length}} 个词</text>
+        </view>
+        <button class="tag-state-button {{item.enabled === false ? 'off' : ''}}" data-id="{{item.id}}" bindtap="toggleGroup">
+          {{item.enabled === false ? '已关闭' : '启用中'}}
+        </button>
+      </view>
+    </view>
+
+    <view wx:else class="tag-empty">
+      <text>先新建一个标签组。</text>
+    </view>
+
+    <view wx:if="{{selectedGroup}}" class="tag-editor">
+      <view class="tag-editor-head">
+        <view>
+          <text class="tag-editor-title">{{selectedGroup.name}}</text>
+          <text class="tag-editor-desc">当前分组{{selectedGroup.enabled === false ? '不会' : '会'}}参与 AI 识别。</text>
+        </view>
+        <button class="tag-delete-group" bindtap="deleteGroup">删除组</button>
+      </view>
+
+      <view class="tag-add-row">
+        <textarea
+          class="tag-textarea"
+          value="{{newTermsText}}"
+          placeholder="例如：侘寂、液态金属、包豪斯"
+          maxlength="500"
+          disabled="{{accountState !== 'registered' || saving}}"
+          bindinput="onNewTermsInput"
+        />
+        <button class="tag-add-button" loading="{{saving}}" bindtap="addTerms">添加词</button>
+      </view>
+
+      <view wx:if="{{selectedTerms.length}}" class="tag-term-list">
+        <view wx:for="{{selectedTerms}}" wx:key="*this" class="tag-term">
+          <text># {{item}}</text>
+          <button data-term="{{item}}" bindtap="deleteTerm">×</button>
+        </view>
+      </view>
+      <view wx:else class="tag-empty small">
+        <text>这个分组还没有标签词。</text>
+      </view>
+    </view>
+  </view>
+</view>

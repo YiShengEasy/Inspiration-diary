@@ -101,6 +101,15 @@
     </view>
   </view>
 
+  <button class="tag-entry-card" bindtap="openCustomTags">
+    <view>
+      <text class="tag-entry-title">自定义标签库</text>
+      <text class="tag-entry-desc">管理 AI 识别图片和 Markdown 时可参考的词。</text>
+      <text class="tag-entry-meta">{{customTagLibraryEnabled ? customTagEnabledCount : 0}} / {{customTagTotalCount}} 个词参与识别</text>
+    </view>
+    <text class="tag-entry-action">进入</text>
+  </button>
+
   <view class="me-cards">
     <button wx:for="{{meCards}}" wx:key="title" class="me-card">
       <text class="me-card-icon icon-{{item.iconKey}}"></text>

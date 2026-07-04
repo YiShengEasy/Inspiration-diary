@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: notebook
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-local-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d notebook"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      args:
+        VITE_DATABASE_TYPE: postgres
+        VITE_ENABLE_MOCK_TOOLS: "true"
+    image: inspiration-diary:local
+    env_file:
+      - ${APP_ENV_FILE:-.env.local}
+    environment:
+      APP_ENV: local
+      DEPLOYMENT_PROFILE: local-docker
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/notebook
+    ports:
+      - "3005:3000"
+    volumes:
+      - uploads-local:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-local-data:
+  uploads-local:

@@ -19,42 +19,75 @@ View your app in AI Studio: https://ai.studio/apps/4fac7d8a-8766-4021-9c15-3411f
 3. Run the app:
    `npm run dev`
 
-## Run Production With Docker
+## Docker Environments
 
-This starts the production build in Docker and reads database/runtime settings from `.env.production`:
+Local Docker uses `.env.local` and `docker-compose.local.yml`. It is intended for development on this machine, keeps PhotoPrism available for primary image uploads, and stores video/image attachments on the local Docker volume:
 
 ```bash
-npm run docker:prod
+cp .env.local.example .env.local
+npm run config:local
+npm run docker:local:detached
 ```
 
-After it starts, open:
+Local Docker should identify itself explicitly:
+
+```env
+APP_ENV=local
+DEPLOYMENT_PROFILE=local-docker
+```
+
+After local Docker starts, open:
 
 ```text
 http://localhost:3005
 ```
 
-Run in the background:
+Production Docker uses `.env.production` and `docker-compose.production.yml`:
 
 ```bash
-npm run docker:prod:detached
+cp .env.production.example .env.production
+npm run config:production
+npm run docker:production:detached
 ```
 
-Stop the production containers:
+The production target is an Alibaba Cloud ECS in Hangzhou with 2 vCPU, 2 GiB RAM, 40 GiB disk, and 3 Mbps fixed bandwidth. Keep this instance focused on the app, PostgreSQL, and the host reverse proxy. Do not run PhotoPrism in production on this ECS; production media should use Alibaba Cloud OSS so image and video traffic does not consume the ECS disk or bandwidth budget.
+
+Production should identify itself explicitly:
+
+```env
+APP_ENV=production
+DEPLOYMENT_PROFILE=production
+```
+
+Production storage settings should stay on OSS:
+
+```env
+IMAGE_STORAGE_PROVIDER=oss
+VIDEO_STORAGE_PROVIDER=oss
+IMAGE_ASSET_STORAGE_PROVIDER=oss
+OSS_REGION=oss-cn-hangzhou
+OSS_BUCKET=<bucket-name>
+OSS_ENDPOINT=https://oss-cn-hangzhou.aliyuncs.com
+OSS_ACCESS_KEY_ID=<ram-access-key-id>
+OSS_ACCESS_KEY_SECRET=<ram-access-key-secret>
+OSS_PUBLIC_BASE_URL=https://<bucket-name>.oss-cn-hangzhou.aliyuncs.com
+```
+
+Stop Docker containers:
 
 ```bash
-npm run docker:prod:down
+npm run docker:local:down
+npm run docker:production:down
 ```
 
 Useful Docker checks:
 
 ```bash
-docker compose ps
-docker compose logs -f app
+docker compose -f docker-compose.local.yml ps
+docker compose -f docker-compose.production.yml logs -f app
 ```
 
-The Docker app reads runtime configuration from `.env.production`. Mock data tools are disabled in the production Docker build by default.
-
-If the configured PostgreSQL database is running on this Mac, use `host.docker.internal` as the database host in `.env.production` because `localhost` inside Docker points to the container itself.
+See [docs/deployment/alibaba-cloud-ecs.md](/Users/yisheng/Documents/SLUAN/Inspiration-diary/docs/deployment/alibaba-cloud-ecs.md) for the ECS deployment checklist, reverse proxy notes, and backup workflow.
 
 ## Local Authentication
 
@@ -99,9 +132,9 @@ Keep `urlCheck` disabled in `miniprogram/app/project.config.json` for local deve
 
 ## PhotoPrism Image Storage
 
-New image uploads are stored in PhotoPrism. PostgreSQL stores only URL metadata for each inspiration card.
+Local development can store primary image uploads in PhotoPrism. PostgreSQL stores only URL metadata for each inspiration card.
 
-Required production environment variables in `.env.production`:
+Local PhotoPrism environment variables in `.env.local`:
 
 ```env
 PHOTOPRISM_INTERNAL_URL=http://host.docker.internal:2342
@@ -112,8 +145,10 @@ PHOTOPRISM_PASSWORD=<server-side-secret>
 
 `PHOTOPRISM_INTERNAL_URL` is used by the Docker app container to upload images. `PHOTOPRISM_PUBLIC_URL` is used in saved image URLs rendered by the browser.
 
-After changing PhotoPrism settings, rebuild the production container:
+After changing local PhotoPrism settings, rebuild the local container:
 
 ```bash
-npm run docker:prod:detached
+npm run docker:local:detached
 ```
+
+PhotoPrism is intentionally local-only. Production should not depend on PhotoPrism and should use OSS for primary images, videos, and image attachments.

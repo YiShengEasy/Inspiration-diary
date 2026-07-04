@@ -16,6 +16,7 @@ export interface ImageCard {
   mdName?: string;
   insightNote?: string;
   videoAssets?: VideoAsset[];
+  imageAssets?: ImageAsset[];
 }
 
 export interface VideoAsset {
@@ -29,6 +30,18 @@ export interface VideoAsset {
   sizeBytes: number;
   durationMs: number;
   posterUrl?: string;
+  createdAt: number;
+}
+
+export interface ImageAsset {
+  id: string;
+  cardId: string;
+  storageProvider: "local" | "oss" | string;
+  storageKey: string;
+  imageUrl: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
   createdAt: number;
 }
 

@@ -1,6 +1,7 @@
 const { request, uploadImage, resolveAssetUrl } = require("../../utils/api");
 const { requireRegistered } = require("../../utils/auth");
 const { currentWeekId } = require("../../utils/dates");
+const { loadEnabledCustomTagHints } = require("../../utils/customTagLibrary");
 
 function formatTermsText(terms) {
   const visibleTerms = terms.slice(0, 3);
@@ -284,10 +285,15 @@ Page({
     });
     wx.setStorageSync(`miniCard:${cardId}`, normalizeCard(card));
 
+    const customTagHints = await loadEnabledCustomTagHints();
+
     uploadImage({
       url: "/api/analyze-image",
       filePath,
-      formData: { source: "miniprogram" }
+      formData: {
+        source: "miniprogram",
+        ...(customTagHints.length ? { customTagHints: JSON.stringify(customTagHints) } : {})
+      }
     })
       .then((analysis) => {
         const terms = Array.isArray(analysis.terms) ? analysis.terms : [];
@@ -339,10 +345,14 @@ Page({
 
   async summarizeMarkdown(text) {
     try {
+      const customTagHints = await loadEnabledCustomTagHints();
       const body = await request({
         url: "/api/summarize-md",
         method: "POST",
-        data: { markdown: text }
+        data: {
+          markdown: text,
+          customTagHints
+        }
       });
       const terms = Array.isArray(body.terms)
         ? body.terms.filter((term) => typeof term === "string" && term.trim()).slice(0, 5)

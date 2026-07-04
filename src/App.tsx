@@ -16,8 +16,13 @@ import {
   loadAllCardsPage,
   uploadVideoAsset,
   MAX_VIDEO_UPLOAD_BYTES,
+  MAX_IMAGE_ASSET_UPLOAD_BYTES,
   loadCardVideos,
   deleteVideoAsset,
+  uploadImageAsset,
+  loadCardImages,
+  deleteImageAsset,
+  isSupportedImageAssetFile,
 } from "./lib/dbClient";
 import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
@@ -77,15 +82,18 @@ export default function App() {
   const [zoomedCard, setZoomedCard] = useState<ImageCard | null>(null);
   const [isDetailBookPopoverOpen, setIsDetailBookPopoverOpen] = useState<boolean>(false);
   const [detailInsightNote, setDetailInsightNote] = useState<string>("");
-  const [detailInsightSaveStatus, setDetailInsightSaveStatus] = useState<"clean" | "saving" | "error">("clean");
+  const [detailInsightSaveStatus, setDetailInsightSaveStatus] = useState<"clean" | "dirty" | "saving" | "error">("clean");
   const [isBindingVideo, setIsBindingVideo] = useState<boolean>(false);
   const [videoBindError, setVideoBindError] = useState<string>("");
+  const [isBindingImage, setIsBindingImage] = useState<boolean>(false);
+  const [imageBindError, setImageBindError] = useState<string>("");
   const [imageZoomScale, setImageZoomScale] = useState<number>(1);
   const [imagePan, setImagePan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [imageViewMode, setImageViewMode] = useState<"fit" | "actual">("fit");
   const imagePanStartRef = useRef<{ pointerId: number; startX: number; startY: number; panX: number; panY: number } | null>(null);
   const detailVideoInputRef = useRef<HTMLInputElement>(null);
+  const detailImageInputRef = useRef<HTMLInputElement>(null);
   const [isRefreshingCards, setIsRefreshingCards] = useState<boolean>(false);
   const [showWeeklyPreview, setShowWeeklyPreview] = useState<boolean>(false);
   const [cardToDelete, setCardToDelete] = useState<ImageCard | null>(null);
@@ -1056,6 +1064,12 @@ export default function App() {
     setZoomedCard((current) => current?.id === card.id ? card : current);
   }, []);
 
+  const syncCardImageAssets = useCallback((card: ImageCard) => {
+    setCards((current) => current.map((item) => item.id === card.id ? card : item));
+    setAllCardsPageCards((current) => current.map((item) => item.id === card.id ? card : item));
+    setZoomedCard((current) => current?.id === card.id ? card : current);
+  }, []);
+
   // Populate the active week with gorgeous design mock-up data cards and notes
   const [isInjectingMock, setIsInjectingMock] = useState(false);
   const [mockSuccessMessage, setMockSuccessMessage] = useState("");
@@ -1285,10 +1299,11 @@ export default function App() {
     setDetailInsightNote(zoomedCard?.insightNote || "");
     setDetailInsightSaveStatus("clean");
     setVideoBindError("");
+    setImageBindError("");
   }, [zoomedCard?.id]);
 
   useEffect(() => {
-    if (!zoomedCard) return;
+    if (!zoomedCard || zoomedCard.type === "video") return;
     let alive = true;
     loadCardVideos(zoomedCard.id)
       .then((videoAssets) => {
@@ -1305,28 +1320,21 @@ export default function App() {
   }, [syncCardVideoAssets, zoomedCard?.id]);
 
   useEffect(() => {
-    if (!zoomedCard) return;
-    const initialNote = zoomedCard.insightNote || "";
-    if (detailInsightNote === initialNote) {
-      setDetailInsightSaveStatus("clean");
-      return;
-    }
-
-    const timeoutId = window.setTimeout(async () => {
-      const targetCard = zoomedCard;
-      setDetailInsightSaveStatus("saving");
-      try {
-        await updateCardInsightNote(targetCard.id, targetCard.weekId, detailInsightNote);
-        syncCardInsightNote(targetCard.id, detailInsightNote);
-        setDetailInsightSaveStatus("clean");
-      } catch (err) {
-        console.error("Failed to update insight note:", err);
-        setDetailInsightSaveStatus("error");
-      }
-    }, 800);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [detailInsightNote, syncCardInsightNote, zoomedCard]);
+    if (!zoomedCard || zoomedCard.type !== "video") return;
+    let alive = true;
+    loadCardImages(zoomedCard.id)
+      .then((imageAssets) => {
+        if (!alive) return;
+        const nextCard = { ...zoomedCard, imageAssets };
+        syncCardImageAssets(nextCard);
+      })
+      .catch((err) => {
+        console.warn("Failed to refresh card images:", err);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [syncCardImageAssets, zoomedCard?.id, zoomedCard?.type]);
 
   const sanitizeDownloadName = (name: string) => {
     return name
@@ -1423,6 +1431,70 @@ export default function App() {
       syncCardVideoAssets({ ...zoomedCard, videoAssets });
     } catch (err: any) {
       setVideoBindError(err?.message || "视频删除失败");
+    }
+  };
+
+  const handleSaveDetailInsightNote = async () => {
+    if (!zoomedCard || detailInsightSaveStatus === "saving") return;
+    const targetCard = zoomedCard;
+    setDetailInsightSaveStatus("saving");
+    try {
+      await updateCardInsightNote(targetCard.id, targetCard.weekId, detailInsightNote);
+      syncCardInsightNote(targetCard.id, detailInsightNote);
+      setDetailInsightSaveStatus("clean");
+    } catch (err) {
+      console.error("Failed to update insight note:", err);
+      setDetailInsightSaveStatus("error");
+    }
+  };
+
+  const handleDetailImageInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (detailImageInputRef.current) {
+      detailImageInputRef.current.value = "";
+    }
+    if (files.length === 0 || !zoomedCard) return;
+    if (zoomedCard.type !== "video") {
+      setImageBindError("只有视频卡片可以绑定图片。");
+      return;
+    }
+
+    const unsupportedFile = files.find((file) => !isSupportedImageAssetFile(file));
+    if (unsupportedFile) {
+      setImageBindError(`${unsupportedFile.name} 不是支持的图片格式。`);
+      return;
+    }
+    const oversizedFile = files.find((file) => file.size > MAX_IMAGE_ASSET_UPLOAD_BYTES);
+    if (oversizedFile) {
+      setImageBindError(`${oversizedFile.name} 超过 25MB。`);
+      return;
+    }
+
+    setIsBindingImage(true);
+    setImageBindError("");
+    try {
+      for (const file of files) {
+        await uploadImageAsset({ file, cardId: zoomedCard.id });
+      }
+      const imageAssets = await loadCardImages(zoomedCard.id);
+      syncCardImageAssets({ ...zoomedCard, imageAssets });
+    } catch (err: any) {
+      setImageBindError(err?.message || "图片绑定失败");
+    } finally {
+      setIsBindingImage(false);
+    }
+  };
+
+  const handleDeleteBoundImage = async (imageId: string) => {
+    if (!zoomedCard) return;
+    const confirmed = window.confirm("删除这个绑定图片？");
+    if (!confirmed) return;
+    try {
+      await deleteImageAsset(imageId);
+      const imageAssets = await loadCardImages(zoomedCard.id);
+      syncCardImageAssets({ ...zoomedCard, imageAssets });
+    } catch (err: any) {
+      setImageBindError(err?.message || "图片删除失败");
     }
   };
 
@@ -2488,15 +2560,37 @@ export default function App() {
                       <h4 className="text-xs font-serif font-bold italic text-stone-600 dark:text-stone-300">
                         感悟 / 备注：
                       </h4>
-                      <span className="text-[10px] font-mono text-stone-400 dark:text-stone-500">
-                        {detailInsightSaveStatus === "saving" && "Saving..."}
-                        {detailInsightSaveStatus === "clean" && "Auto-saved"}
-                        {detailInsightSaveStatus === "error" && "Save failed"}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-mono ${
+                          detailInsightSaveStatus === "error"
+                            ? "text-red-600 dark:text-red-300"
+                            : detailInsightSaveStatus === "dirty"
+                              ? "text-amber-700 dark:text-amber-300"
+                              : "text-stone-400 dark:text-stone-500"
+                        }`}>
+                          {detailInsightSaveStatus === "saving" && "保存中..."}
+                          {detailInsightSaveStatus === "clean" && "已保存"}
+                          {detailInsightSaveStatus === "dirty" && "未保存"}
+                          {detailInsightSaveStatus === "error" && "保存失败"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveDetailInsightNote()}
+                          disabled={detailInsightSaveStatus === "saving" || detailInsightSaveStatus === "clean"}
+                          className="inline-flex h-7 items-center gap-1.5 rounded-[6px] bg-stone-900 px-2.5 text-[11px] font-bold text-[#fbf7ed] transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-amber-200 dark:text-stone-950"
+                        >
+                          {detailInsightSaveStatus === "saving" ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                          保存
+                        </button>
+                      </div>
                     </div>
                     <textarea
                       value={detailInsightNote}
-                      onChange={(event) => setDetailInsightNote(event.target.value)}
+                      onChange={(event) => {
+                        const nextNote = event.target.value;
+                        setDetailInsightNote(nextNote);
+                        setDetailInsightSaveStatus(nextNote === (zoomedCard.insightNote || "") ? "clean" : "dirty");
+                      }}
                       maxLength={4000}
                       placeholder="写一点这张灵感给你的感觉、可复用的设计点，或后续要尝试的方向..."
                       className="min-h-[104px] w-full resize-y rounded-[8px] border border-stone-900/10 bg-[#fbf7ed]/80 px-3 py-2.5 text-sm leading-relaxed text-stone-800 shadow-inner outline-none transition-colors placeholder:text-stone-400 focus:border-stone-800/30 dark:border-white/10 dark:bg-white/[0.055] dark:text-stone-100 dark:placeholder:text-stone-600 dark:focus:border-amber-200/35"
@@ -2513,81 +2607,157 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div>
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <h4 className="text-xs font-serif font-bold italic text-stone-600 dark:text-stone-300">
-                        绑定视频：
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={() => detailVideoInputRef.current?.click()}
-                        disabled={isBindingVideo}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-[6px] bg-stone-900 px-2.5 text-[11px] font-bold text-[#fbf7ed] transition-colors hover:bg-stone-800 disabled:cursor-wait disabled:opacity-60 dark:bg-amber-200 dark:text-stone-950"
-                      >
-                        {isBindingVideo ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                        上传
-                      </button>
-                      <input
-                        ref={detailVideoInputRef}
-                        type="file"
-                        accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
-                        onChange={handleDetailVideoInputChange}
-                        className="hidden"
-                      />
-                    </div>
-                    {videoBindError ? (
-                      <div className="mb-2 rounded-[6px] border border-red-900/15 bg-red-50 px-2 py-1.5 text-[11px] font-semibold text-red-700 dark:border-red-300/20 dark:bg-red-500/10 dark:text-red-200">
-                        {videoBindError}
+                  {zoomedCard.type === "video" ? (
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <h4 className="text-xs font-serif font-bold italic text-stone-600 dark:text-stone-300">
+                          绑定图片：
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => detailImageInputRef.current?.click()}
+                          disabled={isBindingImage}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-[6px] bg-amber-900 px-2.5 text-[11px] font-bold text-[#fbf7ed] transition-colors hover:bg-amber-800 disabled:cursor-wait disabled:opacity-60 dark:bg-amber-200 dark:text-stone-950"
+                        >
+                          {isBindingImage ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                          上传
+                        </button>
+                        <input
+                          ref={detailImageInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+                          multiple
+                          onChange={handleDetailImageInputChange}
+                          className="hidden"
+                        />
                       </div>
-                    ) : null}
-                    {zoomedCard.videoAssets && zoomedCard.videoAssets.length > 0 ? (
-                      <div className="space-y-2">
-                        {zoomedCard.videoAssets.map((video) => (
-                          <div key={video.id} className="rounded-[8px] border border-stone-900/10 bg-white/65 p-2 dark:border-white/10 dark:bg-white/[0.05]">
-                            <video
-                              src={video.videoUrl}
-                              className="mb-2 aspect-video max-h-40 min-h-[128px] w-full rounded-[6px] bg-stone-950 object-contain"
-                              controls
-                              playsInline
-                              preload="metadata"
-                            />
-                            <div className="flex min-w-0 items-center justify-between gap-2">
-                              <div className="min-w-0 self-center">
-                                <div className="truncate text-xs font-bold text-stone-800 dark:text-stone-100">{video.originalName}</div>
-                                <div className="mt-0.5 text-[10px] font-mono text-stone-500">{formatBytes(video.sizeBytes)}</div>
-                              </div>
-                              <div className="flex shrink-0 items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const response = await authFetch(video.videoUrl);
-                                    if (!response.ok) return;
-                                    downloadBlob(await response.blob(), sanitizeDownloadName(video.originalName || `${video.id}.mp4`));
-                                  }}
-                                  className="grid h-7 w-7 place-items-center rounded-full bg-stone-900/[0.06] text-stone-600 hover:bg-stone-900/[0.10] dark:bg-white/[0.08] dark:text-stone-300"
-                                  title="下载视频"
-                                >
-                                  <Download size={12} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleDeleteBoundVideo(video.id)}
-                                  className="grid h-7 w-7 place-items-center rounded-full bg-red-500/10 text-red-700 hover:bg-red-500/20 dark:text-red-200"
-                                  title="删除绑定视频"
-                                >
-                                  <Trash size={12} />
-                                </button>
+                      {imageBindError ? (
+                        <div className="mb-2 rounded-[6px] border border-red-900/15 bg-red-50 px-2 py-1.5 text-[11px] font-semibold text-red-700 dark:border-red-300/20 dark:bg-red-500/10 dark:text-red-200">
+                          {imageBindError}
+                        </div>
+                      ) : null}
+                      {zoomedCard.imageAssets && zoomedCard.imageAssets.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          {zoomedCard.imageAssets.map((image) => (
+                            <div key={image.id} className="overflow-hidden rounded-[8px] border border-stone-900/10 bg-white/65 dark:border-white/10 dark:bg-white/[0.05]">
+                              <img
+                                src={image.imageUrl}
+                                alt={image.originalName}
+                                className="aspect-square w-full bg-stone-100 object-cover dark:bg-stone-900"
+                                loading="lazy"
+                              />
+                              <div className="p-2">
+                                <div className="truncate text-[11px] font-bold text-stone-800 dark:text-stone-100">{image.originalName}</div>
+                                <div className="mt-0.5 text-[10px] font-mono text-stone-500">{formatBytes(image.sizeBytes)}</div>
+                                <div className="mt-2 flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const response = await authFetch(image.imageUrl);
+                                      if (!response.ok) return;
+                                      downloadBlob(await response.blob(), sanitizeDownloadName(image.originalName || `${image.id}.jpg`));
+                                    }}
+                                    className="grid h-7 flex-1 place-items-center rounded-[6px] bg-stone-900/[0.06] text-stone-600 hover:bg-stone-900/[0.10] dark:bg-white/[0.08] dark:text-stone-300"
+                                    title="下载图片"
+                                  >
+                                    <Download size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteBoundImage(image.id)}
+                                    className="grid h-7 flex-1 place-items-center rounded-[6px] bg-red-500/10 text-red-700 hover:bg-red-500/20 dark:text-red-200"
+                                    title="删除绑定图片"
+                                  >
+                                    <Trash size={12} />
+                                  </button>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-[8px] border border-dashed border-stone-900/15 px-3 py-4 text-center text-[11px] text-stone-500 dark:border-white/12 dark:text-stone-500">
+                          暂无绑定图片，可多选上传图片作为这个视频的补充素材。
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <h4 className="text-xs font-serif font-bold italic text-stone-600 dark:text-stone-300">
+                          绑定视频：
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => detailVideoInputRef.current?.click()}
+                          disabled={isBindingVideo}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-[6px] bg-stone-900 px-2.5 text-[11px] font-bold text-[#fbf7ed] transition-colors hover:bg-stone-800 disabled:cursor-wait disabled:opacity-60 dark:bg-amber-200 dark:text-stone-950"
+                        >
+                          {isBindingVideo ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                          上传
+                        </button>
+                        <input
+                          ref={detailVideoInputRef}
+                          type="file"
+                          accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+                          onChange={handleDetailVideoInputChange}
+                          className="hidden"
+                        />
                       </div>
-                    ) : (
-                      <div className="rounded-[8px] border border-dashed border-stone-900/15 px-3 py-4 text-center text-[11px] text-stone-500 dark:border-white/12 dark:text-stone-500">
-                        暂无绑定视频，可上传一个视频作为这张卡的补充素材。
-                      </div>
-                    )}
-                  </div>
+                      {videoBindError ? (
+                        <div className="mb-2 rounded-[6px] border border-red-900/15 bg-red-50 px-2 py-1.5 text-[11px] font-semibold text-red-700 dark:border-red-300/20 dark:bg-red-500/10 dark:text-red-200">
+                          {videoBindError}
+                        </div>
+                      ) : null}
+                      {zoomedCard.videoAssets && zoomedCard.videoAssets.length > 0 ? (
+                        <div className="space-y-2">
+                          {zoomedCard.videoAssets.map((video) => (
+                            <div key={video.id} className="rounded-[8px] border border-stone-900/10 bg-white/65 p-2 dark:border-white/10 dark:bg-white/[0.05]">
+                              <video
+                                src={video.videoUrl}
+                                className="mb-2 aspect-video max-h-40 min-h-[128px] w-full rounded-[6px] bg-stone-950 object-contain"
+                                controls
+                                playsInline
+                                preload="metadata"
+                              />
+                              <div className="flex min-w-0 items-center justify-between gap-2">
+                                <div className="min-w-0 self-center">
+                                  <div className="truncate text-xs font-bold text-stone-800 dark:text-stone-100">{video.originalName}</div>
+                                  <div className="mt-0.5 text-[10px] font-mono text-stone-500">{formatBytes(video.sizeBytes)}</div>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const response = await authFetch(video.videoUrl);
+                                      if (!response.ok) return;
+                                      downloadBlob(await response.blob(), sanitizeDownloadName(video.originalName || `${video.id}.mp4`));
+                                    }}
+                                    className="grid h-7 w-7 place-items-center rounded-full bg-stone-900/[0.06] text-stone-600 hover:bg-stone-900/[0.10] dark:bg-white/[0.08] dark:text-stone-300"
+                                    title="下载视频"
+                                  >
+                                    <Download size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteBoundVideo(video.id)}
+                                    className="grid h-7 w-7 place-items-center rounded-full bg-red-500/10 text-red-700 hover:bg-red-500/20 dark:text-red-200"
+                                    title="删除绑定视频"
+                                  >
+                                    <Trash size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-[8px] border border-dashed border-stone-900/15 px-3 py-4 text-center text-[11px] text-stone-500 dark:border-white/12 dark:text-stone-500">
+                          暂无绑定视频，可上传一个视频作为这张卡的补充素材。
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer instructions */}

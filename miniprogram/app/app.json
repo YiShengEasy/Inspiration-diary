@@ -3,6 +3,7 @@
     "pages/toolbox/index",
     "pages/diary/index",
     "pages/me/index",
+    "pages/custom-tags/index",
     "pages/register-complete/index",
     "pages/editor/index",
     "pages/day-detail/index",

@@ -1,19 +1,2 @@
-services:
-  app:
-    build:
-      context: .
-      args:
-        VITE_DATABASE_TYPE: postgres
-        VITE_ENABLE_MOCK_TOOLS: "false"
-    image: inspiration-diary:prod
-    env_file:
-      - .env.production
-    environment:
-      NODE_ENV: production
-      PHOTOPRISM_INTERNAL_URL: ${PHOTOPRISM_INTERNAL_URL:-http://host.docker.internal:2342}
-      PHOTOPRISM_PUBLIC_URL: ${PHOTOPRISM_PUBLIC_URL:-http://localhost:2342}
-      PHOTOPRISM_USERNAME: ${PHOTOPRISM_USERNAME:-admin}
-      MINI_DEBUG_PASSWORD_LOGIN: ${MINI_DEBUG_PASSWORD_LOGIN:-false}
-    ports:
-      - "3005:3000"
-    restart: unless-stopped
+include:
+  - docker-compose.local.yml
