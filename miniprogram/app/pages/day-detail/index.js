@@ -3,13 +3,17 @@ const { days } = require("../../utils/dates");
 
 function normalizeCard(card) {
   const terms = Array.isArray(card.terms) ? card.terms : [];
+  const isCombo = card.type === "combo";
   return {
     ...card,
-    image: resolveAssetUrl(card.thumbnailUrl || card.imageUrl || ""),
-    title: card.mdName || terms[0] || "灵感图片",
-    summary: card.mdSummary || card.mdContent || card.insightNote || "",
-    typeLabel: card.type === "md" ? "DOC" : "IMG",
+    image: isCombo ? resolveAssetUrl((card.comboSummary && card.comboSummary.coverImageUrl) || "") : resolveAssetUrl(card.thumbnailUrl || card.imageUrl || ""),
+    title: card.mdName || terms[0] || (isCombo ? "组合卡片" : "灵感图片"),
+    summary: isCombo
+      ? `${(card.comboSummary && card.comboSummary.imageCount) || 0} 张参考图 / ${(card.comboSummary && card.comboSummary.generationCount) || 0} 条视频记录`
+      : (card.mdSummary || card.mdContent || card.insightNote || ""),
+    typeLabel: isCombo ? "组合" : (card.type === "md" ? "DOC" : "IMG"),
     isMd: card.type === "md",
+    isCombo,
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "",
     terms,
     termsText: terms.join(" / ")

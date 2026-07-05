@@ -21,7 +21,8 @@
     "config:local": "tsx scripts/validate-runtime-config.ts .env.local",
     "config:production": "tsx scripts/validate-runtime-config.ts .env.production",
     "auth:smoke": "node scripts/auth-smoke.mjs",
-    "mini:auth:smoke": "WECHAT_MOCK=true MINI_DEBUG_PASSWORD_LOGIN=true node scripts/miniprogram-auth-smoke.mjs"
+    "mini:auth:smoke": "WECHAT_MOCK=true MINI_DEBUG_PASSWORD_LOGIN=true node scripts/miniprogram-auth-smoke.mjs",
+    "combo:smoke": "node scripts/combo-card-smoke.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

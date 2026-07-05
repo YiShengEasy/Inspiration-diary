@@ -18,6 +18,26 @@
       <text wx:if="{{card.summary}}" class="summary">{{card.summary}}</text>
     </view>
 
+    <view wx:if="{{card.isCombo && comboDetail}}" class="combo-section">
+      <text class="combo-title">参考图片</text>
+      <view wx:if="{{comboDetail.images.length}}" class="combo-image-grid">
+        <view wx:for="{{comboDetail.images}}" wx:key="id" class="combo-image-card">
+          <image src="{{item.imageUrl}}" mode="aspectFill"></image>
+          <text>{{item.roleLabel}}</text>
+        </view>
+      </view>
+      <text wx:else class="combo-empty">暂无参考图片</text>
+
+      <text class="combo-title">生成记录</text>
+      <view wx:if="{{comboDetail.generations.length}}" class="combo-generation-list">
+        <view wx:for="{{comboDetail.generations}}" wx:key="id" class="combo-generation">
+          <video src="{{item.videoUrl}}" poster="{{item.posterUrl}}" controls object-fit="contain"></video>
+          <text class="combo-prompt">{{item.promptNote}}</text>
+        </view>
+      </view>
+      <text wx:else class="combo-empty">暂无生成记录</text>
+    </view>
+
     <view class="tag-list">
       <text wx:for="{{card.terms}}" wx:key="*this" class="tag">#{{item}}</text>
       <text wx:if="{{!card.terms.length}}" class="empty-tags">暂无标签</text>

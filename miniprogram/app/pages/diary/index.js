@@ -13,17 +13,22 @@ function todayDayIndex() {
 }
 
 function imageFor(card) {
-  return resolveAssetUrl(card.thumbnailUrl || card.imageUrl || "");
+  const isCombo = card.type === "combo";
+  return resolveAssetUrl(isCombo ? ((card.comboSummary && card.comboSummary.coverImageUrl) || "") : (card.thumbnailUrl || card.imageUrl || ""));
 }
 
 function previewFor(card) {
   const image = imageFor(card);
+  const isCombo = card.type === "combo";
   return {
     id: card.id,
     isMd: card.type === "md",
+    isCombo,
     image,
-    title: card.mdName || "文档手稿",
-    summary: card.mdSummary || card.mdContent || "点击查看完整手稿。"
+    title: card.mdName || (isCombo ? "组合卡片" : "文档手稿"),
+    summary: isCombo
+      ? `${(card.comboSummary && card.comboSummary.imageCount) || 0} 张参考图 / ${(card.comboSummary && card.comboSummary.generationCount) || 0} 条视频记录`
+      : (card.mdSummary || card.mdContent || "点击查看完整手稿。")
   };
 }
 
@@ -57,13 +62,17 @@ function formatTermsText(terms) {
 
 function normalizeCard(card) {
   const terms = Array.isArray(card.terms) ? card.terms : [];
+  const isCombo = card.type === "combo";
   return {
     ...card,
-    image: imageFor(card),
-    title: card.mdName || terms[0] || "灵感图片",
-    summary: card.mdSummary || card.insightNote || "",
-    typeLabel: card.type === "md" ? "DOC" : "IMG",
+    image: isCombo ? resolveAssetUrl((card.comboSummary && card.comboSummary.coverImageUrl) || "") : imageFor(card),
+    title: card.mdName || terms[0] || (isCombo ? "组合卡片" : "灵感图片"),
+    summary: isCombo
+      ? `${(card.comboSummary && card.comboSummary.imageCount) || 0} 张参考图 / ${(card.comboSummary && card.comboSummary.generationCount) || 0} 条视频记录`
+      : (card.mdSummary || card.insightNote || ""),
+    typeLabel: isCombo ? "组合" : (card.type === "md" ? "DOC" : "IMG"),
     isMd: card.type === "md",
+    isCombo,
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "",
     terms,
     termsText: formatTermsText(terms)
@@ -72,7 +81,7 @@ function normalizeCard(card) {
 
 function normalizeBook(book) {
   const cover = book.coverCard || null;
-  const coverImage = cover ? resolveAssetUrl(cover.thumbnailUrl || cover.imageUrl || "") : "";
+  const coverImage = cover ? imageFor(cover) : "";
   return {
     ...book,
     coverImage,

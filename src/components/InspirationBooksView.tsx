@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { BookmarkCheck, BookOpen, Check, ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Loader2, Plus, Search, Trash, Upload, X } from "lucide-react";
+import { BookmarkCheck, BookOpen, Check, ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Layers3, Loader2, Plus, Search, Trash, Upload, X } from "lucide-react";
 import type { ImageCard, InspirationBook } from "../types";
 import { createBook, deleteBook, loadBookCards, loadBooks, setBookCover, setCardBookMembership, updateBook } from "../lib/booksClient";
-import { extractDocumentText, isSupportedDocumentFile, updateCardTerms } from "../lib/dbClient";
+import { createComboCard, extractDocumentText, isSupportedDocumentFile, updateCardTerms } from "../lib/dbClient";
 import PolaroidCard from "./PolaroidCard";
 
 interface InspirationBooksViewProps {
@@ -32,6 +32,22 @@ type BatchStatus = {
   currentFile: string;
   done: boolean;
 };
+
+function currentWeekId() {
+  const date = new Date();
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function todayDayIndex() {
+  const day = new Date().getDay();
+  if (day === 0 || day === 6) return 5;
+  return Math.max(0, day - 1);
+}
 
 export default function InspirationBooksView({
   refreshToken,
@@ -436,6 +452,32 @@ export default function InspirationBooksView({
     }
   };
 
+  const handleCreateBookComboCard = async () => {
+    if (!selectedBook) return;
+    setIsUploadingToBook(true);
+    setError(null);
+    try {
+      const result = await createComboCard({
+        weekId: currentWeekId(),
+        dayIndex: todayDayIndex(),
+        bookId: selectedBook.id,
+        title: `${selectedBook.title || "灵感册"}组合`,
+      });
+      setCards((current) => [result.card as ImageCard, ...current.filter((card) => card.id !== result.card.id)]);
+      onBookMembershipChanged();
+      await refreshBooks(selectedBook.id);
+      if (page !== 1) {
+        setPage(1);
+      } else {
+        await refreshCurrentBookCards();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "组合卡片创建失败");
+    } finally {
+      setIsUploadingToBook(false);
+    }
+  };
+
   const handleUploadInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
       void processBookFiles(event.target.files);
@@ -727,6 +769,16 @@ export default function InspirationBooksView({
                   >
                     {isUploadingToBook ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                     上传
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleCreateBookComboCard()}
+                    disabled={isUploadingToBook || !selectedBookId}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] bg-stone-800 px-3 text-sm font-bold text-[#fbf7ed] shadow-[0_12px_26px_rgba(68,64,60,0.12)] transition-all hover:-translate-y-0.5 hover:bg-stone-700 disabled:cursor-wait disabled:opacity-60 dark:bg-white/[0.10] dark:text-amber-100 dark:hover:bg-white/[0.14]"
+                    title="在当前灵感册创建组合卡片"
+                  >
+                    <Layers3 size={14} />
+                    创建组合
                   </button>
                   <div className="relative min-w-[220px]">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500" />

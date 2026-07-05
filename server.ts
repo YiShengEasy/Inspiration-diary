@@ -370,7 +370,7 @@ function signedImageUrl(value: string | null | undefined, req: express.Request):
   }
 
   const requestOrigin = new URL(origin);
-  const signablePathPrefixes = ["/api/photos/", "/api/objects/", "/api/videos/", "/api/images/"];
+  const signablePathPrefixes = ["/api/photos/", "/api/objects/", "/api/videos/", "/api/images/", "/api/combo-images/", "/api/combo-generations/"];
   if (url.origin !== requestOrigin.origin || !signablePathPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
     return resolved;
   }
@@ -427,6 +427,104 @@ function mapImageAssetsValue(value: any, req: express.Request) {
   return value.map((item) => mapImageAssetRow(item, req)).filter(Boolean);
 }
 
+function normalizeComboImageRole(value: unknown): "character" | "scene" | "story" | "other" {
+  return value === "character" || value === "scene" || value === "story" || value === "other" ? value : "other";
+}
+
+function mapComboImageRow(row: any, req: express.Request) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    cardId: row.card_id || "",
+    role: normalizeComboImageRole(row.role),
+    storageProvider: row.storage_provider || "local",
+    storageKey: row.storage_key || "",
+    imageUrl: signedImageUrl(`/api/combo-images/${encodeURIComponent(row.id)}`, req),
+    originalName: row.original_name || "image",
+    mimeType: row.mime_type || "image/jpeg",
+    sizeBytes: Number(row.size_bytes || 0),
+    sortOrder: Number(row.sort_order || 0),
+    createdAt: Number(row.created_at || 0),
+  };
+}
+
+function mapComboGenerationRow(row: any, req: express.Request) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    cardId: row.card_id || "",
+    promptNote: row.prompt_note || "",
+    storageProvider: row.storage_provider || "local",
+    storageKey: row.storage_key || "",
+    videoUrl: signedImageUrl(`/api/combo-generations/${encodeURIComponent(row.id)}/video`, req),
+    originalName: row.original_name || "video",
+    mimeType: row.mime_type || "video/mp4",
+    sizeBytes: Number(row.size_bytes || 0),
+    durationMs: Number(row.duration_ms || 0),
+    posterUrl: row.poster_url ? signedImageUrl(row.poster_url, req) : "",
+    sortOrder: Number(row.sort_order || 0),
+    createdAt: Number(row.created_at || 0),
+    updatedAt: Number(row.updated_at || 0),
+  };
+}
+
+function comboSummarySelectFor(alias: string): string {
+  return `
+    (SELECT ci.id
+     FROM combo_images ci
+     WHERE ci.user_id = ${alias}.user_id AND ci.card_id = ${alias}.id
+     ORDER BY CASE ci.role WHEN 'character' THEN 0 ELSE 1 END, ci.sort_order ASC, ci.created_at ASC
+     LIMIT 1) AS combo_cover_image_id,
+    (SELECT COUNT(*)::int FROM combo_images ci WHERE ci.user_id = ${alias}.user_id AND ci.card_id = ${alias}.id) AS combo_image_count,
+    (SELECT COUNT(*)::int FROM combo_generations cg WHERE cg.user_id = ${alias}.user_id AND cg.card_id = ${alias}.id) AS combo_generation_count
+  `;
+}
+
+const comboSummarySelectSql = comboSummarySelectFor("cards");
+const comboSummarySelectSqlForC = comboSummarySelectFor("c");
+const comboSummarySelectSqlForC2 = comboSummarySelectFor("c2");
+
+async function refreshComboCardSearchText(client: Pick<pg.PoolClient, "query">, userId: string, cardId: string): Promise<void> {
+  const cardResult = await client.query(
+    `SELECT terms, md_name, md_summary, insight_note
+     FROM cards
+     WHERE id = $1 AND user_id = $2`,
+    [cardId, userId]
+  );
+  const card = cardResult.rows[0];
+  if (!card) return;
+
+  const comboTextResult = await client.query(
+    `SELECT COALESCE(string_agg(text_part, ' '), '') AS combo_text
+     FROM (
+       SELECT role AS text_part
+       FROM combo_images
+       WHERE user_id = $1 AND card_id = $2
+       UNION ALL
+       SELECT prompt_note AS text_part
+       FROM combo_generations
+       WHERE user_id = $1 AND card_id = $2
+       UNION ALL
+       SELECT original_name AS text_part
+       FROM combo_generations
+       WHERE user_id = $1 AND card_id = $2
+     ) parts
+     WHERE COALESCE(text_part, '') <> ''`,
+    [userId, cardId]
+  );
+  const termsText = [
+    ...(Array.isArray(card.terms) ? card.terms : []),
+    card.md_name,
+    card.md_summary,
+    card.insight_note,
+    comboTextResult.rows[0]?.combo_text,
+  ]
+    .filter((value) => typeof value === "string" && value.trim())
+    .join(" ");
+
+  await client.query("UPDATE cards SET terms_text = $1 WHERE id = $2 AND user_id = $3", [termsText, cardId, userId]);
+}
+
 function primaryObjectProxyUrl(storageKey: string, req: express.Request, variant: "primary" | "primary-thumb" = "primary") {
   return signedImageUrl(`/api/objects/${variant}/${encodeURIComponent(storageKey)}`, req);
 }
@@ -455,6 +553,11 @@ function mapCardRows(rows: any[], req: express.Request) {
     insightNote: row.insight_note || "",
     videoAssets: mapVideoAssetsValue(row.video_assets, req),
     imageAssets: mapImageAssetsValue(row.image_assets, req),
+    comboSummary: (row.type || "image") === "combo" ? {
+      coverImageUrl: row.combo_cover_image_id ? signedImageUrl(`/api/combo-images/${encodeURIComponent(row.combo_cover_image_id)}`, req) : "",
+      imageCount: Number(row.combo_image_count || 0),
+      generationCount: Number(row.combo_generation_count || 0),
+    } : undefined,
   }));
 }
 
@@ -693,6 +796,43 @@ if (dbType === "postgres") {
         `);
         await client.query("CREATE INDEX IF NOT EXISTS idx_image_assets_user_card ON image_assets(user_id, card_id, created_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_image_assets_storage_key ON image_assets(storage_provider, storage_key);");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS combo_images (
+            id VARCHAR(80) PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            card_id VARCHAR(50) NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+            role VARCHAR(20) NOT NULL DEFAULT 'other',
+            storage_provider VARCHAR(20) NOT NULL DEFAULT 'local',
+            storage_key TEXT NOT NULL,
+            original_name TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            size_bytes BIGINT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at BIGINT NOT NULL
+          );
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_combo_images_user_card ON combo_images(user_id, card_id, sort_order, created_at);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_combo_images_storage_key ON combo_images(storage_provider, storage_key);");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS combo_generations (
+            id VARCHAR(80) PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            card_id VARCHAR(50) NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+            prompt_note TEXT NOT NULL DEFAULT '',
+            storage_provider VARCHAR(20) NOT NULL DEFAULT 'local',
+            storage_key TEXT NOT NULL,
+            original_name TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            size_bytes BIGINT NOT NULL,
+            duration_ms BIGINT DEFAULT 0,
+            poster_url TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+          );
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_combo_generations_user_card ON combo_generations(user_id, card_id, sort_order, created_at);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_combo_generations_storage_key ON combo_generations(storage_provider, storage_key);");
         await client.query("UPDATE cards SET terms_text = CONCAT_WS(' ', array_to_string(terms, ' '), md_name, md_summary, insight_note) WHERE terms_text IS NULL OR terms_text = '';");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_created_at_desc ON cards (created_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_week_created_at ON cards (week_id, created_at);");
@@ -1287,9 +1427,13 @@ app.post("/api/videos/upload", requirePostgresAuth, videoUpload.single("video"),
 
     const cardResult = await client.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              ${comboSummarySelectSql},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
-               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets
+               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets,
+              (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
+               FROM image_assets ia
+               WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
        FROM cards
        WHERE id = $1 AND user_id = $2`,
       [cardId, userId]
@@ -1946,7 +2090,8 @@ app.get("/api/db/books", requirePostgresAuth, async (req, res) => {
            SELECT row_to_json(c)
            FROM (
              SELECT c2.id, c2.week_id, c2.day_index, c2.image_url, c2.thumbnail_url, c2.photo_uid, c2.photo_hash,
-                    c2.terms, c2.deco_type, c2.angle, c2.created_at, c2.type, c2.md_content, c2.md_summary, c2.md_name, c2.insight_note
+                    c2.terms, c2.deco_type, c2.angle, c2.created_at, c2.type, c2.md_content, c2.md_summary, c2.md_name, c2.insight_note,
+                    ${comboSummarySelectSqlForC2}
              FROM inspiration_book_cards bc2
              INNER JOIN cards c2 ON c2.id = bc2.card_id AND c2.user_id = $1
              WHERE bc2.user_id = $1 AND bc2.book_id = b.id
@@ -2130,9 +2275,13 @@ app.get("/api/db/books/:bookId/cards", requirePostgresAuth, async (req, res) => 
     const cardsResult = await pgPool.query(
       `SELECT c.id, c.week_id, c.day_index, c.image_url, c.thumbnail_url, c.photo_uid, c.photo_hash,
               c.terms, c.deco_type, c.angle, c.created_at, c.type, c.md_content, c.md_summary, c.md_name, c.insight_note,
+              ${comboSummarySelectSqlForC},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
-               WHERE va.user_id = c.user_id AND va.card_id = c.id) AS video_assets
+               WHERE va.user_id = c.user_id AND va.card_id = c.id) AS video_assets,
+              (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
+               FROM image_assets ia
+               WHERE ia.user_id = c.user_id AND ia.card_id = c.id) AS image_assets
        FROM inspiration_book_cards bc
        INNER JOIN cards c ON c.id = bc.card_id AND c.user_id = $1
        WHERE bc.user_id = $1 AND bc.book_id = $2 ${searchSql}
@@ -2255,9 +2404,13 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     if (weekId && weekId !== "all") {
       const result = await pgPool.query(
         `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+                ${comboSummarySelectSql},
                 (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                  FROM video_assets va
-                 WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets
+                 WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets,
+                (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
+                 FROM image_assets ia
+                 WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
          FROM cards
          WHERE user_id = $1 AND week_id = $2
          ORDER BY day_index ASC, created_at DESC`,
@@ -2293,9 +2446,13 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
 
     const result = await pgPool.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              ${comboSummarySelectSql},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
-               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets
+               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets,
+              (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
+               FROM image_assets ia
+               WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
        FROM cards
        ${whereSql}
        ORDER BY created_at DESC
@@ -2314,6 +2471,339 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
   } catch (err: any) {
     console.error("Error executing fetch cards query:", err);
     return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/db/combo-cards", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+
+  const userId = req.user!.id;
+  const now = Date.now();
+  const id = String(req.body.id || `combo_${crypto.randomUUID()}`).trim();
+  const weekId = String(req.body.weekId || "").trim();
+  const dayIndex = Number.isFinite(Number(req.body.dayIndex)) ? Number(req.body.dayIndex) : 0;
+  const bookId = String(req.body.bookId || "").trim();
+  const title = String(req.body.title || "组合灵感").trim().slice(0, 120) || "组合灵感";
+  const terms = Array.isArray(req.body.terms) && req.body.terms.length
+    ? req.body.terms.map(String).map((term: string) => term.trim()).filter(Boolean).slice(0, 8)
+    : ["组合灵感", "视频创作"];
+  const insightNote = String(req.body.insightNote || "").trim();
+
+  if (!id) {
+    return res.status(400).json({ error: "id is required." });
+  }
+  if (!weekId) {
+    return res.status(400).json({ error: "weekId is required." });
+  }
+
+  const client = await pgPool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note)
+       VALUES ($1, $2, $3, $4, '', '', '', '', $5, $6, 'washi', 0, $7, 'combo', NULL, $8, $9, $10)`,
+      [id, userId, weekId, dayIndex, terms, [...terms, title, insightNote].filter(Boolean).join(" "), now, "多图组合与视频生成记录", title, insightNote || null]
+    );
+
+    if (bookId) {
+      const book = await client.query("SELECT id FROM inspiration_books WHERE id = $1 AND user_id = $2", [bookId, userId]);
+      if (book.rowCount > 0) {
+        await client.query(
+          `INSERT INTO inspiration_book_cards (user_id, book_id, card_id, added_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (user_id, book_id, card_id) DO NOTHING`,
+          [userId, bookId, id, now]
+        );
+        await client.query("UPDATE inspiration_books SET updated_at = $1 WHERE id = $2 AND user_id = $3", [now, bookId, userId]);
+      }
+    }
+
+    await client.query("COMMIT");
+
+    const cardResult = await pgPool.query(
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              ${comboSummarySelectSql},
+              (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
+               FROM video_assets va
+               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets,
+              (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
+               FROM image_assets ia
+               WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
+       FROM cards
+       WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    return res.json({ card: mapCardRows(cardResult.rows, req)[0] });
+  } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    console.error("Combo card create error:", err);
+    return res.status(500).json({ error: err.message || "Failed to create combo card." });
+  } finally {
+    client.release();
+  }
+});
+
+app.get("/api/db/cards/:id/combo", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  const userId = req.user!.id;
+  const cardId = req.params.id;
+  try {
+    const cardResult = await pgPool.query(
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              ${comboSummarySelectSql},
+              (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
+               FROM video_assets va
+               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets,
+              (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
+               FROM image_assets ia
+               WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
+       FROM cards
+       WHERE id = $1 AND user_id = $2 AND type = 'combo'`,
+      [cardId, userId]
+    );
+    if (!cardResult.rows[0]) {
+      return res.status(404).json({ error: "Combo card not found." });
+    }
+
+    const images = await pgPool.query(
+      `SELECT id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at
+       FROM combo_images
+       WHERE user_id = $1 AND card_id = $2
+       ORDER BY sort_order ASC, created_at ASC`,
+      [userId, cardId]
+    );
+    const generations = await pgPool.query(
+      `SELECT id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at
+       FROM combo_generations
+       WHERE user_id = $1 AND card_id = $2
+       ORDER BY sort_order ASC, created_at ASC`,
+      [userId, cardId]
+    );
+
+    return res.json({
+      card: mapCardRows(cardResult.rows, req)[0],
+      images: images.rows.map((row) => mapComboImageRow(row, req)).filter(Boolean),
+      generations: generations.rows.map((row) => mapComboGenerationRow(row, req)).filter(Boolean),
+    });
+  } catch (err: any) {
+    console.error("Combo detail load error:", err);
+    return res.status(500).json({ error: err.message || "Failed to load combo detail." });
+  }
+});
+
+app.post("/api/db/cards/:id/combo/images", requirePostgresAuth, imageAssetUpload.single("image"), async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: "Image file is required." });
+  }
+  if (!SUPPORTED_IMAGE_MIME_TYPES.has(file.mimetype)) {
+    return res.status(400).json({ error: "仅支持 jpg、png、webp、gif 图片。" });
+  }
+
+  const userId = req.user!.id;
+  const cardId = req.params.id;
+  const role = normalizeComboImageRole(req.body.role);
+  const sortOrder = Number.parseInt(String(req.body.sortOrder || "0"), 10) || 0;
+  const now = Date.now();
+  const imageId = `combo_img_${crypto.randomBytes(8).toString("hex")}_${now.toString(36)}`;
+  const extension = getImageExtension(file.originalname || "", file.mimetype);
+  const originalName = file.originalname || `${imageId}.${extension}`;
+  const storageKey = `images/${sanitizeStorageSegment(userId)}/combo/${sanitizeStorageSegment(cardId)}/${imageId}.${extension}`;
+  let storedImage: Awaited<ReturnType<typeof imageAssetStorage.putObject>> | null = null;
+
+  try {
+    const card = await pgPool.query("SELECT id FROM cards WHERE id = $1 AND user_id = $2 AND type = 'combo'", [cardId, userId]);
+    if (card.rowCount === 0) {
+      return res.status(404).json({ error: "Combo card not found." });
+    }
+
+    storedImage = await imageAssetStorage.putObject({
+      buffer: file.buffer,
+      mimeType: file.mimetype,
+      filename: originalName,
+      storageKey,
+    });
+
+    const result = await pgPool.query(
+      `INSERT INTO combo_images (id, user_id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at`,
+      [imageId, userId, cardId, role, storedImage.storageProvider, storedImage.storageKey, storedImage.originalName, storedImage.mimeType, storedImage.sizeBytes, sortOrder, now]
+    );
+    await refreshComboCardSearchText(pgPool, userId, cardId);
+    return res.json({ image: mapComboImageRow(result.rows[0], req) });
+  } catch (err: any) {
+    if (storedImage) {
+      await deleteImageAssetStorageObject(storedImage.storageProvider, storedImage.storageKey).catch(() => undefined);
+    }
+    console.error("Combo image upload error:", err);
+    return res.status(500).json({ error: err.message || "Failed to upload combo image." });
+  }
+});
+
+app.put("/api/db/cards/:id/combo/images/:imageId", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const userId = req.user!.id;
+    const role = normalizeComboImageRole(req.body.role);
+    const sortOrder = Number.parseInt(String(req.body.sortOrder || "0"), 10) || 0;
+    const result = await pgPool.query(
+      `UPDATE combo_images
+       SET role = $1, sort_order = $2
+       WHERE id = $3 AND card_id = $4 AND user_id = $5
+       RETURNING id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at`,
+      [role, sortOrder, req.params.imageId, req.params.id, userId]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: "Combo image not found." });
+    }
+    await refreshComboCardSearchText(pgPool, userId, req.params.id);
+    return res.json({ image: mapComboImageRow(result.rows[0], req) });
+  } catch (err: any) {
+    console.error("Combo image update error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update combo image." });
+  }
+});
+
+app.delete("/api/db/cards/:id/combo/images/:imageId", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const userId = req.user!.id;
+    const result = await pgPool.query(
+      `DELETE FROM combo_images
+       WHERE id = $1 AND card_id = $2 AND user_id = $3
+       RETURNING storage_provider, storage_key`,
+      [req.params.imageId, req.params.id, userId]
+    );
+    const asset = result.rows[0];
+    if (!asset) {
+      return res.status(404).json({ error: "Combo image not found." });
+    }
+    await deleteImageAssetStorageObject(asset.storage_provider, asset.storage_key).catch(() => undefined);
+    await refreshComboCardSearchText(pgPool, userId, req.params.id);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Combo image delete error:", err);
+    return res.status(500).json({ error: err.message || "Failed to delete combo image." });
+  }
+});
+
+app.post("/api/db/cards/:id/combo/generations", requirePostgresAuth, videoUpload.single("video"), async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: "Video file is required." });
+  }
+  if (!SUPPORTED_VIDEO_MIME_TYPES.has(file.mimetype)) {
+    return res.status(400).json({ error: "仅支持 mp4、mov、webm 视频。" });
+  }
+
+  const userId = req.user!.id;
+  const cardId = req.params.id;
+  const now = Date.now();
+  const generationId = `combo_gen_${crypto.randomBytes(8).toString("hex")}_${now.toString(36)}`;
+  const promptNote = String(req.body.promptNote || "").trim();
+  const sortOrder = Number.parseInt(String(req.body.sortOrder || "0"), 10) || 0;
+  const durationMs = Number.parseInt(String(req.body.durationMs || "0"), 10) || 0;
+  const extension = getVideoExtension(file.originalname || "", file.mimetype);
+  const originalName = file.originalname || `${generationId}.${extension}`;
+  const storageKey = `videos/${sanitizeStorageSegment(userId)}/combo/${sanitizeStorageSegment(cardId)}/${generationId}.${extension}`;
+  let storedVideo: Awaited<ReturnType<typeof videoStorage.putObject>> | null = null;
+
+  try {
+    const card = await pgPool.query("SELECT id FROM cards WHERE id = $1 AND user_id = $2 AND type = 'combo'", [cardId, userId]);
+    if (card.rowCount === 0) {
+      return res.status(404).json({ error: "Combo card not found." });
+    }
+
+    storedVideo = await videoStorage.putObject({
+      buffer: file.buffer,
+      mimeType: file.mimetype,
+      filename: originalName,
+      storageKey,
+    });
+
+    const result = await pgPool.query(
+      `INSERT INTO combo_generations (id, user_id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, '', $11, $12, $12)
+       RETURNING id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at`,
+      [generationId, userId, cardId, promptNote, storedVideo.storageProvider, storedVideo.storageKey, storedVideo.originalName, storedVideo.mimeType, storedVideo.sizeBytes, durationMs, sortOrder, now]
+    );
+    await refreshComboCardSearchText(pgPool, userId, cardId);
+    return res.json({ generation: mapComboGenerationRow(result.rows[0], req) });
+  } catch (err: any) {
+    if (storedVideo) {
+      await deleteVideoStorageObject(storedVideo.storageProvider, storedVideo.storageKey).catch(() => undefined);
+    }
+    console.error("Combo generation create error:", err);
+    return res.status(500).json({ error: err.message || "Failed to create combo generation." });
+  }
+});
+
+app.put("/api/db/cards/:id/combo/generations/:generationId", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const userId = req.user!.id;
+    const promptNote = String(req.body.promptNote || "").trim();
+    const sortOrder = Number.parseInt(String(req.body.sortOrder || "0"), 10) || 0;
+    const durationMs = Number.parseInt(String(req.body.durationMs || "0"), 10) || 0;
+    const result = await pgPool.query(
+      `UPDATE combo_generations
+       SET prompt_note = $1, sort_order = $2, duration_ms = $3, updated_at = $4
+       WHERE id = $5 AND card_id = $6 AND user_id = $7
+       RETURNING id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at`,
+      [promptNote, sortOrder, durationMs, Date.now(), req.params.generationId, req.params.id, userId]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: "Combo generation not found." });
+    }
+    await refreshComboCardSearchText(pgPool, userId, req.params.id);
+    return res.json({ generation: mapComboGenerationRow(result.rows[0], req) });
+  } catch (err: any) {
+    console.error("Combo generation update error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update combo generation." });
+  }
+});
+
+app.delete("/api/db/cards/:id/combo/generations/:generationId", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const userId = req.user!.id;
+    const result = await pgPool.query(
+      `DELETE FROM combo_generations
+       WHERE id = $1 AND card_id = $2 AND user_id = $3
+       RETURNING storage_provider, storage_key`,
+      [req.params.generationId, req.params.id, userId]
+    );
+    const asset = result.rows[0];
+    if (!asset) {
+      return res.status(404).json({ error: "Combo generation not found." });
+    }
+    await deleteVideoStorageObject(asset.storage_provider, asset.storage_key).catch(() => undefined);
+    await refreshComboCardSearchText(pgPool, userId, req.params.id);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Combo generation delete error:", err);
+    return res.status(500).json({ error: err.message || "Failed to delete combo generation." });
   }
 });
 
@@ -2375,9 +2865,13 @@ app.get("/api/db/cards/:id", requirePostgresAuth, async (req: AuthenticatedReque
     const result = await pgPool.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
               terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              ${comboSummarySelectSql},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
-               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets
+               WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets,
+              (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
+               FROM image_assets ia
+               WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
        FROM cards
        WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user!.id]
@@ -2479,6 +2973,51 @@ app.get("/api/images/:imageId", requirePostgresAuthOrSignedPhoto, async (req, re
     return fsSync.createReadStream(localPath).pipe(res);
   } catch (err: any) {
     console.error("Image stream error:", err);
+    return res.status(500).json({ error: err.message || "Image stream failed." });
+  }
+});
+
+app.get("/api/combo-images/:imageId", requirePostgresAuthOrSignedPhoto, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const signedRequest = hasValidSignedImageUrl(req);
+    const authReq = req as AuthenticatedRequest;
+    const result = signedRequest
+      ? await pgPool.query(
+          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
+           FROM combo_images
+           WHERE id = $1`,
+          [req.params.imageId]
+        )
+      : await pgPool.query(
+          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
+           FROM combo_images
+           WHERE id = $1 AND user_id = $2`,
+          [req.params.imageId, authReq.user!.id]
+        );
+    const asset = result.rows[0];
+    if (!asset) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+    if (asset.storage_provider === "oss") {
+      const signedUrl = await imageAssetStorage.getSignedReadUrl(asset.storage_key);
+      return res.redirect(302, signedUrl);
+    }
+    if (asset.storage_provider !== "local") {
+      return res.status(501).json({ error: "Unsupported image storage provider." });
+    }
+
+    const localPath = imageStorageKeyToLocalPath(asset.storage_key);
+    const stat = await fs.stat(localPath);
+    res.setHeader("Content-Type", asset.mime_type || "image/jpeg");
+    res.setHeader("Content-Length", String(stat.size));
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(asset.original_name || asset.id)}"`);
+    return fsSync.createReadStream(localPath).pipe(res);
+  } catch (err: any) {
+    console.error("Combo image stream error:", err);
     return res.status(500).json({ error: err.message || "Image stream failed." });
   }
 });
@@ -2603,6 +3142,69 @@ app.get("/api/videos/:videoId", requirePostgresAuthOrSignedPhoto, async (req, re
     return fsSync.createReadStream(localPath).pipe(res);
   } catch (err: any) {
     console.error("Video stream error:", err);
+    return res.status(500).json({ error: err.message || "Video stream failed." });
+  }
+});
+
+app.get("/api/combo-generations/:generationId/video", requirePostgresAuthOrSignedPhoto, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const signedRequest = hasValidSignedImageUrl(req);
+    const authReq = req as AuthenticatedRequest;
+    const result = signedRequest
+      ? await pgPool.query(
+          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
+           FROM combo_generations
+           WHERE id = $1`,
+          [req.params.generationId]
+        )
+      : await pgPool.query(
+          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
+           FROM combo_generations
+           WHERE id = $1 AND user_id = $2`,
+          [req.params.generationId, authReq.user!.id]
+        );
+    const asset = result.rows[0];
+    if (!asset) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+    if (asset.storage_provider === "oss") {
+      const signedUrl = await videoStorage.getSignedReadUrl(asset.storage_key);
+      return res.redirect(302, signedUrl);
+    }
+    if (asset.storage_provider !== "local") {
+      return res.status(501).json({ error: "Unsupported video storage provider." });
+    }
+
+    const localPath = storageKeyToLocalPath(asset.storage_key);
+    const stat = await fs.stat(localPath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Content-Type", asset.mime_type || "video/mp4");
+    res.setHeader("Cache-Control", "private, max-age=300");
+
+    if (range) {
+      const match = range.match(/bytes=(\d*)-(\d*)/);
+      const start = match?.[1] ? Number.parseInt(match[1], 10) : 0;
+      const end = match?.[2] ? Number.parseInt(match[2], 10) : fileSize - 1;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= fileSize) {
+        res.setHeader("Content-Range", `bytes */${fileSize}`);
+        return res.status(416).end();
+      }
+      const safeEnd = Math.min(end, fileSize - 1);
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${start}-${safeEnd}/${fileSize}`);
+      res.setHeader("Content-Length", String(safeEnd - start + 1));
+      return fsSync.createReadStream(localPath, { start, end: safeEnd }).pipe(res);
+    }
+
+    res.setHeader("Content-Length", String(fileSize));
+    return fsSync.createReadStream(localPath).pipe(res);
+  } catch (err: any) {
+    console.error("Combo generation video stream error:", err);
     return res.status(500).json({ error: err.message || "Video stream failed." });
   }
 });
@@ -2911,6 +3513,14 @@ app.delete("/api/db/cards/:id", requirePostgresAuth, async (req, res) => {
       "SELECT storage_provider, storage_key FROM image_assets WHERE user_id = $1 AND card_id = $2",
       [userId, req.params.id]
     );
+    const comboImages = await client.query(
+      "SELECT storage_provider, storage_key FROM combo_images WHERE user_id = $1 AND card_id = $2",
+      [userId, req.params.id]
+    );
+    const comboGenerations = await client.query(
+      "SELECT storage_provider, storage_key FROM combo_generations WHERE user_id = $1 AND card_id = $2",
+      [userId, req.params.id]
+    );
     const result = await client.query("DELETE FROM cards WHERE id = $1 AND user_id = $2", [req.params.id, userId]);
     if (result.rowCount === 0) {
       await client.query("ROLLBACK");
@@ -2944,6 +3554,16 @@ app.delete("/api/db/cards/:id", requirePostgresAuth, async (req, res) => {
     for (const asset of imageAssets.rows) {
       await deleteImageAssetStorageObject(asset.storage_provider, asset.storage_key).catch((deleteErr) => {
         console.error("Image asset cleanup error:", deleteErr);
+      });
+    }
+    for (const asset of comboImages.rows) {
+      await deleteImageAssetStorageObject(asset.storage_provider, asset.storage_key).catch((deleteErr) => {
+        console.error("Combo image cleanup error:", deleteErr);
+      });
+    }
+    for (const asset of comboGenerations.rows) {
+      await deleteVideoStorageObject(asset.storage_provider, asset.storage_key).catch((deleteErr) => {
+        console.error("Combo generation cleanup error:", deleteErr);
       });
     }
     return res.json({ success: true });

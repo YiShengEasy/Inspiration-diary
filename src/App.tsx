@@ -23,6 +23,7 @@ import {
   loadCardImages,
   deleteImageAsset,
   isSupportedImageAssetFile,
+  createComboCard,
 } from "./lib/dbClient";
 import TimelineHeader from "./components/TimelineHeader";
 import DaySlot from "./components/DaySlot";
@@ -30,6 +31,7 @@ import PolaroidCard from "./components/PolaroidCard";
 import InspirationBooksView from "./components/InspirationBooksView";
 import CustomTagLibraryView from "./components/CustomTagLibraryView";
 import CardBookPopover from "./components/CardBookPopover";
+import { ComboCardDetailView } from "./components/ComboCardDetail";
 import LoginScreen from "./components/LoginScreen";
 import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
 import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText, Tags, FileVideo, Upload } from "lucide-react";
@@ -1009,6 +1011,29 @@ export default function App() {
     });
   };
 
+  const handleCreateComboCard = useCallback(async (dayIndex: number) => {
+    if (!weekId) return;
+    try {
+      const result = await createComboCard({
+        weekId,
+        dayIndex,
+        title: "组合灵感",
+      });
+      const comboCard = result.card as ImageCard;
+      setCards((current) => {
+        const next = [comboCard, ...current.filter((card) => card.id !== comboCard.id)];
+        return next.sort((a, b) => {
+          if (a.dayIndex !== b.dayIndex) return a.dayIndex - b.dayIndex;
+          return b.createdAt - a.createdAt;
+        });
+      });
+      setAllCardsPageCards((current) => [comboCard, ...current.filter((card) => card.id !== comboCard.id)]);
+      setZoomedCard(comboCard);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "组合卡片创建失败");
+    }
+  }, [weekId]);
+
   const handleBindVideoToCard = async (cardId: string, file: File) => {
     if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
       throw new Error("视频不能超过 100MB。");
@@ -1239,6 +1264,8 @@ export default function App() {
     return false;
   });
   const visibleCards = mainView === "books" ? [] : searchScope === "all" ? allCardsPageCards : filteredCards;
+  const zoomedCardType = zoomedCard?.type as ImageCard["type"] | "combo" | undefined;
+  const zoomedCardIsCombo = zoomedCardType === "combo";
 
   const handlePrevZoomedCard = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1326,7 +1353,8 @@ export default function App() {
   }, [zoomedCard?.id]);
 
   useEffect(() => {
-    if (!zoomedCard || zoomedCard.type === "video") return;
+    const currentType = zoomedCard?.type as ImageCard["type"] | "combo" | undefined;
+    if (!zoomedCard || currentType === "video" || currentType === "combo") return;
     let alive = true;
     loadCardVideos(zoomedCard.id)
       .then((videoAssets) => {
@@ -1340,10 +1368,11 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [syncCardVideoAssets, zoomedCard?.id]);
+  }, [syncCardVideoAssets, zoomedCard?.id, zoomedCard?.type]);
 
   useEffect(() => {
-    if (!zoomedCard || zoomedCard.type !== "video") return;
+    const currentType = zoomedCard?.type as ImageCard["type"] | "combo" | undefined;
+    if (!zoomedCard || currentType !== "video") return;
     let alive = true;
     loadCardImages(zoomedCard.id)
       .then((imageAssets) => {
@@ -1953,6 +1982,7 @@ export default function App() {
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
                     onUploadVideo={handleUploadVideo}
+                    onCreateComboCard={handleCreateComboCard}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1969,6 +1999,7 @@ export default function App() {
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
                     onUploadVideo={handleUploadVideo}
+                    onCreateComboCard={handleCreateComboCard}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -1985,6 +2016,7 @@ export default function App() {
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
                     onUploadVideo={handleUploadVideo}
+                    onCreateComboCard={handleCreateComboCard}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -2005,6 +2037,7 @@ export default function App() {
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
                     onUploadVideo={handleUploadVideo}
+                    onCreateComboCard={handleCreateComboCard}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -2021,6 +2054,7 @@ export default function App() {
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
                     onUploadVideo={handleUploadVideo}
+                    onCreateComboCard={handleCreateComboCard}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -2038,6 +2072,7 @@ export default function App() {
                     onUploadImage={handleUploadImage}
                     onUploadMd={handleUploadMd}
                     onUploadVideo={handleUploadVideo}
+                    onCreateComboCard={handleCreateComboCard}
                     onDeleteCard={handleDeleteCard}
                     onDeleteTerm={handleDeleteTerm}
                     onZoom={setZoomedCard}
@@ -2405,7 +2440,7 @@ export default function App() {
               initial={{ scale: 0.93, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.93, y: 15 }}
-              className={`relative flex max-h-[calc(100vh-1.5rem)] w-full flex-col items-stretch gap-4 overflow-y-auto rounded-2xl border border-amber-900/10 bg-white p-4 pb-5 shadow-[0_24px_50px_rgba(0,0,0,0.6)] select-text dark:border-white/10 dark:bg-stone-850 md:h-[calc(100vh-2rem)] md:flex-row md:gap-5 md:overflow-hidden md:p-5 ${zoomedCard.type === "md" ? "max-w-5xl" : "max-w-7xl"}`}
+              className={`relative flex max-h-[calc(100vh-1.5rem)] w-full flex-col items-stretch gap-4 overflow-y-auto rounded-2xl border border-amber-900/10 bg-white p-4 pb-5 shadow-[0_24px_50px_rgba(0,0,0,0.6)] select-text dark:border-white/10 dark:bg-stone-850 md:h-[calc(100vh-2rem)] md:flex-row md:gap-5 md:overflow-hidden md:p-5 ${zoomedCard.type === "md" || zoomedCardIsCombo ? "max-w-5xl" : "max-w-7xl"}`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Close Button on top corner */}
@@ -2419,8 +2454,17 @@ export default function App() {
               </button>
 
               {/* Left Column: Picture or Markdown document */}
-              <div className={`relative w-full shrink-0 overflow-hidden rounded-xl border border-stone-200 bg-stone-100 shadow-inner group/zoomimage dark:border-stone-800 dark:bg-stone-900 md:h-full md:min-h-0 ${zoomedCard.type === "md" ? "h-[58vh] md:w-[68%]" : "h-[56vh] min-h-[300px] md:w-[66%]"}`}>
-                {zoomedCard.type === "md" ? (
+              <div className={`relative w-full shrink-0 overflow-hidden rounded-xl border border-stone-200 bg-stone-100 shadow-inner group/zoomimage dark:border-stone-800 dark:bg-stone-900 md:h-full md:min-h-0 ${zoomedCard.type === "md" || zoomedCardIsCombo ? "h-[58vh] md:w-[68%]" : "h-[56vh] min-h-[300px] md:w-[66%]"}`}>
+                {zoomedCardIsCombo ? (
+                  <ComboCardDetailView
+                    card={zoomedCard}
+                    onCardChanged={(card) => {
+                      setZoomedCard(card);
+                      setCards((current) => current.map((item) => item.id === card.id ? card : item));
+                      setAllCardsPageCards((current) => current.map((item) => item.id === card.id ? card : item));
+                    }}
+                  />
+                ) : zoomedCard.type === "md" ? (
                   <div className="w-full h-full overflow-y-auto p-6 md:p-10 bg-white dark:bg-stone-900 custom-scrollbar text-left text-sm md:text-base text-stone-800 dark:text-stone-100 shadow-inner break-words leading-relaxed [&_h1]:font-serif [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-stone-600 [&_a]:text-amber-600 [&_a]:underline [&_code]:rounded [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-amber-700 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-stone-950 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:text-stone-100 [&_img]:rounded-xl">
                     <Markdown>{zoomedCard.mdContent || ""}</Markdown>
                   </div>
@@ -2513,8 +2557,8 @@ export default function App() {
                     )}
                   </>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/5 pointer-events-none" />
-                {zoomedCard.type !== "md" && zoomedCard.type !== "video" && visibleCards.length > 1 && (
+                {!zoomedCardIsCombo ? <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/5 pointer-events-none" /> : null}
+                {zoomedCard.type !== "md" && zoomedCard.type !== "video" && !zoomedCardIsCombo && visibleCards.length > 1 && (
                   <>
                     <button
                       onClick={handlePrevZoomedCard}
@@ -2535,7 +2579,7 @@ export default function App() {
               </div>
 
               {/* Right Column: Key Details, Tag lists, info */}
-              <div className={`flex min-h-[360px] w-full flex-col overflow-hidden rounded-xl border border-stone-900/10 bg-[#fbf7ed]/45 dark:border-white/10 dark:bg-white/[0.035] md:h-full md:min-h-0 ${zoomedCard.type === "md" ? "md:w-[32%]" : "md:w-[34%]"}`}>
+              <div className={`flex min-h-[360px] w-full flex-col overflow-hidden rounded-xl border border-stone-900/10 bg-[#fbf7ed]/45 dark:border-white/10 dark:bg-white/[0.035] md:h-full md:min-h-0 ${zoomedCard.type === "md" || zoomedCardIsCombo ? "md:w-[32%]" : "md:w-[34%]"}`}>
                 <div className="shrink-0 border-b border-dashed border-amber-900/15 px-3 pb-3 pt-1 pr-11 dark:border-amber-100/10 md:px-1 md:pb-3 md:pt-1 md:pr-9">
                   {/* Title / Mood heading */}
                   <div className="flex items-start justify-between gap-3">
@@ -2546,6 +2590,8 @@ export default function App() {
                       <h3 className="break-words font-serif text-lg font-bold italic leading-tight text-stone-900 dark:text-stone-100">
                         {zoomedCard.type === "md"
                           ? (zoomedCard.mdName || "Markdown 手稿")
+                          : zoomedCardIsCombo
+                            ? (zoomedCard.mdName || "组合灵感")
                           : zoomedCard.type === "video"
                             ? (zoomedCard.videoAssets?.[0]?.originalName || "视频灵感")
                             : `${getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录`}
@@ -2660,7 +2706,11 @@ export default function App() {
                     </div>
                   </div>
 
-                  {zoomedCard.type === "video" ? (
+                  {zoomedCardIsCombo ? (
+                    <div className="rounded-[8px] border border-dashed border-stone-900/15 px-3 py-4 text-[11px] leading-relaxed text-stone-500 dark:border-white/12 dark:text-stone-500">
+                      参考图、角色分类、提示词和视频记录在左侧组合编辑器里维护。这里保留通用关键词、备注和灵感册收录。
+                    </div>
+                  ) : zoomedCard.type === "video" ? (
                     <div>
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <h4 className="text-xs font-serif font-bold italic text-stone-600 dark:text-stone-300">
@@ -2819,14 +2869,16 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
+                        if (zoomedCardIsCombo) return;
                         void handleDownloadCard(zoomedCard).catch((err) => {
                           console.error("Download failed:", err);
                           alert(err.message || "下载失败，请稍后重试。");
                         });
                       }}
-                      className="grid h-9 w-9 place-items-center rounded-full border border-amber-900/15 bg-amber-100/70 text-amber-900 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-amber-200 active:scale-95 dark:border-amber-100/10 dark:bg-amber-300/15 dark:text-amber-100 dark:hover:bg-amber-300/25"
-                      title={zoomedCard.type === "md" ? "下载 Markdown 文件" : zoomedCard.type === "video" ? "下载视频" : "下载原图"}
-                      aria-label={zoomedCard.type === "md" ? "下载 Markdown 文件" : zoomedCard.type === "video" ? "下载视频" : "下载原图"}
+                      disabled={zoomedCardIsCombo}
+                      className="grid h-9 w-9 place-items-center rounded-full border border-amber-900/15 bg-amber-100/70 text-amber-900 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-amber-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 dark:border-amber-100/10 dark:bg-amber-300/15 dark:text-amber-100 dark:hover:bg-amber-300/25"
+                      title={zoomedCardIsCombo ? "组合素材请在左侧单项下载" : zoomedCard.type === "md" ? "下载 Markdown 文件" : zoomedCard.type === "video" ? "下载视频" : "下载原图"}
+                      aria-label={zoomedCardIsCombo ? "组合素材请在左侧单项下载" : zoomedCard.type === "md" ? "下载 Markdown 文件" : zoomedCard.type === "video" ? "下载视频" : "下载原图"}
                     >
                       <Download size={15} />
                     </button>

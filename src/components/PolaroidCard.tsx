@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ImageCard } from "../types";
-import { FileVideo, Plus, X } from "lucide-react";
+import { FileVideo, Layers3, Plus, X } from "lucide-react";
 
 interface PolaroidCardProps {
   key?: React.Key;
@@ -40,6 +40,10 @@ export default function PolaroidCard({
   };
 
   const primaryVideo = card.videoAssets?.[0] || null;
+  const cardType = card.type as ImageCard["type"] | "combo" | undefined;
+  const comboSummary = (card as ImageCard & {
+    comboSummary?: { coverImageUrl: string; imageCount: number; generationCount: number };
+  }).comboSummary;
 
   // Render the skeuomorphic decoration at the top of the photo
   const renderDecoration = () => {
@@ -113,6 +117,34 @@ export default function PolaroidCard({
               <p className="text-[9px] text-stone-500 dark:text-stone-400 font-sans leading-relaxed">
                 {card.mdSummary || card.mdContent || "点击查看完整手稿。"}
               </p>
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
+          </div>
+        ) : cardType === "combo" ? (
+          <div
+            onClick={() => onZoom(card)}
+            className="relative aspect-square w-full overflow-hidden bg-stone-100 dark:bg-stone-900 border border-stone-200/50 dark:border-stone-700/50 shadow-inner cursor-zoom-in hover:brightness-95 transition-all"
+            title="查看组合卡片"
+          >
+            {comboSummary?.coverImageUrl ? (
+              <img
+                src={comboSummary.coverImageUrl}
+                alt={card.mdName || "组合卡片"}
+                className="h-full w-full object-cover select-none pointer-events-none"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-stone-500 dark:text-stone-400">
+                <Layers3 size={34} strokeWidth={1.6} />
+                <span className="text-xs font-bold">组合卡片</span>
+              </div>
+            )}
+            <div className="absolute left-2 top-2 rounded-full bg-stone-950/80 px-2 py-1 text-[9px] font-bold text-white shadow-sm backdrop-blur">
+              组合
+            </div>
+            <div className="absolute inset-x-2 bottom-2 rounded-[6px] bg-white/85 px-2 py-1 text-[10px] font-bold text-stone-700 shadow-sm backdrop-blur dark:bg-stone-950/75 dark:text-stone-100">
+              {comboSummary?.imageCount || 0} 张参考图 / {comboSummary?.generationCount || 0} 条视频记录
             </div>
             <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
           </div>

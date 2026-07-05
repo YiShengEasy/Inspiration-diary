@@ -10,7 +10,16 @@ import {
   deleteDoc,
   updateDoc,
 } from "firebase/firestore";
-import { ImageCard, type ImageAsset, type VideoAsset, WeeklyNote } from "../types";
+import {
+  type ComboCardDetail,
+  type ComboGeneration,
+  type ComboImage,
+  type ComboImageRole,
+  ImageCard,
+  type ImageAsset,
+  type VideoAsset,
+  WeeklyNote,
+} from "../types";
 import { authFetch } from "./authClient";
 
 // Detect if we are in PostgreSQL Mode
@@ -474,6 +483,151 @@ export async function deleteImageAsset(imageId: string): Promise<void> {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `图片删除失败：${res.statusText}`);
+  }
+}
+
+export async function createComboCard(params: {
+  id?: string;
+  weekId: string;
+  dayIndex: number;
+  bookId?: string;
+  title?: string;
+  terms?: string[];
+  insightNote?: string;
+}): Promise<{ card: ImageCard }> {
+  if (!isPostgresMode) {
+    throw new Error("当前存储模式不支持组合卡片。");
+  }
+
+  const res = await authFetch("/api/db/combo-cards", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `组合卡片创建失败：${res.statusText}`);
+  }
+  if (data.card) {
+    upsertCachedCard(data.card);
+  }
+  return data;
+}
+
+export async function loadComboCardDetail(cardId: string): Promise<ComboCardDetail> {
+  if (!isPostgresMode) {
+    throw new Error("当前存储模式不支持组合卡片。");
+  }
+
+  const res = await authFetch(`/api/db/cards/${encodeURIComponent(cardId)}/combo`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `组合详情加载失败：${res.statusText}`);
+  }
+  return data;
+}
+
+export async function uploadComboImage(params: {
+  cardId: string;
+  file: File;
+  role: ComboImageRole;
+  sortOrder?: number;
+}): Promise<{ image: ComboImage }> {
+  if (!isPostgresMode) {
+    throw new Error("当前存储模式不支持组合卡片。");
+  }
+  if (!isSupportedImageAssetFile(params.file)) {
+    throw new Error("仅支持 jpg、png、webp、gif 图片。");
+  }
+  if (params.file.size > MAX_IMAGE_ASSET_UPLOAD_BYTES) {
+    throw new Error("图片不能超过 25MB。");
+  }
+
+  const form = new FormData();
+  form.append("image", params.file, params.file.name || "image.jpg");
+  form.append("role", params.role);
+  form.append("sortOrder", String(params.sortOrder || 0));
+
+  const res = await authFetch(`/api/db/cards/${encodeURIComponent(params.cardId)}/combo/images`, {
+    method: "POST",
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `参考图上传失败：${res.statusText}`);
+  }
+  return data;
+}
+
+export async function createComboGeneration(params: {
+  cardId: string;
+  file: File;
+  promptNote: string;
+  sortOrder?: number;
+  durationMs?: number;
+}): Promise<{ generation: ComboGeneration }> {
+  if (!isPostgresMode) {
+    throw new Error("当前存储模式不支持组合卡片。");
+  }
+  if (!isSupportedVideoFile(params.file)) {
+    throw new Error("仅支持 mp4、mov、webm 视频。");
+  }
+  if (params.file.size > MAX_VIDEO_UPLOAD_BYTES) {
+    throw new Error("视频不能超过 100MB。");
+  }
+
+  const form = new FormData();
+  form.append("video", params.file, params.file.name || "video.mp4");
+  form.append("promptNote", params.promptNote);
+  form.append("sortOrder", String(params.sortOrder || 0));
+  if (typeof params.durationMs === "number") {
+    form.append("durationMs", String(params.durationMs));
+  }
+
+  const res = await authFetch(`/api/db/cards/${encodeURIComponent(params.cardId)}/combo/generations`, {
+    method: "POST",
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `生成记录保存失败：${res.statusText}`);
+  }
+  return data;
+}
+
+export async function updateComboGeneration(params: {
+  cardId: string;
+  generationId: string;
+  promptNote: string;
+  sortOrder: number;
+}): Promise<{ generation: ComboGeneration }> {
+  if (!isPostgresMode) {
+    throw new Error("当前存储模式不支持组合卡片。");
+  }
+
+  const res = await authFetch(`/api/db/cards/${encodeURIComponent(params.cardId)}/combo/generations/${encodeURIComponent(params.generationId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ promptNote: params.promptNote, sortOrder: params.sortOrder }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `生成记录更新失败：${res.statusText}`);
+  }
+  return data;
+}
+
+export async function deleteComboGeneration(cardId: string, generationId: string): Promise<void> {
+  if (!isPostgresMode) {
+    throw new Error("当前存储模式不支持组合卡片。");
+  }
+
+  const res = await authFetch(`/api/db/cards/${encodeURIComponent(cardId)}/combo/generations/${encodeURIComponent(generationId)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `生成记录删除失败：${res.statusText}`);
   }
 }
 

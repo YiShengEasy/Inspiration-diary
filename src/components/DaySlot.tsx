@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { ImageCard } from "../types";
-import { Clipboard, Image, Loader2, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { Clipboard, Image, Layers3, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import PolaroidCard from "./PolaroidCard";
 import { motion } from "motion/react";
 import WeatherBackground from "./WeatherBackground";
@@ -14,6 +14,7 @@ interface DaySlotProps {
   onUploadImage: (dayIndex: number, originalFile: File, analysisBlob?: Blob) => Promise<void>;
   onUploadMd?: (dayIndex: number, text: string, filename: string) => Promise<void>;
   onUploadVideo?: (dayIndex: number, file: File) => Promise<void>;
+  onCreateComboCard?: (dayIndex: number) => void;
   onDeleteCard: (id: string) => void;
   onDeleteTerm: (cardId: string, termIndex: number) => void;
   onZoom: (card: ImageCard) => void;
@@ -45,6 +46,7 @@ export default function DaySlot({
   onUploadImage,
   onUploadMd,
   onUploadVideo,
+  onCreateComboCard,
   onDeleteCard,
   onDeleteTerm,
   onZoom,
@@ -565,7 +567,7 @@ export default function DaySlot({
         {/* Empty placeholder slot with double support (Drag & Drop + Clipboard Paste + Click) */}
         {!isUploading && cards.length === 0 && (
           <div className="w-full flex-grow flex flex-col items-center justify-center py-6 px-4 rounded-xl border-2 border-dashed border-stone-200 dark:border-stone-800 hover:border-amber-400 group/dropzone bg-stone-50/40 dark:bg-stone-900/20 hover:bg-amber-50/10 transition-all text-center">
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <div
                 onClick={triggerFileSelect}
                 className="flex flex-col items-center cursor-pointer group/importbtn p-2 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
@@ -578,9 +580,22 @@ export default function DaySlot({
                   批量导入
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => onCreateComboCard?.(dayIndex)}
+                className="flex flex-col items-center rounded-xl p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-800 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+                title="创建组合卡片"
+              >
+                <div className="rounded-full bg-stone-100 p-2 text-stone-500 transition-colors dark:bg-stone-800 dark:text-stone-400">
+                  <Layers3 size={17} strokeWidth={1.5} />
+                </div>
+                <div className="mt-2 text-xs font-serif italic font-medium">
+                  创建组合
+                </div>
+              </button>
             </div>
             <p className="text-[10px] text-stone-400 dark:text-stone-500 max-w-[170px] mt-1 tracking-tight leading-normal">
-              多选图片或 MD，全部导入这一天。
+              多选图片或文档，全部导入这一天。
             </p>
           </div>
         )}
@@ -593,12 +608,20 @@ export default function DaySlot({
             onClick={triggerFileSelect}
             className="w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center cursor-pointer shadow-md transform hover:scale-110 hover:rotate-12 transition-all"
             id={`add-more-btn-${dayIndex}`}
-            title="批量导入图片和MD"
+            title="批量导入图片和文档"
           >
             <span className="relative inline-flex">
               <Image size={12} strokeWidth={2} />
               <Clipboard size={7} strokeWidth={2.2} className="absolute -right-1.5 -bottom-1 rounded-full bg-amber-600 text-white" />
             </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onCreateComboCard?.(dayIndex)}
+            className="w-6 h-6 rounded-full bg-stone-900 hover:bg-stone-800 text-white flex items-center justify-center cursor-pointer shadow-md transform hover:scale-110 transition-all dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white"
+            title="创建组合卡片"
+          >
+            <Layers3 size={12} strokeWidth={2} />
           </button>
         </div>
       )}

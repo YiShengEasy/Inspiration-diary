@@ -10,13 +10,22 @@ export interface ImageCard {
   decoType: "tape" | "pin" | "paperclip" | "washi";
   angle: number; // Random value from -3 to 3 for polaroid tilt styling
   createdAt: number;
-  type?: "image" | "md" | "video";
+  type?: "image" | "md" | "video" | "combo";
   mdContent?: string;
   mdSummary?: string;
   mdName?: string;
   insightNote?: string;
   videoAssets?: VideoAsset[];
   imageAssets?: ImageAsset[];
+  comboSummary?: ComboSummary;
+}
+
+export type ComboImageRole = "character" | "scene" | "story" | "other";
+
+export interface ComboSummary {
+  coverImageUrl: string;
+  imageCount: number;
+  generationCount: number;
 }
 
 export interface VideoAsset {
@@ -43,6 +52,43 @@ export interface ImageAsset {
   mimeType: string;
   sizeBytes: number;
   createdAt: number;
+}
+
+export interface ComboImage {
+  id: string;
+  cardId: string;
+  role: ComboImageRole;
+  storageProvider: "local" | "oss" | string;
+  storageKey: string;
+  imageUrl: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface ComboGeneration {
+  id: string;
+  cardId: string;
+  promptNote: string;
+  storageProvider: "local" | "oss" | string;
+  storageKey: string;
+  videoUrl: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  durationMs: number;
+  posterUrl?: string;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ComboCardDetail {
+  card: ImageCard;
+  images: ComboImage[];
+  generations: ComboGeneration[];
 }
 
 export interface WeeklyNote {
