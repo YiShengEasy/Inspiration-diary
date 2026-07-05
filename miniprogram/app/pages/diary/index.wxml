@@ -4,7 +4,7 @@
       <view>
         <text class="eyebrow">Inspiration Diary</text>
         <text class="title">把每天的视觉灵感整理成册</text>
-        <text class="desc">图片、Markdown、色卡和标签会按日期沉淀，也能收录进不同灵感册。</text>
+        <text class="desc">图片、文档、色卡和标签会按日期沉淀，也能收录进不同灵感册。</text>
         <button class="primary-btn" bindtap="openRegister">完成注册</button>
       </view>
       <view class="preview-stack">
@@ -23,7 +23,7 @@
       <view class="preview-item">
         <text class="item-icon">文</text>
         <text class="item-title">文档</text>
-        <text class="item-desc">MD 摘要</text>
+        <text class="item-desc">文档摘要</text>
       </view>
       <view class="preview-item">
         <text class="item-icon">色</text>

@@ -3,7 +3,7 @@
     <view>
       <text class="eyebrow">CUSTOM TAGS</text>
       <text class="page-title">标签库</text>
-      <text class="page-desc">管理 AI 识别图片和 Markdown 时可参考的自定义词。</text>
+      <text class="page-desc">管理 AI 识别图片和文档时可参考的自定义词。</text>
     </view>
     <text wx:if="{{saving || loading}}" class="sync-text">{{saving ? '同步中' : '加载中'}}</text>
   </view>

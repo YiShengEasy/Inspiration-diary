@@ -29,7 +29,7 @@ function normalizeCard(card) {
     image: resolveAssetUrl(card.thumbnailUrl || card.imageUrl || ""),
     title: card.mdName || terms[0] || "灵感图片",
     summary: card.mdSummary || card.mdContent || card.insightNote || "",
-    typeLabel: card.type === "md" ? "MD" : "IMG",
+    typeLabel: card.type === "md" ? "DOC" : "IMG",
     isMd: card.type === "md",
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleDateString("zh-CN") : "",
     terms,
@@ -47,7 +47,7 @@ function createMiniCardId() {
   return `mini_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function fallbackMarkdownSummary(text) {
+function fallbackDocumentSummary(text) {
   return String(text || "")
     .split(/\r?\n/)
     .map((line) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*+]\s+/, "").trim())
@@ -332,7 +332,7 @@ Page({
     await this.finishBookImport(bookId, succeeded, failed);
   },
 
-  async summarizeMarkdown(text) {
+  async summarizeDocument(text) {
     try {
       const customTagHints = await loadEnabledCustomTagHints();
       const body = await request({
@@ -347,12 +347,12 @@ Page({
         ? body.terms.filter((term) => typeof term === "string" && term.trim()).slice(0, 5)
         : [];
       return {
-        summary: body.summary || fallbackMarkdownSummary(text),
+        summary: body.summary || fallbackDocumentSummary(text),
         terms: terms.length ? terms : ["文档手稿", "资料整理"]
       };
     } catch (err) {
       return {
-        summary: fallbackMarkdownSummary(text),
+        summary: fallbackDocumentSummary(text),
         terms: ["文档手稿", "资料整理"]
       };
     }
@@ -370,7 +370,7 @@ Page({
     }
 
     const cardId = createMiniCardId();
-    const summary = await this.summarizeMarkdown(text);
+    const summary = await this.summarizeDocument(text);
     const card = {
       id: cardId,
       weekId: currentWeekId(),

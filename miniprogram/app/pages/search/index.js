@@ -1,6 +1,6 @@
 const { request, resolveAssetUrl } = require("../../utils/api");
 
-const filterNames = ["全部", "图片", "MD", "标签"];
+const filterNames = ["全部", "图片", "文档", "标签"];
 
 function buildFilters(active) {
   return filterNames.map((name) => ({
@@ -17,7 +17,7 @@ function normalizeCard(card) {
     image: resolveAssetUrl(card.thumbnailUrl || card.imageUrl || ""),
     title: card.mdName || terms[0] || "灵感图片",
     summary: card.mdSummary || card.mdContent || card.insightNote || "",
-    typeLabel: card.type === "md" ? "MD" : "IMG",
+    typeLabel: card.type === "md" ? "DOC" : "IMG",
     isMd: card.type === "md",
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "",
     terms,
@@ -65,7 +65,7 @@ Page({
       let cards = (body.cards || []).map(normalizeCard);
       if (this.data.filter === "图片") {
         cards = cards.filter((card) => card.type !== "md");
-      } else if (this.data.filter === "MD") {
+      } else if (this.data.filter === "文档") {
         cards = cards.filter((card) => card.type === "md");
       } else if (this.data.filter === "标签" && q) {
         cards = cards.filter((card) => card.terms.some((term) => term.indexOf(q) >= 0));

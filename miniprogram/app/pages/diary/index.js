@@ -22,7 +22,7 @@ function previewFor(card) {
     id: card.id,
     isMd: card.type === "md",
     image,
-    title: card.mdName || "Markdown Note",
+    title: card.mdName || "文档手稿",
     summary: card.mdSummary || card.mdContent || "点击查看完整手稿。"
   };
 }
@@ -62,7 +62,7 @@ function normalizeCard(card) {
     image: imageFor(card),
     title: card.mdName || terms[0] || "灵感图片",
     summary: card.mdSummary || card.insightNote || "",
-    typeLabel: card.type === "md" ? "MD" : "IMG",
+    typeLabel: card.type === "md" ? "DOC" : "IMG",
     isMd: card.type === "md",
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "",
     terms,
