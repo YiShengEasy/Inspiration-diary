@@ -1,6 +1,8 @@
 services:
   postgres:
     image: postgres:16-alpine
+    profiles:
+      - docker-postgres
     environment:
       POSTGRES_DB: notebook
       POSTGRES_USER: postgres
@@ -8,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres-local-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d notebook"]
       interval: 10s
@@ -28,16 +30,13 @@ services:
       APP_ENV: local
       DEPLOYMENT_PROFILE: local-docker
       NODE_ENV: production
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/notebook
+      DATABASE_URL: postgresql://yisheng@host.docker.internal:5432/inspiration_diary
     ports:
       - "3005:3000"
     volumes:
       - uploads-local:/app/uploads
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  postgres-local-data:
+  postgres-data:
   uploads-local:
