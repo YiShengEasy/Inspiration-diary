@@ -122,14 +122,15 @@ export default function PolaroidCard({
             className="relative aspect-square w-full overflow-hidden bg-stone-950 border border-black/10 shadow-inner cursor-zoom-in hover:brightness-110 transition-all"
             title="播放视频"
           >
-            {primaryVideo ? (
-              <video
-                src={primaryVideo.videoUrl}
-                className="h-full w-full object-cover select-none pointer-events-none opacity-80"
-                preload="metadata"
-                muted
-                playsInline
+            {primaryVideo?.posterUrl ? (
+              <img
+                src={primaryVideo.posterUrl}
+                alt={primaryVideo.originalName || "视频封面"}
+                className="h-full w-full object-cover select-none pointer-events-none opacity-85"
+                referrerPolicy="no-referrer"
               />
+            ) : primaryVideo ? (
+              <div className="h-full w-full bg-stone-900" />
             ) : null}
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(251,191,36,0.28),transparent_34%),linear-gradient(145deg,rgba(0,0,0,0.10),rgba(0,0,0,0.50))]" />
             <div className="absolute inset-0 grid place-items-center">

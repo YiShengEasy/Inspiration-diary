@@ -38,6 +38,7 @@ const PORT = runtimeConfig.port;
 const MAX_VIDEO_UPLOAD_BYTES = Number.parseInt(process.env.MAX_VIDEO_UPLOAD_BYTES || String(100 * 1024 * 1024), 10);
 const MAX_IMAGE_ASSET_UPLOAD_BYTES = Number.parseInt(process.env.MAX_IMAGE_ASSET_UPLOAD_BYTES || String(25 * 1024 * 1024), 10);
 const OSS_PRIMARY_THUMB_PROCESS = process.env.OSS_PRIMARY_THUMB_PROCESS || "image/resize,w_480/quality,q_80/format,webp";
+const OSS_VIDEO_POSTER_PROCESS = process.env.OSS_VIDEO_POSTER_PROCESS || "video/snapshot,t_1000,f_jpg,w_720";
 const VIDEO_UPLOAD_ROOT = path.isAbsolute(runtimeConfig.localStorage.videoUploadRoot)
   ? runtimeConfig.localStorage.videoUploadRoot
   : path.join(process.cwd(), runtimeConfig.localStorage.videoUploadRoot);
@@ -310,6 +311,7 @@ function signedImageUrl(value: string | null | undefined, req: express.Request):
 
 function mapVideoAssetRow(row: any, req: express.Request) {
   if (!row) return null;
+  const isOssVideo = row.storage_provider === "oss" && typeof row.storage_key === "string" && row.storage_key.startsWith("videos/");
   return {
     id: row.id,
     cardId: row.card_id || "",
@@ -320,7 +322,7 @@ function mapVideoAssetRow(row: any, req: express.Request) {
     mimeType: row.mime_type || "video/mp4",
     sizeBytes: Number(row.size_bytes || 0),
     durationMs: Number(row.duration_ms || 0),
-    posterUrl: row.poster_url || "",
+    posterUrl: isOssVideo ? absoluteUrl(`/api/videos/${encodeURIComponent(row.id)}/poster`, req) : row.poster_url || "",
     createdAt: Number(row.created_at || 0),
   };
 }
@@ -2316,6 +2318,35 @@ app.delete("/api/images/:imageId", requirePostgresAuth, async (req: Authenticate
   } catch (err: any) {
     console.error("Image delete error:", err);
     return res.status(500).json({ error: err.message || "Image delete failed." });
+  }
+});
+
+app.get("/api/videos/:videoId/poster", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const result = await pgPool.query(
+      `SELECT id, storage_provider, storage_key, poster_url
+       FROM video_assets
+       WHERE id = $1 AND user_id = $2`,
+      [req.params.videoId, req.user!.id]
+    );
+    const asset = result.rows[0];
+    if (!asset) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+    if (asset.storage_provider === "oss") {
+      const signedUrl = await videoStorage.getSignedReadUrl(asset.storage_key, { process: OSS_VIDEO_POSTER_PROCESS });
+      return res.redirect(302, signedUrl);
+    }
+    if (asset.poster_url) {
+      return res.redirect(302, asset.poster_url);
+    }
+    return res.status(404).json({ error: "Video poster not found." });
+  } catch (err: any) {
+    console.error("Video poster proxy error:", err);
+    return res.status(502).json({ error: err.message || "Video poster proxy failed." });
   }
 });
 

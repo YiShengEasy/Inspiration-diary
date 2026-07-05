@@ -2377,6 +2377,7 @@ export default function App() {
                     {zoomedCard.videoAssets?.[0] ? (
                       <video
                         src={zoomedCard.videoAssets[0].videoUrl}
+                        poster={zoomedCard.videoAssets[0].posterUrl || undefined}
                         className="h-full w-full object-contain"
                         controls
                         playsInline
