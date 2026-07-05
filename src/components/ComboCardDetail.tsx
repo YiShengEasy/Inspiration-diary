@@ -1,4 +1,5 @@
-import { Download, Image as ImageIcon, Loader2, Plus, Save, Trash, Upload } from "lucide-react";
+import { Clipboard, Download, Image as ImageIcon, Loader2, Plus, Save, Trash, Upload } from "lucide-react";
+import type { ClipboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ComboCardDetail as ComboDetail, ComboGeneration, ComboImage, ComboImageRole, ImageCard } from "../types";
 import { authFetch } from "../lib/authClient";
@@ -66,8 +67,33 @@ export function ComboCardDetailView({
   const [role, setRole] = useState<ComboImageRole>("character");
   const [promptNote, setPromptNote] = useState("");
   const [dirtyGenerations, setDirtyGenerations] = useState<Record<string, boolean>>({});
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
+
+  function shouldIgnorePasteTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+    const tagName = target.tagName.toLowerCase();
+    return target.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select";
+  }
+
+  async function uploadImageFiles(files: File[]) {
+    if (files.length === 0) return;
+    setSaving(true);
+    setError("");
+    try {
+      const baseOrder = detail?.images.length || 0;
+      for (let index = 0; index < files.length; index += 1) {
+        await uploadComboImage({ cardId: card.id, file: files[index], role, sortOrder: baseOrder + index });
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "参考图上传失败");
+    } finally {
+      setSaving(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  }
 
   async function refresh() {
     setLoading(true);
@@ -89,22 +115,21 @@ export function ComboCardDetailView({
   }, [card.id]);
 
   async function handleImages(files: FileList | null) {
-    const nextFiles = Array.from(files || []);
-    if (nextFiles.length === 0) return;
-    setSaving(true);
-    setError("");
-    try {
-      const baseOrder = detail?.images.length || 0;
-      for (let index = 0; index < nextFiles.length; index += 1) {
-        await uploadComboImage({ cardId: card.id, file: nextFiles[index], role, sortOrder: baseOrder + index });
-      }
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "参考图上传失败");
-    } finally {
-      setSaving(false);
-      if (imageInputRef.current) imageInputRef.current.value = "";
+    await uploadImageFiles(Array.from(files || []));
+  }
+
+  async function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
+    if (saving || shouldIgnorePasteTarget(event.target)) return;
+    const pastedImages = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+    if (pastedImages.length === 0) {
+      setError("剪贴板中没有可上传图片。");
+      return;
     }
+    event.preventDefault();
+    await uploadImageFiles(pastedImages);
   }
 
   async function handleRoleChange(image: ComboImage, nextRole: ComboImageRole) {
@@ -219,7 +244,15 @@ export function ComboCardDetailView({
   const generations = detail?.generations || [];
 
   return (
-    <div className="custom-scrollbar flex h-full min-h-0 flex-col gap-5 overflow-y-auto bg-[#fbf7ed] p-4 text-stone-800 dark:bg-stone-950 dark:text-stone-100 md:p-5">
+    <div
+      ref={rootRef}
+      className="custom-scrollbar flex h-full min-h-0 flex-col gap-5 overflow-y-auto bg-[#fbf7ed] p-4 text-stone-800 outline-none dark:bg-stone-950 dark:text-stone-100 md:p-5"
+      onClick={(event) => {
+        if (!shouldIgnorePasteTarget(event.target)) rootRef.current?.focus();
+      }}
+      onPaste={(event) => void handlePaste(event)}
+      tabIndex={0}
+    >
       <div className="flex flex-col gap-3 border-b border-dashed border-stone-900/15 pb-4 dark:border-white/10 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-stone-900 px-2.5 py-1 text-[10px] font-bold text-[#fbf7ed] dark:bg-amber-200 dark:text-stone-950">
@@ -229,6 +262,10 @@ export function ComboCardDetailView({
           <h3 className="font-serif text-xl font-bold italic text-stone-950 dark:text-white">参考图与视频生成记录</h3>
           <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
             {images.length} 张参考图 / {generations.length} 条视频记录
+          </p>
+          <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-stone-400 dark:text-stone-500">
+            <Clipboard size={11} />
+            点击空白处后可直接粘贴图片，按当前角色入组。
           </p>
         </div>
         {loading || saving ? (
