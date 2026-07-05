@@ -299,6 +299,7 @@ export function createNewCardId(): string {
 
 export const MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024;
 export const MAX_IMAGE_ASSET_UPLOAD_BYTES = 25 * 1024 * 1024;
+export const MAX_DOCUMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 export function isSupportedVideoFile(file: File): boolean {
   const lowerName = file.name.toLowerCase();
@@ -380,6 +381,51 @@ export function isSupportedImageAssetFile(file: File): boolean {
     || lowerName.endsWith(".png")
     || lowerName.endsWith(".webp")
     || lowerName.endsWith(".gif");
+}
+
+export function isSupportedDocumentFile(file: File): boolean {
+  const lowerName = file.name.toLowerCase();
+  return file.type === "text/markdown"
+    || file.type === "text/plain"
+    || file.type === "application/pdf"
+    || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    || lowerName.endsWith(".md")
+    || lowerName.endsWith(".markdown")
+    || lowerName.endsWith(".txt")
+    || lowerName.endsWith(".pdf")
+    || lowerName.endsWith(".docx");
+}
+
+export async function extractDocumentText(file: File): Promise<{ text: string; filename: string; kind: string; truncated: boolean }> {
+  if (!isPostgresMode) {
+    if (file.name.toLowerCase().endsWith(".md") || file.type === "text/markdown" || file.type === "text/plain") {
+      return { text: await file.text(), filename: file.name, kind: "text", truncated: false };
+    }
+    throw new Error("当前存储模式不支持 PDF/DOCX 文档解析。");
+  }
+  if (!isSupportedDocumentFile(file)) {
+    throw new Error("不支持的文档格式，请上传 Markdown、TXT、PDF 或 DOCX。");
+  }
+  if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {
+    throw new Error("文档不能超过 20MB。");
+  }
+
+  const form = new FormData();
+  form.append("document", file, file.name || "document");
+  const res = await authFetch("/api/documents/extract-text", {
+    method: "POST",
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `文档解析失败：${res.statusText}`);
+  }
+  return {
+    text: String(data.text || ""),
+    filename: String(data.filename || file.name || "文档"),
+    kind: String(data.kind || ""),
+    truncated: Boolean(data.truncated),
+  };
 }
 
 export async function uploadImageAsset(params: {

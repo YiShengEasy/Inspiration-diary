@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { BookmarkCheck, BookOpen, Check, ChevronLeft, ChevronRight, Edit3, Image as ImageIcon, Loader2, Plus, Search, Trash, Upload, X } from "lucide-react";
 import type { ImageCard, InspirationBook } from "../types";
 import { createBook, deleteBook, loadBookCards, loadBooks, setBookCover, setCardBookMembership, updateBook } from "../lib/booksClient";
-import { updateCardTerms } from "../lib/dbClient";
+import { extractDocumentText, isSupportedDocumentFile, updateCardTerms } from "../lib/dbClient";
 import PolaroidCard from "./PolaroidCard";
 
 interface InspirationBooksViewProps {
@@ -280,11 +280,6 @@ export default function InspirationBooksView({
     }
   };
 
-  const isMarkdownFile = (file: File) => {
-    const lowerName = file.name.toLowerCase();
-    return lowerName.endsWith(".md") || file.type === "text/markdown";
-  };
-
   const isImageFile = (file: File) => file.type.startsWith("image/");
   const isVideoFile = (file: File) => {
     const lowerName = file.name.toLowerCase();
@@ -299,16 +294,17 @@ export default function InspirationBooksView({
   };
 
   const processBookMdFile = async (bookId: string, file: File) => {
-    if (!isMarkdownFile(file)) {
-      throw new Error("不支持的 Markdown 文件。");
+    if (!isSupportedDocumentFile(file)) {
+      throw new Error("不支持的文档文件。");
     }
 
-    const text = await file.text();
+    const extracted = await extractDocumentText(file);
+    const text = extracted.text;
     if (!text.trim()) {
-      throw new Error("Markdown 文件为空。");
+      throw new Error("文档内容为空。");
     }
 
-    await onUploadMdToBook(bookId, text, file.name);
+    await onUploadMdToBook(bookId, text, extracted.filename || file.name);
   };
 
   const processBookImageFile = (bookId: string, file: File) => {
@@ -401,7 +397,7 @@ export default function InspirationBooksView({
       try {
         if (isImageFile(file)) {
           await processBookImageFile(bookId, file);
-        } else if (isMarkdownFile(file)) {
+        } else if (isSupportedDocumentFile(file)) {
           await processBookMdFile(bookId, file);
         } else if (isVideoFile(file)) {
           await processBookVideoFile(bookId, file);
@@ -703,7 +699,7 @@ export default function InspirationBooksView({
               <input
                 ref={uploadInputRef}
                 type="file"
-                accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.md,text/markdown"
+                accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.md,.markdown,.txt,.pdf,.docx,text/markdown,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 multiple
                 onChange={handleUploadInputChange}
                 className="hidden"

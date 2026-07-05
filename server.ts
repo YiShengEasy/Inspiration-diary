@@ -8,6 +8,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import pg from "pg";
 import multer from "multer";
+import { PDFParse } from "pdf-parse";
+import mammoth from "mammoth";
 import { createAuthRouter, requireAuth, type AuthenticatedRequest } from "./src/server/auth";
 import { fetchPhotoPrismImage } from "./src/server/photoprism";
 import { normalizeImageUpload } from "./src/server/upload";
@@ -39,6 +41,8 @@ const app = express();
 const PORT = runtimeConfig.port;
 const MAX_VIDEO_UPLOAD_BYTES = Number.parseInt(process.env.MAX_VIDEO_UPLOAD_BYTES || String(100 * 1024 * 1024), 10);
 const MAX_IMAGE_ASSET_UPLOAD_BYTES = Number.parseInt(process.env.MAX_IMAGE_ASSET_UPLOAD_BYTES || String(25 * 1024 * 1024), 10);
+const MAX_DOCUMENT_UPLOAD_BYTES = Number.parseInt(process.env.MAX_DOCUMENT_UPLOAD_BYTES || String(20 * 1024 * 1024), 10);
+const MAX_DOCUMENT_TEXT_CHARS = Number.parseInt(process.env.MAX_DOCUMENT_TEXT_CHARS || "300000", 10);
 const OSS_PRIMARY_THUMB_PROCESS = process.env.OSS_PRIMARY_THUMB_PROCESS || "image/resize,w_480/quality,q_80/format,webp";
 const OSS_VIDEO_POSTER_PROCESS = process.env.OSS_VIDEO_POSTER_PROCESS || "video/snapshot,t_1000,f_jpg,w_720";
 const VIDEO_UPLOAD_ROOT = path.isAbsolute(runtimeConfig.localStorage.videoUploadRoot)
@@ -81,6 +85,13 @@ const imageAssetUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: MAX_IMAGE_ASSET_UPLOAD_BYTES,
+    files: 1,
+  },
+});
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_DOCUMENT_UPLOAD_BYTES,
     files: 1,
   },
 });
@@ -204,6 +215,65 @@ function getImageExtension(filename: string, mimeType: string): string {
   if (mimeType === "image/webp") return "webp";
   if (mimeType === "image/gif") return "gif";
   return "jpg";
+}
+
+function getDocumentKind(filename: string, mimeType: string): "markdown" | "text" | "pdf" | "docx" | null {
+  const lowerName = filename.toLowerCase();
+  if (lowerName.endsWith(".md") || lowerName.endsWith(".markdown") || mimeType === "text/markdown") return "markdown";
+  if (lowerName.endsWith(".txt") || mimeType === "text/plain") return "text";
+  if (lowerName.endsWith(".pdf") || mimeType === "application/pdf") return "pdf";
+  if (
+    lowerName.endsWith(".docx") ||
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    return "docx";
+  }
+  return null;
+}
+
+function cleanExtractedDocumentText(text: string): { text: string; truncated: boolean } {
+  const cleaned = text
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u0000/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+
+  if (cleaned.length <= MAX_DOCUMENT_TEXT_CHARS) {
+    return { text: cleaned, truncated: false };
+  }
+  return { text: cleaned.slice(0, MAX_DOCUMENT_TEXT_CHARS).trim(), truncated: true };
+}
+
+async function extractDocumentText(file: Express.Multer.File, filenameOverride = ""): Promise<{ text: string; kind: string; truncated: boolean }> {
+  const filename = filenameOverride || file.originalname || "";
+  const kind = getDocumentKind(filename, file.mimetype || "");
+  if (!kind) {
+    throw new Error("不支持的文档格式，请上传 Markdown、TXT、PDF 或 DOCX。");
+  }
+
+  let rawText = "";
+  if (kind === "markdown" || kind === "text") {
+    rawText = file.buffer.toString("utf8");
+  } else if (kind === "pdf") {
+    const parser = new PDFParse({ data: new Uint8Array(file.buffer) });
+    try {
+      const parsed = await parser.getText();
+      rawText = parsed.text || "";
+    } finally {
+      await parser.destroy();
+    }
+  } else if (kind === "docx") {
+    const parsed = await mammoth.extractRawText({ buffer: file.buffer });
+    rawText = parsed.value || "";
+  }
+
+  const result = cleanExtractedDocumentText(rawText);
+  if (!result.text) {
+    throw new Error(kind === "pdf" ? "没有从 PDF 中读取到可复制文本，扫描件暂不支持 OCR。" : "文档内容为空或无法读取。");
+  }
+  return { text: result.text, kind, truncated: result.truncated };
 }
 
 function sanitizeStorageSegment(value: string): string {
@@ -802,6 +872,26 @@ app.post("/api/miniprogram/tool-usage", requirePostgresAuth, async (_req, res) =
   return res.json({ success: true });
 });
 
+app.post("/api/documents/extract-text", requirePostgresAuth, documentUpload.single("document"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "请上传文档文件。" });
+    }
+
+    const filename = String(req.body?.filename || req.file.originalname || "文档").trim();
+    const extracted = await extractDocumentText(req.file, filename);
+    return res.json({
+      filename,
+      mimeType: req.file.mimetype || "",
+      sizeBytes: req.file.size || req.file.buffer.length,
+      ...extracted,
+    });
+  } catch (err: any) {
+    console.error("Document text extraction error:", err);
+    return res.status(400).json({ error: err.message || "文档文本提取失败。" });
+  }
+});
+
 app.post("/api/analyze-image", requirePostgresAuth, upload.single("image"), async (req, res) => {
   try {
     const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
@@ -1322,7 +1412,7 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
 
     const fallback = {
       summary: fallbackSummary || "已保存 Markdown 手稿，点击卡片查看完整内容。",
-      terms: ["文档手稿", "Markdown"],
+      terms: ["文档手稿", "资料整理"],
     };
 
     const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
@@ -1335,7 +1425,7 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
 
     const prompt = [
       "你是一个文档整理与知识标签助手，不要按图片视觉风格分析。",
-      "请阅读下面的 Markdown 文档，提炼文档的核心主题、结论、行动方向、项目线索和知识领域。",
+      "请阅读下面的文档内容，提炼文档的核心主题、结论、行动方向、项目线索和知识领域。",
       "输出必须是严格 JSON：{\"summary\":\"中文摘要，2到3句话\",\"terms\":[\"标签1\",\"标签2\",...]}。",
       "terms 必须正好 5 个，优先使用中文短标签；标签应描述文档内容，不要使用“光影、色彩、构图、视觉风格”等图片分析词，除非文档本身明确讨论这些主题。",
       customTagHints.length > 0
@@ -1345,7 +1435,7 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
         ? `如果内容确实相关，请优先参考这些灵感册名称/描述中的名词来生成标签：${bookHints.join("；")}。不要强行匹配无关灵感册。`
         : "",
       "",
-      "Markdown 内容：",
+      "文档内容：",
       markdown.slice(0, 12000),
     ].join("\n");
 

@@ -4,6 +4,7 @@ import { Clipboard, Image, Loader2, Sparkles, ChevronLeft, ChevronRight } from "
 import PolaroidCard from "./PolaroidCard";
 import { motion } from "motion/react";
 import WeatherBackground from "./WeatherBackground";
+import { extractDocumentText, isSupportedDocumentFile } from "../lib/dbClient";
 
 interface DaySlotProps {
   dayIndex: number;
@@ -90,11 +91,6 @@ export default function DaySlot({
     setActiveStackIndex((prev) => (prev + 1) % cards.length);
   };
 
-  const isMarkdownFile = (file: File) => {
-    const lowerName = file.name.toLowerCase();
-    return lowerName.endsWith(".md") || file.type === "text/markdown";
-  };
-
   const isImageFile = (file: File) => file.type.startsWith("image/");
   const isVideoFile = (file: File) => {
     const lowerName = file.name.toLowerCase();
@@ -109,20 +105,21 @@ export default function DaySlot({
   };
 
   const processMdFileCore = async (file: File) => {
-    if (!isMarkdownFile(file)) {
-      throw new Error("不支持的 Markdown 文件。");
+    if (!isSupportedDocumentFile(file)) {
+      throw new Error("不支持的文档文件。");
     }
 
-    const text = await file.text();
+    const extracted = await extractDocumentText(file);
+    const text = extracted.text;
     if (!text.trim()) {
-      throw new Error("Markdown 文件为空。");
+      throw new Error("文档内容为空。");
     }
 
     if (!onUploadMd) {
-      throw new Error("当前页面不支持 Markdown 导入。");
+      throw new Error("当前页面不支持文档导入。");
     }
 
-    await onUploadMd(dayIndex, text, file.name);
+    await onUploadMd(dayIndex, text, extracted.filename || file.name);
   };
 
   const processVideoFileCore = async (file: File) => {
@@ -235,8 +232,8 @@ export default function DaySlot({
         try {
           if (isImageFile(file)) {
             await processImageFileCore(file);
-          } else if (isMarkdownFile(file)) {
-            await processMdFileCore(file);
+        } else if (isSupportedDocumentFile(file)) {
+          await processMdFileCore(file);
           } else if (isVideoFile(file)) {
             await processVideoFileCore(file);
           } else {
@@ -351,7 +348,7 @@ export default function DaySlot({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.md,text/markdown"
+                accept="image/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.md,.markdown,.txt,.pdf,.docx,text/markdown,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         multiple
         onChange={handleFileChange}
         className="hidden"

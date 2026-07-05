@@ -895,7 +895,7 @@ export default function App() {
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 160);
-      let mdTerms = ["文档手稿", "Markdown"];
+      let mdTerms = ["文档手稿", "资料整理"];
 
       try {
         const bookHints = await loadSmartBookHints("md");

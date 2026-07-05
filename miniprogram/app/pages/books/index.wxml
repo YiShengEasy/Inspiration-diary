@@ -60,7 +60,7 @@
       <view wx:if="{{cardsLoading}}" class="state compact">正在加载内容...</view>
       <view wx:if="{{!cardsLoading && !cards.length}}" class="empty-state compact">
         <text class="empty-title">这个册子还没有收录</text>
-        <text class="empty-desc">可以直接上传图片或 Markdown 收进当前册。</text>
+        <text class="empty-desc">可以直接上传图片或文档收进当前册。</text>
       </view>
 
       <view class="book-items">

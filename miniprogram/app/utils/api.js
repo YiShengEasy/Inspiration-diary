@@ -112,4 +112,30 @@ function uploadImage({ url, filePath, name = "image", formData = {} }) {
   });
 }
 
-module.exports = { request, uploadImage, getToken, resolveAssetUrl, downloadAsset };
+function uploadDocument({ url, filePath, name = "document", formData = {} }) {
+  return new Promise((resolve, reject) => {
+    const token = getToken();
+
+    wx.uploadFile({
+      url: `${getBaseUrl()}${url}`,
+      filePath,
+      name,
+      formData,
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success(res) {
+        const body = parseUploadBody(res.data);
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(body);
+          return;
+        }
+
+        reject(new Error(body.error || `文档解析失败 ${res.statusCode}`));
+      },
+      fail(err) {
+        reject(new Error(err.errMsg || "文档上传失败"));
+      }
+    });
+  });
+}
+
+module.exports = { request, uploadImage, uploadDocument, getToken, resolveAssetUrl, downloadAsset };

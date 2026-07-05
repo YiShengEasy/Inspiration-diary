@@ -1,4 +1,4 @@
-const { request, uploadImage, resolveAssetUrl } = require("../../utils/api");
+const { request, uploadImage, uploadDocument, resolveAssetUrl } = require("../../utils/api");
 const { requireRegistered } = require("../../utils/auth");
 const { currentWeekId } = require("../../utils/dates");
 const { loadEnabledCustomTagHints } = require("../../utils/customTagLibrary");
@@ -55,7 +55,7 @@ function fallbackMarkdownSummary(text) {
     .slice(0, 4)
     .join(" ")
     .replace(/\s+/g, " ")
-    .slice(0, 160) || "已保存 Markdown 手稿，点击卡片查看完整内容。";
+    .slice(0, 160) || "已保存文档手稿，点击卡片查看完整内容。";
 }
 
 Page({
@@ -192,12 +192,12 @@ Page({
     if (!requireRegistered() || this.data.uploading || !this.data.selectedBookId) return;
 
     wx.showActionSheet({
-      itemList: ["上传图片", "导入 Markdown"],
+      itemList: ["上传图片", "导入文档"],
       success: (res) => {
         if (res.tapIndex === 0) {
           this.chooseBookImages();
         } else if (res.tapIndex === 1) {
-          this.chooseBookMarkdown();
+          this.chooseBookDocument();
         }
       }
     });
@@ -216,20 +216,20 @@ Page({
     });
   },
 
-  chooseBookMarkdown() {
+  chooseBookDocument() {
     if (typeof wx.chooseMessageFile !== "function") {
-      wx.showToast({ title: "当前微信版本不支持选择 Markdown", icon: "none" });
+      wx.showToast({ title: "当前微信版本不支持选择文档", icon: "none" });
       return;
     }
 
     wx.chooseMessageFile({
       count: 10,
       type: "file",
-      extension: ["md", "markdown"],
+      extension: ["md", "markdown", "txt", "pdf", "docx"],
       success: (res) => {
         const files = (res.tempFiles || []).filter((file) => file && file.path);
         if (!files.length) return;
-        this.importBookMarkdownFiles(files);
+        this.importBookDocumentFiles(files);
       }
     });
   },
@@ -311,7 +311,7 @@ Page({
       .catch(() => undefined);
   },
 
-  async importBookMarkdownFiles(files) {
+  async importBookDocumentFiles(files) {
     const bookId = this.data.selectedBookId;
     let succeeded = 0;
     const failed = [];
@@ -320,27 +320,16 @@ Page({
 
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
-      this.setData({ uploadStatus: `正在导入 Markdown ${index + 1} / ${files.length}` });
+      this.setData({ uploadStatus: `正在导入文档 ${index + 1} / ${files.length}` });
       try {
-        await this.importBookMarkdown(bookId, file);
+        await this.importBookDocument(bookId, file);
         succeeded += 1;
       } catch (err) {
-        failed.push(`${file.name || "Markdown"}：${err.message || "导入失败"}`);
+        failed.push(`${file.name || "文档"}：${err.message || "导入失败"}`);
       }
     }
 
     await this.finishBookImport(bookId, succeeded, failed);
-  },
-
-  readMarkdownFile(filePath) {
-    return new Promise((resolve, reject) => {
-      wx.getFileSystemManager().readFile({
-        filePath,
-        encoding: "utf8",
-        success: (res) => resolve(res.data || ""),
-        fail: (err) => reject(new Error(err.errMsg || "Markdown 文件读取失败"))
-      });
-    });
   },
 
   async summarizeMarkdown(text) {
@@ -359,20 +348,25 @@ Page({
         : [];
       return {
         summary: body.summary || fallbackMarkdownSummary(text),
-        terms: terms.length ? terms : ["文档手稿", "Markdown"]
+        terms: terms.length ? terms : ["文档手稿", "资料整理"]
       };
     } catch (err) {
       return {
         summary: fallbackMarkdownSummary(text),
-        terms: ["文档手稿", "Markdown"]
+        terms: ["文档手稿", "资料整理"]
       };
     }
   },
 
-  async importBookMarkdown(bookId, file) {
-    const text = await this.readMarkdownFile(file.path);
+  async importBookDocument(bookId, file) {
+    const extracted = await uploadDocument({
+      url: "/api/documents/extract-text",
+      filePath: file.path,
+      formData: { filename: file.name || "文档" }
+    });
+    const text = extracted.text || "";
     if (!String(text || "").trim()) {
-      throw new Error("Markdown 文件为空");
+      throw new Error("文档内容为空");
     }
 
     const cardId = createMiniCardId();
@@ -389,7 +383,7 @@ Page({
       type: "md",
       mdContent: text,
       mdSummary: summary.summary,
-      mdName: file.name || "Markdown 手稿.md"
+      mdName: extracted.filename || file.name || "文档手稿"
     };
 
     await request({ url: "/api/db/cards", method: "POST", data: card });
