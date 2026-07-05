@@ -31,6 +31,8 @@ services:
       DEPLOYMENT_PROFILE: local-docker
       NODE_ENV: production
       DATABASE_URL: postgresql://yisheng@host.docker.internal:5432/inspiration_diary
+      WECHAT_MOCK: "true"
+      MINI_DEBUG_PASSWORD_LOGIN: "true"
     ports:
       - "3005:3000"
     volumes:
