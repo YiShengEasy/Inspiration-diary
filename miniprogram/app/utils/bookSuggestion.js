@@ -86,19 +86,33 @@ function scoreBook(card, book) {
   return {
     book,
     score,
+    baseScore: score,
+    feedbackAdjustment: 0,
     matchedTerms: unique(matchedTerms).slice(0, 4)
   };
 }
 
-function findBestBookSuggestion(card, books, options = {}) {
+function findBookSuggestionCandidates(card, books, options = {}) {
   const minScore = options.minScore || 4;
-  const best = (books || [])
+  const limit = options.limit || 3;
+  return (books || [])
     .map((book) => scoreBook(card, book))
     .filter(Boolean)
-    .sort((a, b) => b.score - a.score)[0];
-
-  if (!best || best.score < minScore) return null;
-  return best;
+    .map((match) => {
+      const feedbackAdjustment = (options.scoreAdjustments && options.scoreAdjustments[match.book.id]) || 0;
+      return {
+        ...match,
+        feedbackAdjustment,
+        score: match.baseScore + feedbackAdjustment
+      };
+    })
+    .filter((match) => match.score >= minScore)
+    .sort((a, b) => b.score - a.score || b.baseScore - a.baseScore)
+    .slice(0, Math.max(1, limit));
 }
 
-module.exports = { findBestBookSuggestion };
+function findBestBookSuggestion(card, books, options = {}) {
+  return findBookSuggestionCandidates(card, books, { ...options, limit: 1 })[0] || null;
+}
+
+module.exports = { findBestBookSuggestion, findBookSuggestionCandidates };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ImageCard, type CustomTagGroup, type InspirationBook } from "./types";
+import { ImageCard, type BookSuggestionCandidate, type CustomTagGroup, type InspirationBook } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 import {
   subscribeCards,
@@ -36,8 +36,7 @@ import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, 
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
-import { loadBooks, loadCardBookMembership, setCardBookMembership } from "./lib/booksClient";
-import { findBestBookSuggestion, type BookSuggestionMatch } from "./lib/bookSuggestion";
+import { loadBooks, loadBookSuggestionCandidates, loadCardBookMembership, recordBookSuggestionFeedback, setCardBookMembership } from "./lib/booksClient";
 import { CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY, CUSTOM_TAG_LIBRARY_SETTINGS_KEY, flattenEnabledCustomTagGroups, normalizeCustomTagGroups } from "./lib/customTagLibrary";
 import Markdown from "react-markdown";
 
@@ -46,11 +45,13 @@ const SMART_BOOK_SUGGEST_IMAGES_KEY = "smart_book_suggest_images";
 const SMART_BOOK_SUGGEST_MARKDOWN_KEY = "smart_book_suggest_markdown";
 type PendingSmartSuggestion = {
   card: ImageCard;
-  match: BookSuggestionMatch;
+  match: BookSuggestionCandidate;
+  candidates: BookSuggestionCandidate[];
 };
 
 type SmartSuggestionGroup = {
   book: InspirationBook;
+  candidates: BookSuggestionCandidate[];
   cards: ImageCard[];
   matchedTerms: string[];
   score: number;
@@ -116,6 +117,7 @@ export default function App() {
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => new Set());
   const [isApplyingSmartSuggestion, setIsApplyingSmartSuggestion] = useState<boolean>(false);
   const [smartSuggestionError, setSmartSuggestionError] = useState<string | null>(null);
+  const [selectedSmartBookId, setSelectedSmartBookId] = useState<string>("");
 
   // Custom AI parameter states
   const [customProvider, setCustomProvider] = useState<string>(() => {
@@ -254,6 +256,7 @@ export default function App() {
 
   useEffect(() => {
     smartSuggestionRef.current = smartSuggestion;
+    setSelectedSmartBookId(smartSuggestion?.book.id || "");
   }, [smartSuggestion]);
 
   useEffect(() => {
@@ -476,6 +479,7 @@ export default function App() {
 
   const createSmartSuggestionGroup = (suggestion: PendingSmartSuggestion): SmartSuggestionGroup => ({
     book: suggestion.match.book,
+    candidates: suggestion.candidates,
     cards: [suggestion.card],
     matchedTerms: suggestion.match.matchedTerms,
     score: suggestion.match.score,
@@ -488,6 +492,7 @@ export default function App() {
     if (group.cards.some((card) => card.id === suggestion.card.id)) {
       return {
         ...group,
+        candidates: group.candidates.length >= suggestion.candidates.length ? group.candidates : suggestion.candidates,
         matchedTerms: Array.from(new Set([...group.matchedTerms, ...suggestion.match.matchedTerms])).slice(0, 6),
         score: Math.max(group.score, suggestion.match.score),
       };
@@ -495,6 +500,7 @@ export default function App() {
 
     return {
       ...group,
+      candidates: group.candidates.length >= suggestion.candidates.length ? group.candidates : suggestion.candidates,
       cards: [...group.cards, suggestion.card],
       matchedTerms: Array.from(new Set([...group.matchedTerms, ...suggestion.match.matchedTerms])).slice(0, 6),
       score: Math.max(group.score, suggestion.match.score),
@@ -550,19 +556,17 @@ export default function App() {
     }
 
     try {
-      const books = await loadBooks();
-      if (books.length === 0) {
-        console.info("Smart book suggestion skipped: no inspiration books", { cardId: card.id });
-        return;
-      }
-
-      const match = findBestBookSuggestion(card, books);
+      const candidates = await loadBookSuggestionCandidates(card.id);
+      const memberships = await loadCardBookMembership(card.id);
+      const availableCandidates = candidates.filter((candidate) => {
+        return !memberships.some((book) => book.id === candidate.book.id && book.containsCard);
+      });
+      const match = availableCandidates[0];
       if (!match) {
         console.info("Smart book suggestion skipped: no matching book", {
           cardId: card.id,
           terms: card.terms,
           mdName: card.mdName,
-          bookTitles: books.map((book) => book.title),
         });
         return;
       }
@@ -570,23 +574,30 @@ export default function App() {
       const key = suggestionKey(card.id, match.book.id);
       if (dismissedSuggestions.has(key)) return;
 
-      const memberships = await loadCardBookMembership(card.id);
-      const alreadyContains = memberships.some((book) => book.id === match.book.id && book.containsCard);
-      if (alreadyContains) return;
-
-      queueSmartSuggestion({ card, match });
+      queueSmartSuggestion({ card, match, candidates: availableCandidates });
     } catch (err) {
       console.warn("Smart book suggestion skipped:", err);
     }
   };
 
-  const dismissSmartSuggestion = () => {
+  const dismissSmartSuggestion = (recordFeedback = true) => {
     if (smartSuggestion) {
       setDismissedSuggestions((current) => {
         const next = new Set(current);
         smartSuggestion.cards.forEach((card) => next.add(suggestionKey(card.id, smartSuggestion.book.id)));
         return next;
       });
+      if (recordFeedback) {
+        smartSuggestion.cards.forEach((card) => {
+          void recordBookSuggestionFeedback({
+            cardId: card.id,
+            suggestedBookId: smartSuggestion.book.id,
+            action: "dismissed",
+            matchedTerms: smartSuggestion.matchedTerms,
+            score: smartSuggestion.score,
+          }).catch((err) => console.warn("Smart book feedback skipped:", err));
+        });
+      }
     }
     setSmartSuggestion(null);
     setSmartSuggestionError(null);
@@ -594,14 +605,26 @@ export default function App() {
 
   const confirmSmartSuggestion = async () => {
     if (!smartSuggestion) return;
+    const selectedCandidate = smartSuggestion.candidates.find((candidate) => candidate.book.id === selectedSmartBookId) || smartSuggestion.candidates[0];
+    if (!selectedCandidate) return;
     setIsApplyingSmartSuggestion(true);
     setSmartSuggestionError(null);
     try {
       await Promise.all(
-        smartSuggestion.cards.map((card) => setCardBookMembership(card.id, smartSuggestion.book.id, true)),
+        smartSuggestion.cards.map((card) => setCardBookMembership(card.id, selectedCandidate.book.id, true)),
+      );
+      await Promise.all(
+        smartSuggestion.cards.map((card) => recordBookSuggestionFeedback({
+          cardId: card.id,
+          suggestedBookId: smartSuggestion.book.id,
+          selectedBookId: selectedCandidate.book.id,
+          action: selectedCandidate.book.id === smartSuggestion.book.id ? "accepted" : "corrected",
+          matchedTerms: selectedCandidate.matchedTerms.length > 0 ? selectedCandidate.matchedTerms : smartSuggestion.matchedTerms,
+          score: selectedCandidate.score,
+        })),
       );
       handleBookMembershipChanged();
-      dismissSmartSuggestion();
+      dismissSmartSuggestion(false);
     } catch (err) {
       setSmartSuggestionError(err instanceof Error ? err.message : "加入灵感册失败");
     } finally {
@@ -2191,7 +2214,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-stone-950/45 backdrop-blur-sm"
-              onClick={dismissSmartSuggestion}
+              onClick={() => dismissSmartSuggestion()}
             />
             <motion.div
               initial={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -2207,16 +2230,45 @@ export default function App() {
                 <div className="min-w-0">
                   <h3 className="font-serif text-lg font-bold italic leading-snug">
                     {smartSuggestion.cards.length > 1
-                      ? `发现 ${smartSuggestion.cards.length} 条灵感适合加入《${smartSuggestion.book.title}》`
-                      : `这条灵感可能适合加入《${smartSuggestion.book.title}》`}
+                      ? `发现 ${smartSuggestion.cards.length} 条灵感可能适合入册`
+                      : "这条灵感可能适合入册"}
                   </h3>
                   {smartSuggestion.book.description ? (
                     <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-                      {smartSuggestion.book.description}
+                      默认推荐《{smartSuggestion.book.title}》：{smartSuggestion.book.description}
                     </p>
                   ) : null}
                 </div>
               </div>
+
+              {smartSuggestion.candidates.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  {smartSuggestion.candidates.map((candidate) => {
+                    const selected = selectedSmartBookId === candidate.book.id;
+                    return (
+                      <button
+                        key={candidate.book.id}
+                        type="button"
+                        onClick={() => setSelectedSmartBookId(candidate.book.id)}
+                        className={`flex w-full items-start gap-3 rounded-[8px] border px-3 py-2 text-left transition-colors ${
+                          selected
+                            ? "border-amber-500/70 bg-amber-100/70 text-stone-950 dark:border-amber-300/70 dark:bg-amber-300/15 dark:text-amber-50"
+                            : "border-stone-900/10 bg-white/55 text-stone-700 hover:bg-white/80 dark:border-white/10 dark:bg-white/[0.04] dark:text-stone-300 dark:hover:bg-white/[0.08]"
+                        }`}
+                      >
+                        <span className={`mt-1 h-3 w-3 rounded-full border ${selected ? "border-amber-600 bg-amber-500 dark:border-amber-200 dark:bg-amber-200" : "border-stone-400 dark:border-stone-500"}`} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold">《{candidate.book.title}》</span>
+                          <span className="mt-0.5 block text-xs text-stone-500 dark:text-stone-400">
+                            匹配 {Math.round(candidate.score)} 分
+                            {candidate.feedbackAdjustment !== 0 ? `，学习修正 ${candidate.feedbackAdjustment > 0 ? "+" : ""}${Math.round(candidate.feedbackAdjustment)}` : ""}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
 
               {smartSuggestion.matchedTerms.length > 0 ? (
                 <div className="mt-4 flex flex-wrap gap-1.5">
@@ -2237,7 +2289,7 @@ export default function App() {
               <div className="mt-5 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={dismissSmartSuggestion}
+                  onClick={() => dismissSmartSuggestion()}
                   className="h-9 rounded-[6px] border border-stone-900/10 px-3 text-sm font-semibold text-stone-600 transition-colors hover:bg-stone-900/[0.04] dark:border-white/10 dark:text-stone-300 dark:hover:bg-white/[0.07]"
                 >
                   暂不加入
@@ -2249,7 +2301,7 @@ export default function App() {
                   className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] bg-stone-900 px-3 text-sm font-semibold text-[#fbf7ed] transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-wait disabled:opacity-70 dark:bg-amber-200 dark:text-stone-950"
                 >
                   {isApplyingSmartSuggestion ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
-                  {smartSuggestion.cards.length > 1 ? "全部加入灵感册" : "加入灵感册"}
+                  {smartSuggestion.cards.length > 1 ? "全部加入所选册" : "加入所选册"}
                 </button>
               </div>
             </motion.div>

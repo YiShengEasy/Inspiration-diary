@@ -14,6 +14,8 @@ import { normalizeImageUpload } from "./src/server/upload";
 import { getMiniToken, loadMiniSessionUser } from "./src/server/miniprogramAuth";
 import { getRuntimeConfig, validateRuntimeConfig } from "./src/server/runtimeConfig";
 import { createImageAssetStorage, createVideoStorage, storePrimaryImage } from "./src/server/storage";
+import { findBookSuggestionCandidates } from "./src/lib/bookSuggestion";
+import type { BookSuggestionFeedbackAction, ImageCard } from "./src/types";
 
 dotenv.config();
 dotenv.config({
@@ -399,6 +401,72 @@ function mapBookRow(row: any, req: express.Request) {
   };
 }
 
+function normalizeSuggestionTerms(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .slice(0, 12)
+    )
+  );
+}
+
+function collectSuggestionTexts(card: ImageCard): string[] {
+  return normalizeSuggestionTerms([
+    ...(card.terms || []),
+    card.type === "md" ? card.mdName || "" : "",
+    card.type === "md" ? card.mdSummary || "" : "",
+    card.insightNote || "",
+  ]);
+}
+
+function suggestionTextOverlap(cardTexts: string[], feedbackTerms: string[]): number {
+  const normalizedCardTexts = cardTexts.map((text) => text.toLowerCase());
+  return feedbackTerms.reduce((count, term) => {
+    const normalizedTerm = term.toLowerCase();
+    if (!normalizedTerm) return count;
+    const matched = normalizedCardTexts.some((text) => text.includes(normalizedTerm) || normalizedTerm.includes(text));
+    return matched ? count + 1 : count;
+  }, 0);
+}
+
+function buildBookSuggestionScoreAdjustments(card: ImageCard, feedbackRows: any[]): Record<string, number> {
+  const cardTexts = collectSuggestionTexts(card);
+  const adjustments: Record<string, number> = {};
+
+  for (const row of feedbackRows) {
+    const terms = normalizeSuggestionTerms(row.matched_terms);
+    const overlap = suggestionTextOverlap(cardTexts, terms);
+    if (overlap <= 0) continue;
+
+    const suggestedBookId = String(row.suggested_book_id || "");
+    const selectedBookId = String(row.selected_book_id || "");
+    const action = String(row.action || "") as BookSuggestionFeedbackAction;
+
+    if (action === "accepted") {
+      const bookId = selectedBookId || suggestedBookId;
+      if (bookId) adjustments[bookId] = (adjustments[bookId] || 0) + overlap * 2;
+      continue;
+    }
+
+    if (action === "corrected") {
+      if (selectedBookId) adjustments[selectedBookId] = (adjustments[selectedBookId] || 0) + overlap * 3;
+      if (suggestedBookId && suggestedBookId !== selectedBookId) {
+        adjustments[suggestedBookId] = (adjustments[suggestedBookId] || 0) - overlap * 2;
+      }
+      continue;
+    }
+
+    if (action === "dismissed" && suggestedBookId) {
+      adjustments[suggestedBookId] = (adjustments[suggestedBookId] || 0) - overlap * 2;
+    }
+  }
+
+  return adjustments;
+}
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -631,6 +699,21 @@ if (dbType === "postgres") {
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_inspiration_book_cards_unique ON inspiration_book_cards(user_id, book_id, card_id);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_inspiration_book_cards_user_book_added_at ON inspiration_book_cards(user_id, book_id, added_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_inspiration_book_cards_user_card ON inspiration_book_cards(user_id, card_id);");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS book_suggestion_feedback (
+            id TEXT PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+            suggested_book_id TEXT REFERENCES inspiration_books(id) ON DELETE SET NULL,
+            selected_book_id TEXT REFERENCES inspiration_books(id) ON DELETE SET NULL,
+            action TEXT NOT NULL,
+            matched_terms JSONB NOT NULL DEFAULT '[]'::jsonb,
+            score REAL NOT NULL DEFAULT 0,
+            created_at BIGINT NOT NULL
+          );
+        `);
+        await client.query("CREATE INDEX IF NOT EXISTS idx_book_suggestion_feedback_user_created_at ON book_suggestion_feedback(user_id, created_at DESC);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_book_suggestion_feedback_user_card ON book_suggestion_feedback(user_id, card_id);");
         const userCount = await client.query("SELECT COUNT(*)::int AS count FROM users");
         if (Number(userCount.rows[0]?.count || 0) === 0) {
           const bootstrapEmail = process.env.AUTH_BOOTSTRAP_EMAIL || "local-admin@example.com";
@@ -2608,6 +2691,111 @@ app.get("/api/db/cards/:cardId/books", requirePostgresAuth, async (req, res) => 
   } catch (err: any) {
     console.error("Error fetching card inspiration book membership:", err);
     return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/db/cards/:cardId/book-suggestions", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user!.id;
+    const cardResult = await pgPool.query(
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note
+       FROM cards
+       WHERE id = $1 AND user_id = $2`,
+      [req.params.cardId, userId]
+    );
+    const card = mapCardRows(cardResult.rows, req)[0];
+    if (!card) {
+      return res.status(404).json({ error: "Card not found" });
+    }
+
+    const booksResult = await pgPool.query(
+      `SELECT b.id, b.title, b.description, b.cover_card_id, b.created_at, b.updated_at,
+              COUNT(bc.card_id)::int AS card_count, NULL::json AS cover_card
+       FROM inspiration_books b
+       LEFT JOIN inspiration_book_cards bc ON bc.book_id = b.id AND bc.user_id = $1
+       WHERE b.user_id = $1
+       GROUP BY b.id
+       ORDER BY b.updated_at DESC`,
+      [userId]
+    );
+    const books = booksResult.rows.map((row) => mapBookRow(row, req));
+
+    const feedbackResult = await pgPool.query(
+      `SELECT suggested_book_id, selected_book_id, action, matched_terms
+       FROM book_suggestion_feedback
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 300`,
+      [userId]
+    );
+    const scoreAdjustments = buildBookSuggestionScoreAdjustments(card, feedbackResult.rows);
+    const limit = Math.min(5, Math.max(1, Number.parseInt(String(req.query.limit || "3"), 10) || 3));
+    const candidates = findBookSuggestionCandidates(card, books, { limit, scoreAdjustments });
+    return res.json({ candidates });
+  } catch (err: any) {
+    console.error("Error fetching book suggestions:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch book suggestions." });
+  }
+});
+
+app.post("/api/db/cards/:cardId/book-suggestion-feedback", requirePostgresAuth, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user!.id;
+    const action = String(req.body.action || "").trim() as BookSuggestionFeedbackAction;
+    if (!["accepted", "corrected", "dismissed"].includes(action)) {
+      return res.status(400).json({ error: "Invalid feedback action." });
+    }
+
+    const card = await pgPool.query("SELECT id FROM cards WHERE id = $1 AND user_id = $2", [req.params.cardId, userId]);
+    if (card.rowCount === 0) {
+      return res.status(404).json({ error: "Card not found" });
+    }
+
+    const suggestedBookId = String(req.body.suggestedBookId || "").trim() || null;
+    const selectedBookId = String(req.body.selectedBookId || "").trim() || null;
+    const bookIds = Array.from(new Set([suggestedBookId, selectedBookId].filter(Boolean)));
+    if (bookIds.length > 0) {
+      const ownedBooks = await pgPool.query(
+        "SELECT id FROM inspiration_books WHERE user_id = $1 AND id = ANY($2::text[])",
+        [userId, bookIds]
+      );
+      if (ownedBooks.rowCount !== bookIds.length) {
+        return res.status(404).json({ error: "Book not found" });
+      }
+    }
+
+    const matchedTerms = normalizeSuggestionTerms(req.body.matchedTerms);
+    const score = Number(req.body.score || 0);
+    await pgPool.query(
+      `INSERT INTO book_suggestion_feedback
+         (id, user_id, card_id, suggested_book_id, selected_book_id, action, matched_terms, score, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+      [
+        `feedback_${crypto.randomUUID()}`,
+        userId,
+        req.params.cardId,
+        suggestedBookId,
+        selectedBookId,
+        action,
+        JSON.stringify(matchedTerms),
+        Number.isFinite(score) ? score : 0,
+        Date.now(),
+      ]
+    );
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Error recording book suggestion feedback:", err);
+    return res.status(500).json({ error: err.message || "Failed to record book suggestion feedback." });
   }
 });
 

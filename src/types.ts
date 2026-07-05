@@ -70,6 +70,16 @@ export interface CardBookMembership {
   containsCard: boolean;
 }
 
+export type BookSuggestionFeedbackAction = "accepted" | "corrected" | "dismissed";
+
+export interface BookSuggestionCandidate {
+  book: InspirationBook;
+  score: number;
+  baseScore: number;
+  feedbackAdjustment: number;
+  matchedTerms: string[];
+}
+
 export interface PaginatedBookCardsResult {
   cards: ImageCard[];
   total: number;

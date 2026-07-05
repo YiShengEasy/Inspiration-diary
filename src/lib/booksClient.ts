@@ -1,4 +1,4 @@
-import type { CardBookMembership, InspirationBook, PaginatedBookCardsResult } from "../types";
+import type { BookSuggestionCandidate, BookSuggestionFeedbackAction, CardBookMembership, InspirationBook, PaginatedBookCardsResult } from "../types";
 import { authFetch } from "./authClient";
 
 async function parseJson<T>(res: Response): Promise<T> {
@@ -76,6 +76,34 @@ export async function setCardBookMembership(cardId: string, bookId: string, shou
     method: shouldContain ? "POST" : "DELETE",
     headers: shouldContain ? { "Content-Type": "application/json" } : undefined,
     body: shouldContain ? JSON.stringify({ cardId }) : undefined,
+  });
+  await parseJson<{ success: boolean }>(res);
+}
+
+export async function loadBookSuggestionCandidates(cardId: string): Promise<BookSuggestionCandidate[]> {
+  const res = await authFetch(`/api/db/cards/${encodeURIComponent(cardId)}/book-suggestions?limit=3`);
+  const body = await parseJson<{ candidates: BookSuggestionCandidate[] }>(res);
+  return Array.isArray(body.candidates) ? body.candidates : [];
+}
+
+export async function recordBookSuggestionFeedback(input: {
+  cardId: string;
+  suggestedBookId?: string;
+  selectedBookId?: string;
+  action: BookSuggestionFeedbackAction;
+  matchedTerms?: string[];
+  score?: number;
+}): Promise<void> {
+  const res = await authFetch(`/api/db/cards/${encodeURIComponent(input.cardId)}/book-suggestion-feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      suggestedBookId: input.suggestedBookId || "",
+      selectedBookId: input.selectedBookId || "",
+      action: input.action,
+      matchedTerms: input.matchedTerms || [],
+      score: input.score || 0,
+    }),
   });
   await parseJson<{ success: boolean }>(res);
 }

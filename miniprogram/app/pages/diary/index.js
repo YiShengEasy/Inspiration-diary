@@ -1,7 +1,6 @@
 const { request, uploadImage, resolveAssetUrl } = require("../../utils/api");
 const { requireRegistered, refreshAccountStatus } = require("../../utils/auth");
 const { currentWeekId, days } = require("../../utils/dates");
-const { findBestBookSuggestion } = require("../../utils/bookSuggestion");
 const { loadSmartSettings } = require("../../utils/smartSettings");
 const { loadEnabledCustomTagHints } = require("../../utils/customTagLibrary");
 
@@ -182,11 +181,9 @@ Page({
       const shouldSuggest = card.type === "md" ? settings.markdown : settings.images;
       if (!shouldSuggest) return;
 
-      const booksBody = await request({ url: "/api/db/books" });
-      const books = Array.isArray(booksBody) ? booksBody : [];
-      if (!books.length) return;
-
-      const match = findBestBookSuggestion(card, books);
+      const suggestionsBody = await request({ url: `/api/db/cards/${encodeURIComponent(card.id)}/book-suggestions?limit=3` });
+      const candidates = Array.isArray(suggestionsBody.candidates) ? suggestionsBody.candidates : [];
+      const match = candidates[0];
       if (!match) return;
 
       const key = suggestionKey(card.id, match.book.id);
@@ -200,8 +197,8 @@ Page({
       const confirmed = await new Promise((resolve) => {
         wx.showModal({
           title: "加入灵感册？",
-          content: `这条灵感可能适合加入《${match.book.title}》。`,
-          confirmText: "加入",
+          content: `默认推荐《${match.book.title}》，也可以改选其他候选册。`,
+          confirmText: "选择",
           cancelText: "暂不",
           success: (res) => resolve(Boolean(res.confirm)),
           fail: () => resolve(false)
@@ -210,13 +207,46 @@ Page({
 
       if (!confirmed) {
         dismissedSmartSuggestions.add(key);
+        await request({
+          url: `/api/db/cards/${encodeURIComponent(card.id)}/book-suggestion-feedback`,
+          method: "POST",
+          data: {
+            suggestedBookId: match.book.id,
+            action: "dismissed",
+            matchedTerms: match.matchedTerms || [],
+            score: match.score || 0
+          }
+        }).catch((err) => console.warn("Mini smart book feedback skipped:", err));
         return;
       }
 
+      let selected = match;
+      if (candidates.length > 1) {
+        const selectedIndex = await new Promise((resolve) => {
+          wx.showActionSheet({
+            itemList: candidates.map((candidate) => `《${candidate.book.title}》`),
+            success: (res) => resolve(res.tapIndex),
+            fail: () => resolve(0)
+          });
+        });
+        selected = candidates[Number(selectedIndex)] || match;
+      }
+
       await request({
-        url: `/api/db/books/${encodeURIComponent(match.book.id)}/cards`,
+        url: `/api/db/books/${encodeURIComponent(selected.book.id)}/cards`,
         method: "POST",
         data: { cardId: card.id }
+      });
+      await request({
+        url: `/api/db/cards/${encodeURIComponent(card.id)}/book-suggestion-feedback`,
+        method: "POST",
+        data: {
+          suggestedBookId: match.book.id,
+          selectedBookId: selected.book.id,
+          action: selected.book.id === match.book.id ? "accepted" : "corrected",
+          matchedTerms: selected.matchedTerms || match.matchedTerms || [],
+          score: selected.score || match.score || 0
+        }
       });
       wx.showToast({ title: "已加入灵感册", icon: "success" });
       await this.loadBooks();

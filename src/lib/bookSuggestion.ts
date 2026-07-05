@@ -1,13 +1,11 @@
-import type { ImageCard, InspirationBook } from "../types";
+import type { BookSuggestionCandidate, ImageCard, InspirationBook } from "../types";
 
-export interface BookSuggestionMatch {
-  book: InspirationBook;
-  score: number;
-  matchedTerms: string[];
-}
+export type BookSuggestionMatch = BookSuggestionCandidate;
 
 interface BookSuggestionOptions {
   minScore?: number;
+  limit?: number;
+  scoreAdjustments?: Record<string, number>;
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -111,8 +109,33 @@ function scoreBook(card: ImageCard, book: InspirationBook): BookSuggestionMatch 
   return {
     book,
     score,
+    baseScore: score,
+    feedbackAdjustment: 0,
     matchedTerms: unique(matchedTerms).slice(0, 4),
   };
+}
+
+export function findBookSuggestionCandidates(
+  card: ImageCard,
+  books: InspirationBook[],
+  options: BookSuggestionOptions = {},
+): BookSuggestionMatch[] {
+  const minScore = options.minScore ?? 4;
+  const limit = options.limit ?? 3;
+  return books
+    .map((book) => scoreBook(card, book))
+    .filter((match): match is BookSuggestionMatch => Boolean(match))
+    .map((match) => {
+      const feedbackAdjustment = options.scoreAdjustments?.[match.book.id] || 0;
+      return {
+        ...match,
+        feedbackAdjustment,
+        score: match.baseScore + feedbackAdjustment,
+      };
+    })
+    .filter((match) => match.score >= minScore)
+    .sort((a, b) => b.score - a.score || b.baseScore - a.baseScore)
+    .slice(0, Math.max(1, limit));
 }
 
 export function findBestBookSuggestion(
@@ -120,12 +143,5 @@ export function findBestBookSuggestion(
   books: InspirationBook[],
   options: BookSuggestionOptions = {},
 ): BookSuggestionMatch | null {
-  const minScore = options.minScore ?? 4;
-  const best = books
-    .map((book) => scoreBook(card, book))
-    .filter((match): match is BookSuggestionMatch => Boolean(match))
-    .sort((a, b) => b.score - a.score)[0];
-
-  if (!best || best.score < minScore) return null;
-  return best;
+  return findBookSuggestionCandidates(card, books, { ...options, limit: 1 })[0] || null;
 }
