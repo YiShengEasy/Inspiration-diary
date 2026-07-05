@@ -27,7 +27,7 @@ services:
     environment:
       APP_ENV: local
       DEPLOYMENT_PROFILE: local-docker
-      NODE_ENV: development
+      NODE_ENV: production
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/notebook
     ports:
       - "3005:3000"
