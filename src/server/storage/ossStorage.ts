@@ -10,8 +10,12 @@ function trimLeadingSlash(value: string): string {
   return value.replace(/^\/+/, "");
 }
 
+function getPublicEndpoint(endpoint: string): string {
+  return endpoint.replace("-internal.", ".");
+}
+
 export function createOssStorageProvider(config: RuntimeConfig): ObjectStorageProvider {
-  const client = new OSS({
+  const writeClient = new OSS({
     region: config.oss.region,
     bucket: config.oss.bucket,
     endpoint: config.oss.endpoint,
@@ -19,22 +23,24 @@ export function createOssStorageProvider(config: RuntimeConfig): ObjectStoragePr
     accessKeySecret: config.oss.accessKeySecret,
     secure: true,
   });
+  const readClient = new OSS({
+    region: config.oss.region,
+    bucket: config.oss.bucket,
+    endpoint: getPublicEndpoint(config.oss.endpoint),
+    accessKeyId: config.oss.accessKeyId,
+    accessKeySecret: config.oss.accessKeySecret,
+    secure: true,
+  });
   const publicBaseUrl = trimTrailingSlash(config.oss.publicBaseUrl);
-
-  function toPublicSignedUrl(signedUrl: string): string {
-    const signed = new URL(signedUrl);
-    const publicBase = new URL(`${publicBaseUrl}/`);
-    return `${publicBase.origin}${signed.pathname}${signed.search}`;
-  }
 
   return {
     async putObject(input: UploadObjectInput): Promise<StoredObject> {
-      await client.put(input.storageKey, input.buffer, {
+      await writeClient.put(input.storageKey, input.buffer, {
         headers: {
           "Content-Type": input.mimeType,
         },
       });
-      const signedUrl = client.signatureUrl(input.storageKey, {
+      const signedUrl = readClient.signatureUrl(input.storageKey, {
         expires: config.oss.signedUrlTtlSeconds,
         method: "GET",
       });
@@ -43,7 +49,7 @@ export function createOssStorageProvider(config: RuntimeConfig): ObjectStoragePr
         storageProvider: "oss",
         storageKey: input.storageKey,
         publicUrl: `${publicBaseUrl}/${trimLeadingSlash(input.storageKey)}`,
-        signedUrl: toPublicSignedUrl(signedUrl),
+        signedUrl,
         sizeBytes: input.buffer.length,
         mimeType: input.mimeType,
         originalName: input.filename,
@@ -51,16 +57,15 @@ export function createOssStorageProvider(config: RuntimeConfig): ObjectStoragePr
     },
 
     async getSignedReadUrl(storageKey: string, options?: { process?: string }): Promise<string> {
-      const signedUrl = client.signatureUrl(storageKey, {
+      return readClient.signatureUrl(storageKey, {
         expires: config.oss.signedUrlTtlSeconds,
         method: "GET",
         ...(options?.process ? { process: options.process } : {}),
       });
-      return toPublicSignedUrl(signedUrl);
     },
 
     async deleteObject(storageKey: string): Promise<void> {
-      await client.delete(storageKey);
+      await writeClient.delete(storageKey);
     },
   };
 }

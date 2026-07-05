@@ -298,7 +298,10 @@ function signedImageUrl(value: string | null | undefined, req: express.Request):
   }
 
   const requestOrigin = new URL(origin);
-  if (url.origin !== requestOrigin.origin || !url.pathname.startsWith("/api/photos/")) return resolved;
+  const signablePathPrefixes = ["/api/photos/", "/api/objects/", "/api/videos/", "/api/images/"];
+  if (url.origin !== requestOrigin.origin || !signablePathPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
+    return resolved;
+  }
 
   const expiresAt = Date.now() + IMAGE_URL_TTL_SECONDS * 1000;
   url.searchParams.delete("miniToken");
@@ -317,12 +320,12 @@ function mapVideoAssetRow(row: any, req: express.Request) {
     cardId: row.card_id || "",
     storageProvider: row.storage_provider || "local",
     storageKey: row.storage_key || "",
-    videoUrl: absoluteUrl(`/api/videos/${encodeURIComponent(row.id)}`, req),
+    videoUrl: signedImageUrl(`/api/videos/${encodeURIComponent(row.id)}`, req),
     originalName: row.original_name || "video",
     mimeType: row.mime_type || "video/mp4",
     sizeBytes: Number(row.size_bytes || 0),
     durationMs: Number(row.duration_ms || 0),
-    posterUrl: isOssVideo ? absoluteUrl(`/api/videos/${encodeURIComponent(row.id)}/poster`, req) : row.poster_url || "",
+    posterUrl: isOssVideo ? signedImageUrl(`/api/videos/${encodeURIComponent(row.id)}/poster`, req) : row.poster_url || "",
     createdAt: Number(row.created_at || 0),
   };
 }
@@ -339,7 +342,7 @@ function mapImageAssetRow(row: any, req: express.Request) {
     cardId: row.card_id || "",
     storageProvider: row.storage_provider || "local",
     storageKey: row.storage_key || "",
-    imageUrl: absoluteUrl(`/api/images/${encodeURIComponent(row.id)}`, req),
+    imageUrl: signedImageUrl(`/api/images/${encodeURIComponent(row.id)}`, req),
     originalName: row.original_name || "image",
     mimeType: row.mime_type || "image/jpeg",
     sizeBytes: Number(row.size_bytes || 0),
@@ -353,7 +356,7 @@ function mapImageAssetsValue(value: any, req: express.Request) {
 }
 
 function primaryObjectProxyUrl(storageKey: string, req: express.Request, variant: "primary" | "primary-thumb" = "primary") {
-  return absoluteUrl(`/api/objects/${variant}/${encodeURIComponent(storageKey)}`, req);
+  return signedImageUrl(`/api/objects/${variant}/${encodeURIComponent(storageKey)}`, req);
 }
 
 function shouldUseOssPrimaryProxy(row: any) {
@@ -2262,17 +2265,26 @@ app.get("/api/db/cards/:id/images", requirePostgresAuth, async (req: Authenticat
   }
 });
 
-app.get("/api/images/:imageId", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+app.get("/api/images/:imageId", requirePostgresAuthOrSignedPhoto, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
-    const result = await pgPool.query(
-      `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
-       FROM image_assets
-       WHERE id = $1 AND user_id = $2`,
-      [req.params.imageId, req.user!.id]
-    );
+    const signedRequest = hasValidSignedImageUrl(req);
+    const authReq = req as AuthenticatedRequest;
+    const result = signedRequest
+      ? await pgPool.query(
+          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
+           FROM image_assets
+           WHERE id = $1`,
+          [req.params.imageId]
+        )
+      : await pgPool.query(
+          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
+           FROM image_assets
+           WHERE id = $1 AND user_id = $2`,
+          [req.params.imageId, authReq.user!.id]
+        );
     const asset = result.rows[0];
     if (!asset) {
       return res.status(404).json({ error: "Image not found" });
@@ -2321,17 +2333,26 @@ app.delete("/api/images/:imageId", requirePostgresAuth, async (req: Authenticate
   }
 });
 
-app.get("/api/videos/:videoId/poster", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+app.get("/api/videos/:videoId/poster", requirePostgresAuthOrSignedPhoto, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
-    const result = await pgPool.query(
-      `SELECT id, storage_provider, storage_key, poster_url
-       FROM video_assets
-       WHERE id = $1 AND user_id = $2`,
-      [req.params.videoId, req.user!.id]
-    );
+    const signedRequest = hasValidSignedImageUrl(req);
+    const authReq = req as AuthenticatedRequest;
+    const result = signedRequest
+      ? await pgPool.query(
+          `SELECT id, storage_provider, storage_key, poster_url
+           FROM video_assets
+           WHERE id = $1`,
+          [req.params.videoId]
+        )
+      : await pgPool.query(
+          `SELECT id, storage_provider, storage_key, poster_url
+           FROM video_assets
+           WHERE id = $1 AND user_id = $2`,
+          [req.params.videoId, authReq.user!.id]
+        );
     const asset = result.rows[0];
     if (!asset) {
       return res.status(404).json({ error: "Video not found" });
@@ -2350,17 +2371,26 @@ app.get("/api/videos/:videoId/poster", requirePostgresAuth, async (req: Authenti
   }
 });
 
-app.get("/api/videos/:videoId", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+app.get("/api/videos/:videoId", requirePostgresAuthOrSignedPhoto, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
-    const result = await pgPool.query(
-      `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
-       FROM video_assets
-       WHERE id = $1 AND user_id = $2`,
-      [req.params.videoId, req.user!.id]
-    );
+    const signedRequest = hasValidSignedImageUrl(req);
+    const authReq = req as AuthenticatedRequest;
+    const result = signedRequest
+      ? await pgPool.query(
+          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
+           FROM video_assets
+           WHERE id = $1`,
+          [req.params.videoId]
+        )
+      : await pgPool.query(
+          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
+           FROM video_assets
+           WHERE id = $1 AND user_id = $2`,
+          [req.params.videoId, authReq.user!.id]
+        );
     const asset = result.rows[0];
     if (!asset) {
       return res.status(404).json({ error: "Video not found" });
@@ -2427,13 +2457,13 @@ app.delete("/api/videos/:videoId", requirePostgresAuth, async (req: Authenticate
   }
 });
 
-const requirePostgresAuthOrSignedPhoto: express.RequestHandler = (req, res, next) => {
+function requirePostgresAuthOrSignedPhoto(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (hasValidSignedImageUrl(req)) {
     next();
     return;
   }
   requirePostgresAuth(req as AuthenticatedRequest, res, next);
-};
+}
 
 app.get("/api/photos/:photoUid/:variant(thumb|full)", requirePostgresAuthOrSignedPhoto, async (req, res) => {
   if (!pgPool) {
@@ -2494,7 +2524,7 @@ app.get("/api/photos/hash/:photoHash/:variant(thumb|full)", requirePostgresAuthO
   }
 });
 
-async function handlePrimaryObjectProxy(req: AuthenticatedRequest, res: express.Response, variant: "full" | "thumb") {
+async function handlePrimaryObjectProxy(req: express.Request, res: express.Response, variant: "full" | "thumb") {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
@@ -2504,14 +2534,24 @@ async function handlePrimaryObjectProxy(req: AuthenticatedRequest, res: express.
       return res.status(400).json({ error: "Invalid object key." });
     }
 
-    const result = await pgPool.query(
-      `SELECT id
-       FROM cards
-       WHERE user_id = $1
-         AND photo_uid = $2
-       LIMIT 1`,
-      [req.user!.id, storageKey]
-    );
+    const signedRequest = hasValidSignedImageUrl(req);
+    const authReq = req as AuthenticatedRequest;
+    const result = signedRequest
+      ? await pgPool.query(
+          `SELECT id
+           FROM cards
+           WHERE photo_uid = $1
+           LIMIT 1`,
+          [storageKey]
+        )
+      : await pgPool.query(
+          `SELECT id
+           FROM cards
+           WHERE user_id = $1
+             AND photo_uid = $2
+           LIMIT 1`,
+          [authReq.user!.id, storageKey]
+        );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Object not found." });
     }
@@ -2527,11 +2567,11 @@ async function handlePrimaryObjectProxy(req: AuthenticatedRequest, res: express.
   }
 }
 
-app.get("/api/objects/primary/:storageKey", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+app.get("/api/objects/primary/:storageKey", requirePostgresAuthOrSignedPhoto, async (req, res) => {
   return handlePrimaryObjectProxy(req, res, "full");
 });
 
-app.get("/api/objects/primary-thumb/:storageKey", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+app.get("/api/objects/primary-thumb/:storageKey", requirePostgresAuthOrSignedPhoto, async (req, res) => {
   return handlePrimaryObjectProxy(req, res, "thumb");
 });
 
