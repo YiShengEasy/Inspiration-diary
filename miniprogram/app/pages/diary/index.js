@@ -1,4 +1,4 @@
-const { request, uploadImage, resolveAssetUrl } = require("../../utils/api");
+const { request, uploadImage, resolveAssetUrl, downloadAsset } = require("../../utils/api");
 const { requireRegistered, refreshAccountStatus } = require("../../utils/auth");
 const { currentWeekId, days } = require("../../utils/dates");
 const { loadSmartSettings } = require("../../utils/smartSettings");
@@ -13,6 +13,7 @@ function todayDayIndex() {
 }
 
 function imageFor(card) {
+  if (card && card.image && card.image.indexOf("/api/") < 0) return card.image;
   const isCombo = card.type === "combo";
   return resolveAssetUrl(isCombo ? ((card.comboSummary && card.comboSummary.coverImageUrl) || "") : (card.thumbnailUrl || card.imageUrl || ""));
 }
@@ -79,6 +80,14 @@ function normalizeCard(card) {
   };
 }
 
+async function hydrateCardMedia(card) {
+  if (!card || card.isMd || !card.image) return card;
+  return {
+    ...card,
+    image: await downloadAsset(card.image)
+  };
+}
+
 function normalizeBook(book) {
   const cover = book.coverCard || null;
   const coverImage = cover ? imageFor(cover) : "";
@@ -87,6 +96,14 @@ function normalizeBook(book) {
     coverImage,
     cardCountText: `${Number(book.cardCount || 0)} 条`,
     descriptionText: book.description || ""
+  };
+}
+
+async function hydrateBookMedia(book) {
+  if (!book || !book.coverImage) return book;
+  return {
+    ...book,
+    coverImage: await downloadAsset(book.coverImage)
   };
 }
 
@@ -148,7 +165,7 @@ Page({
         url: `/api/db/cards?weekId=${encodeURIComponent(this.data.weekId)}&page=1&pageSize=200`
       });
       const rawCards = Array.isArray(body) ? body : body.cards || [];
-      const cards = rawCards.map(normalizeCard);
+      const cards = await Promise.all(rawCards.map((card) => hydrateCardMedia(normalizeCard(card))));
       cacheCards(cards);
 
       const cardsByDay = days.map((day, index) => {
@@ -177,7 +194,7 @@ Page({
   async loadBooks() {
     try {
       const body = await request({ url: "/api/db/books" });
-      const books = Array.isArray(body) ? body.map(normalizeBook) : [];
+      const books = Array.isArray(body) ? await Promise.all(body.map((book) => hydrateBookMedia(normalizeBook(book)))) : [];
       this.setData({ books });
     } catch (err) {
       this.setData({ books: [] });

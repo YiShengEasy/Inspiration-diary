@@ -1,4 +1,4 @@
-const { request, resolveAssetUrl } = require("../../utils/api");
+const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
 
 function normalizeCard(card) {
   if (!card) return null;
@@ -17,6 +17,14 @@ function normalizeCard(card) {
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleString("zh-CN") : "",
     terms,
     termsText: terms.join(" / ")
+  };
+}
+
+async function hydrateCardMedia(card) {
+  if (!card || card.isMd || !card.image) return card;
+  return {
+    ...card,
+    image: await downloadAsset(card.image)
   };
 }
 
@@ -49,6 +57,24 @@ function normalizeComboDetail(detail) {
   };
 }
 
+async function hydrateComboDetail(detail) {
+  if (!detail) return null;
+  const images = await Promise.all((detail.images || []).map(async (image) => ({
+    ...image,
+    imageUrl: await downloadAsset(image.imageUrl)
+  })));
+  const generations = await Promise.all((detail.generations || []).map(async (generation) => ({
+    ...generation,
+    videoUrl: await downloadAsset(generation.videoUrl),
+    posterUrl: generation.posterUrl ? await downloadAsset(generation.posterUrl) : ""
+  })));
+  return {
+    ...detail,
+    images,
+    generations
+  };
+}
+
 Page({
   data: {
     id: "",
@@ -71,10 +97,10 @@ Page({
     if (!this.data.id) return;
     this.setData({ loading: true, error: "" });
     try {
-      const card = normalizeCard(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}` }));
+      const card = await hydrateCardMedia(normalizeCard(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}` })));
       let comboDetail = null;
       if (card && card.type === "combo") {
-        comboDetail = normalizeComboDetail(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}/combo` }));
+        comboDetail = await hydrateComboDetail(normalizeComboDetail(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}/combo` })));
       }
       wx.setStorageSync(`miniCard:${this.data.id}`, card);
       this.setData({ card, comboDetail, hasCard: !!card, loading: false });

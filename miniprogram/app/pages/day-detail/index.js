@@ -1,4 +1,4 @@
-const { request, resolveAssetUrl } = require("../../utils/api");
+const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
 const { days } = require("../../utils/dates");
 
 function normalizeCard(card) {
@@ -17,6 +17,14 @@ function normalizeCard(card) {
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "",
     terms,
     termsText: terms.join(" / ")
+  };
+}
+
+async function hydrateCardMedia(card) {
+  if (!card || card.isMd || !card.image) return card;
+  return {
+    ...card,
+    image: await downloadAsset(card.image)
   };
 }
 
@@ -47,9 +55,9 @@ Page({
         url: `/api/db/cards?weekId=${encodeURIComponent(this.data.weekId)}&page=1&pageSize=200`
       });
       const rawCards = Array.isArray(body) ? body : body.cards || [];
-      const cards = rawCards
+      const cards = await Promise.all(rawCards
         .filter((card) => Number(card.dayIndex) === this.data.dayIndex)
-        .map(normalizeCard);
+        .map((card) => hydrateCardMedia(normalizeCard(card))));
       cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
       this.setData({ cards });
     } catch (err) {

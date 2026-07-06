@@ -1,4 +1,4 @@
-const { request, resolveAssetUrl } = require("../../utils/api");
+const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
 
 const filterNames = ["全部", "图片", "文档", "标签"];
 
@@ -26,6 +26,14 @@ function normalizeCard(card) {
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "",
     terms,
     termsText: terms.join(" / ")
+  };
+}
+
+async function hydrateCardMedia(card) {
+  if (!card || card.isMd || !card.image) return card;
+  return {
+    ...card,
+    image: await downloadAsset(card.image)
   };
 }
 
@@ -66,7 +74,7 @@ Page({
       const body = await request({
         url: `/api/db/cards?weekId=all&page=1&pageSize=50&q=${encodeURIComponent(q)}`
       });
-      let cards = (body.cards || []).map(normalizeCard);
+      let cards = await Promise.all((body.cards || []).map((card) => hydrateCardMedia(normalizeCard(card))));
       if (this.data.filter === "图片") {
         cards = cards.filter((card) => card.type !== "md");
       } else if (this.data.filter === "文档") {

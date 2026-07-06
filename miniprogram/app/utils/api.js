@@ -27,7 +27,15 @@ function resolveAssetUrl(url) {
 
 function downloadAsset(url) {
   const src = resolveAssetUrl(url);
-  if (!src || src.indexOf("/api/photos/") < 0) return Promise.resolve(src);
+  const protectedAssetPaths = [
+    "/api/photos/",
+    "/api/objects/",
+    "/api/images/",
+    "/api/videos/",
+    "/api/combo-images/",
+    "/api/combo-generations/"
+  ];
+  if (!src || !protectedAssetPaths.some((path) => src.indexOf(path) >= 0)) return Promise.resolve(src);
 
   return new Promise((resolve) => {
     const token = getToken();

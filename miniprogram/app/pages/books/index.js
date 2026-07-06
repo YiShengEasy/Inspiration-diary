@@ -1,4 +1,4 @@
-const { request, uploadImage, uploadDocument, resolveAssetUrl } = require("../../utils/api");
+const { request, uploadImage, uploadDocument, resolveAssetUrl, downloadAsset } = require("../../utils/api");
 const { requireRegistered } = require("../../utils/auth");
 const { currentWeekId } = require("../../utils/dates");
 const { loadEnabledCustomTagHints } = require("../../utils/customTagLibrary");
@@ -41,6 +41,22 @@ function normalizeCard(card) {
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleDateString("zh-CN") : "",
     terms,
     termsText: formatTermsText(terms)
+  };
+}
+
+async function hydrateBookMedia(book) {
+  if (!book || !book.coverImage) return book;
+  return {
+    ...book,
+    coverImage: await downloadAsset(book.coverImage)
+  };
+}
+
+async function hydrateCardMedia(card) {
+  if (!card || card.isMd || !card.image) return card;
+  return {
+    ...card,
+    image: await downloadAsset(card.image)
   };
 }
 
@@ -98,7 +114,7 @@ Page({
     this.setData({ loading: true, error: "" });
     try {
       const body = await request({ url: "/api/db/books" });
-      const books = Array.isArray(body) ? body.map(normalizeBook) : [];
+      const books = Array.isArray(body) ? await Promise.all(body.map((book) => hydrateBookMedia(normalizeBook(book)))) : [];
       const selectedBookId = this.data.selectedBookId || (books[0] && books[0].id) || "";
       const selectedBook = books.find((book) => book.id === selectedBookId) || {};
       this.setData({ books, visibleBooks: this.filterBooks(books, this.data.bookSearch), selectedBookId, selectedBook });
@@ -119,7 +135,7 @@ Page({
         url: `/api/db/books/${encodeURIComponent(bookId)}/cards?page=1&pageSize=200`
       });
       const rawCards = Array.isArray(body) ? body : body.cards || [];
-      const cards = rawCards.map(normalizeCard);
+      const cards = await Promise.all(rawCards.map((card) => hydrateCardMedia(normalizeCard(card))));
       cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
       this.setData({ cards });
     } catch (err) {
