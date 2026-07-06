@@ -843,10 +843,42 @@ button::after {
 
 .week-sheet-desc {
   display: block;
-  margin: 10rpx 80rpx 28rpx 0;
+  margin: 10rpx 80rpx 20rpx 0;
   color: #7d8178;
   font-size: 24rpx;
   line-height: 36rpx;
+}
+
+.month-switcher {
+  height: 78rpx;
+  margin: 0 0 22rpx;
+  border: 2rpx solid #eadfcd;
+  border-radius: 999rpx;
+  display: grid;
+  grid-template-columns: 72rpx 1fr 72rpx;
+  align-items: center;
+  background: #fffdf8;
+}
+
+.month-nav {
+  width: 56rpx;
+  height: 56rpx;
+  margin: 0 auto;
+  border-radius: 999rpx;
+  background: #f3eadb;
+  color: #111111;
+  font-size: 32rpx;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.month-title {
+  display: block;
+  text-align: center;
+  color: #111111;
+  font-size: 28rpx;
+  line-height: 34rpx;
+  font-weight: 950;
 }
 
 .week-options {

@@ -57,6 +57,78 @@ function weekDateRange(weekId) {
   return `${format(monday)} - ${format(sunday)}`;
 }
 
+function padWeek(week) {
+  return String(week).padStart(2, "0");
+}
+
+function weekIdFromDate(date) {
+  const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = normalized.getUTCDay() || 7;
+  normalized.setUTCDate(normalized.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(normalized.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((normalized - yearStart) / 86400000) + 1) / 7);
+  return `${normalized.getUTCFullYear()}-W${padWeek(week)}`;
+}
+
+function mondayForDate(date) {
+  const result = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = result.getUTCDay() || 7;
+  result.setUTCDate(result.getUTCDate() - day + 1);
+  return result;
+}
+
+function weekStartDate(weekId) {
+  const match = String(weekId || "").match(/^(\d{4})-W(\d{1,2})$/);
+  if (!match) return mondayForDate(new Date());
+
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  const janFourth = new Date(Date.UTC(year, 0, 4));
+  const janFourthDay = janFourth.getUTCDay() || 7;
+  const monday = new Date(janFourth);
+  monday.setUTCDate(janFourth.getUTCDate() - janFourthDay + 1 + (week - 1) * 7);
+  return monday;
+}
+
+function monthLabel(year, month) {
+  return `${year} 年 ${month + 1} 月`;
+}
+
+function monthFromWeekId(weekId) {
+  const start = weekStartDate(weekId);
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+  const middle = new Date(start);
+  middle.setUTCDate(start.getUTCDate() + 3);
+  return { year: middle.getUTCFullYear(), month: middle.getUTCMonth() };
+}
+
+function buildMonthWeekOptions(year, month, activeWeekId) {
+  const monthStart = new Date(Date.UTC(year, month, 1));
+  const monthEnd = new Date(Date.UTC(year, month + 1, 0));
+  const cursor = mondayForDate(monthStart);
+  const result = [];
+
+  while (cursor <= monthEnd) {
+    const weekId = weekIdFromDate(cursor);
+    result.push({
+      weekId,
+      label: weekLabel(weekId),
+      range: weekDateRange(weekId),
+      active: weekId === activeWeekId,
+      countText: "..."
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+
+  return result;
+}
+
+function shiftMonth(year, month, offset) {
+  const date = new Date(Date.UTC(year, month + Number(offset || 0), 1));
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() };
+}
+
 function formatTermsText(terms) {
   const visibleTerms = terms.slice(0, 3);
   return `${visibleTerms.join(" / ")}${terms.length > 3 ? " ..." : ""}`;
@@ -64,19 +136,6 @@ function formatTermsText(terms) {
 
 function sortNewestFirst(cards) {
   return cards.slice().sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-}
-
-function buildWeekOptions(anchorWeekId, activeWeekId) {
-  return Array.from({ length: 5 }, (_item, index) => {
-    const weekId = shiftWeekId(anchorWeekId, -index);
-    return {
-      weekId,
-      label: weekLabel(weekId),
-      range: weekDateRange(weekId),
-      active: weekId === activeWeekId,
-      countText: "..."
-    };
-  });
 }
 
 function normalizeCard(card) {
@@ -158,6 +217,9 @@ Page({
     uploading: false,
     weekPickerOpen: false,
     weekPickerLoading: false,
+    weekPickerYear: monthFromWeekId(currentWeekId()).year,
+    weekPickerMonth: monthFromWeekId(currentWeekId()).month,
+    weekPickerMonthLabel: monthLabel(monthFromWeekId(currentWeekId()).year, monthFromWeekId(currentWeekId()).month),
     weekOptions: [],
     error: ""
   },
@@ -365,8 +427,22 @@ Page({
   async openWeekPicker() {
     if (!requireRegistered()) return;
 
-    const weekOptions = buildWeekOptions(this.data.weekId || currentWeekId(), this.data.weekId);
-    this.setData({ weekPickerOpen: true, weekPickerLoading: true, weekOptions });
+    const { year, month } = monthFromWeekId(this.data.weekId || currentWeekId());
+    const weekOptions = buildMonthWeekOptions(year, month, this.data.weekId);
+    this.setData({
+      weekPickerOpen: true,
+      weekPickerLoading: true,
+      weekPickerYear: year,
+      weekPickerMonth: month,
+      weekPickerMonthLabel: monthLabel(year, month),
+      weekOptions
+    });
+
+    await this.loadWeekOptionCounts(weekOptions);
+  },
+
+  async loadWeekOptionCounts(weekOptions = this.data.weekOptions) {
+    this.setData({ weekPickerLoading: true });
 
     const nextOptions = await Promise.all(weekOptions.map(async (option) => {
       try {
@@ -385,6 +461,22 @@ Page({
     if (this.data.weekPickerOpen) {
       this.setData({ weekOptions: nextOptions, weekPickerLoading: false });
     }
+  },
+
+  async changePickerMonth(event) {
+    const offset = Number(event.currentTarget.dataset.offset || 0);
+    if (!offset) return;
+
+    const { year, month } = shiftMonth(this.data.weekPickerYear, this.data.weekPickerMonth, offset);
+    const weekOptions = buildMonthWeekOptions(year, month, this.data.weekId);
+    this.setData({
+      weekPickerYear: year,
+      weekPickerMonth: month,
+      weekPickerMonthLabel: monthLabel(year, month),
+      weekOptions
+    });
+
+    await this.loadWeekOptionCounts(weekOptions);
   },
 
   closeWeekPicker() {

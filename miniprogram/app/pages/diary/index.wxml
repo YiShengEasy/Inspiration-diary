@@ -146,7 +146,12 @@
         <button class="sheet-close" hover-class="button-press" bindtap="closeWeekPicker">×</button>
         <scroll-view class="week-sheet-scroll" scroll-y enhanced show-scrollbar="{{false}}">
           <text class="week-sheet-title">切换周视图</text>
-          <text class="week-sheet-desc">选择最近一周查看每日灵感。</text>
+          <text class="week-sheet-desc">选择年月，再切换到对应周的每日灵感。</text>
+          <view class="month-switcher">
+            <button class="month-nav" hover-class="button-press" data-offset="-1" bindtap="changePickerMonth">‹</button>
+            <text class="month-title">{{weekPickerMonthLabel}}</text>
+            <button class="month-nav" hover-class="button-press" data-offset="1" bindtap="changePickerMonth">›</button>
+          </view>
           <view class="week-options">
             <view wx:for="{{weekOptions}}" wx:key="weekId" class="week-option {{item.active ? 'active' : ''}}">
               <button class="week-select" hover-class="button-press" data-week-id="{{item.weekId}}" bindtap="selectWeek">
