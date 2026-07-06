@@ -88,19 +88,14 @@
           </button>
         </block>
         <block wx:elif="{{imageEditMode === 'rotate'}}">
-          <view class="rotate-wheel">
+          <view class="rotate-wheel" bindtouchstart="onRotateWheelStart" catchtouchmove="onRotateWheelMove" bindtouchend="onRotateWheelEnd" bindtouchcancel="onRotateWheelEnd">
             <view class="wheel-window">
-              <view class="wheel-arc">
+              <view class="wheel-arc" style="{{rotateWheelStyle}}">
                 <text wx:for="{{rotateTicks}}" wx:key="*this">{{item}}</text>
               </view>
             </view>
-            <view class="wheel-pointer" style="{{rotatePointerStyle}}"></view>
-            <view class="angle-controls">
-              <button class="angle-step" data-delta="-1" bindtap="stepRotateAngle">-</button>
-              <text>{{rotationFineAngle}}°</text>
-              <button class="angle-step" data-delta="1" bindtap="stepRotateAngle">+</button>
-            </view>
-            <slider class="rotate-slider" min="-25" max="25" step="1" value="{{rotationFineAngle}}" activeColor="#b7ff38" backgroundColor="rgba(255,255,255,0.18)" block-size="24" block-color="#ffffff" bindchanging="onRotateAngleChange" bindchange="onRotateAngleChange" />
+            <view class="wheel-pointer"></view>
+            <text class="wheel-angle">{{rotationFineAngle}}°</text>
           </view>
           <button wx:for="{{rotateOptions}}" wx:key="value" class="edit-option {{(item.value === 'flipX' && flipX) || (item.value === 'flipY' && flipY) ? 'active' : ''}}" data-value="{{item.value}}" data-label="{{item.label}}" bindtap="applyRotate">
             <text class="edit-option-symbol">{{item.icon}}</text>

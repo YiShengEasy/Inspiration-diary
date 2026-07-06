@@ -36,7 +36,7 @@ const correctOptions = [
   { label: "垂直", value: "vertical", icon: "▱" },
   { label: "水平", value: "horizontal", icon: "▰" }
 ];
-const rotateTicks = ["-25", "-15", "-5", "0", "5", "15", "25"];
+const rotateTicks = ["-45", "-30", "-15", "0", "15", "30", "45"];
 const correctTicks = ["-40", "-30", "-20", "-10", "0", "10", "20", "30", "40"];
 const filterOptions = [
   { label: "原始", value: "none" },
@@ -278,6 +278,9 @@ Page({
     rotationTurns: 0,
     rotationFineAngle: 0,
     rotatePointerStyle: "left: 50%;",
+    rotateWheelStyle: "transform: translateX(-50%) rotate(0deg);",
+    rotateDragStartX: 0,
+    rotateDragStartAngle: 0,
     flipX: false,
     flipY: false,
     selectedCorrection: "",
@@ -506,25 +509,35 @@ Page({
     this.updateImageEditorClass();
   },
 
-  stepRotateAngle(event) {
-    const delta = Number(event.currentTarget.dataset.delta || 0);
-    const value = Math.max(-25, Math.min(25, Number(this.data.rotationFineAngle || 0) + delta));
+  setRotateFineAngle(value) {
+    const nextValue = Math.max(-45, Math.min(45, Math.round(Number(value || 0))));
     this.setData({
-      rotationFineAngle: value,
-      rotatePointerStyle: `left: ${((value + 25) / 50) * 100}%;`,
-      operationStatus: `旋转 ${value}°`
+      rotationFineAngle: nextValue,
+      rotatePointerStyle: `left: ${((nextValue + 45) / 90) * 100}%;`,
+      rotateWheelStyle: `transform: translateX(-50%) rotate(${-nextValue}deg);`,
+      operationStatus: `旋转 ${nextValue}°`
     });
     this.updateImageEditorClass();
   },
 
-  onRotateAngleChange(event) {
-    const value = Number(event.detail.value || 0);
+  onRotateWheelStart(event) {
+    const touch = event.touches && event.touches[0];
+    if (!touch) return;
     this.setData({
-      rotationFineAngle: value,
-      rotatePointerStyle: `left: ${((value + 25) / 50) * 100}%;`,
-      operationStatus: `旋转 ${value}°`
+      rotateDragStartX: touch.clientX,
+      rotateDragStartAngle: Number(this.data.rotationFineAngle || 0)
     });
-    this.updateImageEditorClass();
+  },
+
+  onRotateWheelMove(event) {
+    const touch = event.touches && event.touches[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - Number(this.data.rotateDragStartX || touch.clientX);
+    this.setRotateFineAngle(Number(this.data.rotateDragStartAngle || 0) + deltaX * 0.22);
+  },
+
+  onRotateWheelEnd() {
+    this.setRotateFineAngle(this.data.rotationFineAngle);
   },
 
   setCorrection(event) {
@@ -556,6 +569,9 @@ Page({
       rotationTurns: 0,
       rotationFineAngle: 0,
       rotatePointerStyle: "left: 50%;",
+      rotateWheelStyle: "transform: translateX(-50%) rotate(0deg);",
+      rotateDragStartX: 0,
+      rotateDragStartAngle: 0,
       flipX: false,
       flipY: false,
       selectedCorrection: "",
@@ -758,6 +774,9 @@ Page({
         rotationTurns: 0,
         rotationFineAngle: 0,
         rotatePointerStyle: "left: 50%;",
+        rotateWheelStyle: "transform: translateX(-50%) rotate(0deg);",
+        rotateDragStartX: 0,
+        rotateDragStartAngle: 0,
         flipX: false,
         flipY: false,
         selectedCorrection: "",
