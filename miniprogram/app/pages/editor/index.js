@@ -4,12 +4,40 @@ const { currentWeekId } = require("../../utils/dates");
 const { tools } = require("../../utils/tools");
 
 const IMAGE_TOOLS = new Set(["crop", "colorPick", "pixel", "filter", "palette", "gradient", "watermark", "film", "ai"]);
+const imageEditModes = [
+  { label: "裁剪", value: "crop" },
+  { label: "扩图", value: "expand" },
+  { label: "旋转", value: "rotate" },
+  { label: "矫正", value: "correct" }
+];
 const cropOptions = [
   { label: "自由", value: "free" },
+  { label: "原比例", value: "original" },
   { label: "1:1", value: "square" },
-  { label: "4:5", value: "portrait" },
+  { label: "2:3", value: "portrait23" },
+  { label: "3:2", value: "landscape32" }
+];
+const expandOptions = [
+  { label: "原比例", value: "original" },
+  { label: "1:1", value: "square" },
+  { label: "3:4", value: "portrait34" },
+  { label: "4:3", value: "landscape43" },
+  { label: "9:16", value: "story" },
   { label: "16:9", value: "wide" }
 ];
+const rotateOptions = [
+  { label: "向左 90°", value: "left", icon: "↶" },
+  { label: "向右 90°", value: "right", icon: "↷" },
+  { label: "水平翻转", value: "flipX", icon: "⇆" },
+  { label: "垂直翻转", value: "flipY", icon: "⇅" }
+];
+const correctOptions = [
+  { label: "畸变矫正", value: "perspective", icon: "▥" },
+  { label: "垂直", value: "vertical", icon: "▱" },
+  { label: "水平", value: "horizontal", icon: "▰" }
+];
+const rotateTicks = ["-25", "-20", "-15", "-10", "-5", "0"];
+const correctTicks = ["-40", "-30", "-20", "-10", "0", "10", "20", "30", "40"];
 const filterOptions = [
   { label: "原始", value: "none" },
   { label: "低饱和", value: "soft" },
@@ -45,6 +73,8 @@ const paletteSets = [
 const defaultSwatches = ["#111111", "#b7ff38", "#7ed4d8", "#ff7f6f", "#f3ead7"];
 const PALETTE_CANVAS_ID = "paletteCanvas";
 const PALETTE_CANVAS_SIZE = 80;
+const EDIT_CANVAS_ID = "editCanvas";
+const EDIT_CANVAS_SIZE = 960;
 
 function getTool(id) {
   return tools.find((tool) => tool.id === id) || tools[0];
@@ -108,10 +138,58 @@ function shouldExtractPalette(toolId) {
   return toolId === "colorPick" || toolId === "palette" || toolId === "gradient";
 }
 
+function isImageEditorTool(toolId) {
+  return toolId === "crop";
+}
+
 function todayDayIndex() {
   const day = new Date().getDay();
   if (day === 0 || day === 6) return 5;
   return Math.max(0, day - 1);
+}
+
+function ratioFor(mode, value, info) {
+  if (value === "square") return 1;
+  if (value === "portrait23") return 2 / 3;
+  if (value === "landscape32") return 3 / 2;
+  if (value === "portrait34") return 3 / 4;
+  if (value === "landscape43") return 4 / 3;
+  if (value === "story") return 9 / 16;
+  if (value === "wide") return 16 / 9;
+  if (mode === "crop" && value === "free") return info.width / info.height;
+  return info.width / info.height;
+}
+
+function canvasSizeForRatio(ratio) {
+  if (ratio >= 1) {
+    return {
+      width: EDIT_CANVAS_SIZE,
+      height: Math.round(EDIT_CANVAS_SIZE / ratio)
+    };
+  }
+
+  return {
+    width: Math.round(EDIT_CANVAS_SIZE * ratio),
+    height: EDIT_CANVAS_SIZE
+  };
+}
+
+function drawRectForMode(mode, canvasWidth, canvasHeight, sourceWidth, sourceHeight) {
+  const canvasRatio = canvasWidth / canvasHeight;
+  const sourceRatio = sourceWidth / sourceHeight;
+  const shouldCover = mode === "crop";
+  const scale = shouldCover
+    ? Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight)
+    : Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return {
+    x: (canvasWidth - width) / 2,
+    y: (canvasHeight - height) / 2,
+    width,
+    height,
+    fill: !shouldCover && Math.abs(canvasRatio - sourceRatio) > 0.01
+  };
 }
 
 function colorDistance(a, b) {
@@ -178,8 +256,8 @@ function toolState(toolId) {
 Page({
   data: {
     tool: "crop",
-    toolName: "图片裁剪",
-    toolDesc: "调整比例和构图",
+    toolName: "图片编辑",
+    toolDesc: "裁剪、扩图、旋转、矫正",
     toolIcon: getToolIcon("crop"),
     needsImage: true,
     controlTitle: "工具操作",
@@ -189,8 +267,23 @@ Page({
     displayPath: "",
     showImagePreview: false,
     previewClass: "",
+    imageEditMode: "crop",
+    imageEditorFrameClass: "crop-free",
+    imageEditorImageClass: "",
+    imageEditorTransform: "",
+    imageEditorStyle: "",
     cropRatioClass: "crop-free",
     selectedCrop: "free",
+    selectedExpand: "original",
+    rotationTurns: 0,
+    rotationFineAngle: 0,
+    rotatePointerStyle: "left: 50%;",
+    flipX: false,
+    flipY: false,
+    selectedCorrection: "",
+    correctionValue: 0,
+    correctionPointerStyle: "left: 50%;",
+    operationStatus: "",
     selectedFilter: "none",
     selectedPixel: "medium",
     selectedFilm: "warm",
@@ -210,7 +303,13 @@ Page({
     contrastBg: "#B7FF38",
     contrastScore: "14.34",
     contrastLevel: "AAA",
+    imageEditModes,
     cropOptions,
+    expandOptions,
+    rotateOptions,
+    correctOptions,
+    rotateTicks,
+    correctTicks,
     filterOptions,
     pixelOptions,
     filmOptions,
@@ -244,6 +343,7 @@ Page({
       controlDesc: state.controlDesc
     });
     this.updatePreviewClass();
+    this.updateImageEditorClass();
     if (displayPath && shouldExtractPalette(tool.id)) {
       this.extractPalette(displayPath);
     }
@@ -257,6 +357,46 @@ Page({
     if (tool === "film") previewClass = `film-${selectedFilm}`;
     if (tool === "ai") previewClass = `ai-${selectedAi}`;
     this.setData({ previewClass });
+  },
+
+  updateImageEditorClass() {
+    const {
+      tool,
+      imageEditMode,
+      selectedCrop,
+      selectedExpand,
+      rotationTurns,
+      rotationFineAngle,
+      flipX,
+      flipY,
+      selectedCorrection,
+      correctionValue
+    } = this.data;
+    if (!isImageEditorTool(tool)) {
+      this.setData({ imageEditorFrameClass: "", imageEditorImageClass: "", imageEditorTransform: "", imageEditorStyle: "" });
+      return;
+    }
+
+    const frameClass = imageEditMode === "expand" ? `expand-${selectedExpand}` : `crop-${selectedCrop}`;
+    const correctionClass = selectedCorrection ? `correct-${selectedCorrection}` : "";
+    const correctionAmount = Number(correctionValue || 0);
+    const verticalSkew = selectedCorrection === "vertical" ? correctionAmount / -8 : 0;
+    const horizontalSkew = selectedCorrection === "horizontal" ? correctionAmount / 8 : 0;
+    const perspectiveTilt = selectedCorrection === "perspective" ? correctionAmount / 9 : 0;
+    const transforms = [
+      selectedCorrection === "perspective" ? `perspective(720rpx) rotateX(${perspectiveTilt}deg) rotateY(${-perspectiveTilt}deg)` : "",
+      selectedCorrection === "vertical" ? `skewY(${verticalSkew}deg)` : "",
+      selectedCorrection === "horizontal" ? `skewX(${horizontalSkew}deg)` : "",
+      `rotate(${rotationTurns * 90 + Number(rotationFineAngle || 0)}deg)`,
+      `scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`,
+      selectedCorrection ? "scale(1.03)" : ""
+    ].filter(Boolean).join(" ");
+    this.setData({
+      imageEditorFrameClass: frameClass,
+      imageEditorImageClass: correctionClass,
+      imageEditorTransform: transforms,
+      imageEditorStyle: `transform: ${transforms};`
+    });
   },
 
   chooseImage() {
@@ -332,7 +472,87 @@ Page({
 
   setCrop(event) {
     const value = event.currentTarget.dataset.value || "free";
-    this.setData({ selectedCrop: value, cropRatioClass: `crop-${value}` });
+    this.setData({
+      selectedCrop: value,
+      cropRatioClass: `crop-${value}`,
+      operationStatus: `裁剪比例：${event.currentTarget.dataset.label || value}`
+    });
+    this.updateImageEditorClass();
+  },
+
+  setImageEditMode(event) {
+    const value = event.currentTarget.dataset.value || "crop";
+    this.setData({ imageEditMode: value });
+    this.updateImageEditorClass();
+  },
+
+  setExpand(event) {
+    const value = event.currentTarget.dataset.value || "original";
+    this.setData({
+      selectedExpand: value,
+      operationStatus: `扩展画布：${event.currentTarget.dataset.label || value}`
+    });
+    this.updateImageEditorClass();
+  },
+
+  applyRotate(event) {
+    const value = event.currentTarget.dataset.value;
+    const next = {};
+    if (value === "left") next.rotationTurns = this.data.rotationTurns - 1;
+    if (value === "right") next.rotationTurns = this.data.rotationTurns + 1;
+    if (value === "flipX") next.flipX = !this.data.flipX;
+    if (value === "flipY") next.flipY = !this.data.flipY;
+    this.setData({ ...next, operationStatus: event.currentTarget.dataset.label || "已调整方向" });
+    this.updateImageEditorClass();
+  },
+
+  onRotateAngleChange(event) {
+    const value = Number(event.detail.value || 0);
+    this.setData({
+      rotationFineAngle: value,
+      rotatePointerStyle: `left: ${((value + 25) / 50) * 100}%;`,
+      operationStatus: `旋转 ${value}°`
+    });
+    this.updateImageEditorClass();
+  },
+
+  setCorrection(event) {
+    const value = event.currentTarget.dataset.value || "";
+    const nextCorrection = this.data.selectedCorrection === value ? "" : value;
+    this.setData({
+      selectedCorrection: nextCorrection,
+      correctionValue: nextCorrection ? this.data.correctionValue : 0,
+      correctionPointerStyle: nextCorrection ? this.data.correctionPointerStyle : "left: 50%;",
+      operationStatus: event.currentTarget.dataset.label || "已调整矫正"
+    });
+    this.updateImageEditorClass();
+  },
+
+  onCorrectionValueChange(event) {
+    const value = Number(event.detail.value || 0);
+    this.setData({
+      correctionValue: value,
+      correctionPointerStyle: `left: ${((value + 40) / 80) * 100}%;`,
+      operationStatus: `矫正 ${value}`
+    });
+    this.updateImageEditorClass();
+  },
+
+  resetImageEdit() {
+    this.setData({
+      selectedCrop: "free",
+      selectedExpand: "original",
+      rotationTurns: 0,
+      rotationFineAngle: 0,
+      rotatePointerStyle: "left: 50%;",
+      flipX: false,
+      flipY: false,
+      selectedCorrection: "",
+      correctionValue: 0,
+      correctionPointerStyle: "left: 50%;",
+      operationStatus: "已还原"
+    });
+    this.updateImageEditorClass();
   },
 
   setFilter(event) {
@@ -452,6 +672,102 @@ Page({
     });
   },
 
+  buildEditedImage() {
+    const path = this.data.resultPath || this.data.filePath;
+    if (!path) return Promise.reject(new Error("请先选择图片"));
+
+    return new Promise((resolve, reject) => {
+      wx.getImageInfo({
+        src: path,
+        success: (info) => {
+          const mode = this.data.imageEditMode === "expand" ? "expand" : "crop";
+          const ratioValue = mode === "expand" ? this.data.selectedExpand : this.data.selectedCrop;
+          const ratio = ratioFor(mode, ratioValue, info);
+          const size = canvasSizeForRatio(ratio);
+          const ctx = wx.createCanvasContext(EDIT_CANVAS_ID, this);
+          const turns = ((this.data.rotationTurns % 4) + 4) % 4;
+          const sourceWidth = turns % 2 === 0 ? info.width : info.height;
+          const sourceHeight = turns % 2 === 0 ? info.height : info.width;
+          const rect = drawRectForMode(mode, size.width, size.height, sourceWidth, sourceHeight);
+
+          ctx.clearRect(0, 0, EDIT_CANVAS_SIZE, EDIT_CANVAS_SIZE);
+          ctx.setFillStyle(mode === "expand" || rect.fill ? "#f7f7f2" : "#111111");
+          ctx.fillRect(0, 0, size.width, size.height);
+          ctx.save();
+          ctx.translate(size.width / 2, size.height / 2);
+          ctx.rotate((turns * 90 + Number(this.data.rotationFineAngle || 0)) * Math.PI / 180);
+          ctx.scale(this.data.flipX ? -1 : 1, this.data.flipY ? -1 : 1);
+          if (typeof ctx.transform === "function" && this.data.selectedCorrection) {
+            const correction = Number(this.data.correctionValue || 0) / 110;
+            if (this.data.selectedCorrection === "vertical") ctx.transform(1, -correction, 0, 1, 0, 0);
+            if (this.data.selectedCorrection === "horizontal") ctx.transform(1, 0, correction, 1, 0, 0);
+            if (this.data.selectedCorrection === "perspective") ctx.transform(1, -correction / 2, correction / 2, 1, 0, 0);
+          }
+          const drawWidth = turns % 2 === 0 ? rect.width : rect.height;
+          const drawHeight = turns % 2 === 0 ? rect.height : rect.width;
+          ctx.drawImage(info.path, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+          ctx.restore();
+          ctx.draw(false, () => {
+            wx.canvasToTempFilePath({
+              canvasId: EDIT_CANVAS_ID,
+              x: 0,
+              y: 0,
+              width: size.width,
+              height: size.height,
+              destWidth: size.width,
+              destHeight: size.height,
+              fileType: "jpg",
+              quality: 0.95,
+              success: (res) => resolve(res.tempFilePath),
+              fail: (err) => reject(new Error(err.errMsg || "导出失败"))
+            }, this);
+          });
+        },
+        fail: (err) => reject(new Error(err.errMsg || "读取图片失败"))
+      });
+    });
+  },
+
+  async saveEditedImageToAlbum() {
+    if (!this.data.filePath) {
+      wx.showToast({ title: "请先选择图片", icon: "none" });
+      return;
+    }
+
+    wx.showLoading({ title: "正在生成" });
+    try {
+      const outputPath = await this.buildEditedImage();
+      this.setData({
+        filePath: outputPath,
+        resultPath: outputPath,
+        displayPath: outputPath,
+        showImagePreview: true,
+        selectedCrop: "free",
+        selectedExpand: "original",
+        rotationTurns: 0,
+        rotationFineAngle: 0,
+        rotatePointerStyle: "left: 50%;",
+        flipX: false,
+        flipY: false,
+        selectedCorrection: "",
+        correctionValue: 0,
+        correctionPointerStyle: "left: 50%;",
+        operationStatus: "已生成新图片"
+      });
+      this.updateImageEditorClass();
+      wx.hideLoading();
+      wx.saveImageToPhotosAlbum({
+        filePath: outputPath,
+        success: () => wx.showToast({ title: "已保存到相册", icon: "success" }),
+        fail: () => wx.showToast({ title: "保存失败，请检查权限", icon: "none" })
+      });
+    } catch (err) {
+      wx.hideLoading();
+      console.warn("Save edited image failed:", err);
+      wx.showToast({ title: err.message || "生成失败", icon: "none" });
+    }
+  },
+
   async savePaletteCard(path) {
     const selectedColor = this.data.selectedColor || defaultSwatches[0];
     const paletteTerms = this.data.swatches
@@ -491,6 +807,11 @@ Page({
     const path = this.data.resultPath || this.data.filePath;
     if (this.data.needsImage && !path) {
       wx.showToast({ title: "请先选择图片", icon: "none" });
+      return;
+    }
+
+    if (isImageEditorTool(this.data.tool)) {
+      await this.saveEditedImageToAlbum();
       return;
     }
 

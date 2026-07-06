@@ -16,10 +16,17 @@
   </view>
 
   <view class="editor-canvas">
-    <view wx:if="{{showImagePreview}}" class="preview-frame {{cropRatioClass}}">
-      <image class="preview-image" src="{{displayPath}}" mode="aspectFit" data-src="{{displayPath}}" binderror="onPreviewImageError"></image>
+    <view wx:if="{{showImagePreview}}" class="preview-frame {{tool === 'crop' ? imageEditorFrameClass : cropRatioClass}} {{tool === 'crop' ? 'image-editor-frame' : ''}}">
+      <image class="preview-image {{tool === 'crop' ? imageEditorImageClass : ''}}" style="{{tool === 'crop' ? imageEditorStyle : ''}}" src="{{displayPath}}" mode="aspectFit" data-src="{{displayPath}}" binderror="onPreviewImageError"></image>
       <view wx:if="{{previewClass}}" class="effect-overlay {{previewClass}}"></view>
-      <view wx:if="{{tool === 'crop'}}" class="crop-guides"></view>
+      <view wx:if="{{tool === 'crop' && imageEditMode === 'crop'}}" class="crop-guides"></view>
+      <view wx:if="{{tool === 'crop'}}" class="edit-border">
+        <text class="handle top"></text>
+        <text class="handle right"></text>
+        <text class="handle bottom"></text>
+        <text class="handle left"></text>
+      </view>
+      <text wx:if="{{tool === 'crop' && operationStatus}}" class="restore-badge">{{operationStatus}}</text>
       <text wx:if="{{tool === 'watermark' && watermarkText}}" class="watermark-mark watermark-{{watermarkPosition}}">{{watermarkText}}</text>
       <view wx:if="{{tool === 'colorPick' || tool === 'palette' || tool === 'gradient'}}" class="floating-palette">
         <text wx:for="{{swatches}}" wx:key="*this" style="background: {{item}};"></text>
@@ -54,7 +61,7 @@
     </view>
   </view>
 
-  <view class="controls">
+  <view class="controls {{tool === 'crop' ? 'image-edit-sheet' : ''}}">
     <view class="control-head">
       <view>
         <text class="control-title">{{controlTitle}}</text>
@@ -66,10 +73,49 @@
       </button>
     </view>
 
-    <view wx:if="{{tool === 'crop'}}" class="tool-panel">
-      <text class="panel-label">裁剪比例</text>
-      <view class="chip-row">
-        <button wx:for="{{cropOptions}}" wx:key="value" class="chip {{selectedCrop === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setCrop">{{item.label}}</button>
+    <view wx:if="{{tool === 'crop'}}" class="tool-panel image-edit-panel">
+      <view class="image-edit-options">
+        <block wx:if="{{imageEditMode === 'crop'}}">
+          <button wx:for="{{cropOptions}}" wx:key="value" class="edit-option {{selectedCrop === item.value ? 'active' : ''}}" data-value="{{item.value}}" data-label="{{item.label}}" bindtap="setCrop">
+            <text class="edit-option-icon icon-crop-{{item.value}}"></text>
+            <text>{{item.label}}</text>
+          </button>
+        </block>
+        <block wx:elif="{{imageEditMode === 'expand'}}">
+          <button wx:for="{{expandOptions}}" wx:key="value" class="edit-option {{selectedExpand === item.value ? 'active' : ''}}" data-value="{{item.value}}" data-label="{{item.label}}" bindtap="setExpand">
+            <text class="edit-option-icon icon-expand-{{item.value}}"></text>
+            <text>{{item.label}}</text>
+          </button>
+        </block>
+        <block wx:elif="{{imageEditMode === 'rotate'}}">
+          <view class="rotate-wheel">
+            <view class="wheel-arc">
+              <text wx:for="{{rotateTicks}}" wx:key="*this">{{item}}</text>
+            </view>
+            <view class="wheel-pointer" style="{{rotatePointerStyle}}"></view>
+            <slider class="edit-slider rotate-slider" min="-25" max="25" step="1" value="{{rotationFineAngle}}" activeColor="#b7ff38" backgroundColor="rgba(255,255,255,0.18)" block-size="18" block-color="#ffffff" bindchanging="onRotateAngleChange" bindchange="onRotateAngleChange" />
+          </view>
+          <button wx:for="{{rotateOptions}}" wx:key="value" class="edit-option {{(item.value === 'flipX' && flipX) || (item.value === 'flipY' && flipY) ? 'active' : ''}}" data-value="{{item.value}}" data-label="{{item.label}}" bindtap="applyRotate">
+            <text class="edit-option-symbol">{{item.icon}}</text>
+            <text>{{item.label}}</text>
+          </button>
+        </block>
+        <block wx:elif="{{imageEditMode === 'correct'}}">
+          <view class="correct-ruler">
+            <view class="ruler-line">
+              <text wx:for="{{correctTicks}}" wx:key="*this">{{item}}</text>
+            </view>
+            <view class="ruler-pointer" style="{{correctionPointerStyle}}"></view>
+            <slider class="edit-slider correct-slider" min="-40" max="40" step="1" value="{{correctionValue}}" activeColor="#b7ff38" backgroundColor="rgba(255,255,255,0.18)" block-size="18" block-color="#ffffff" bindchanging="onCorrectionValueChange" bindchange="onCorrectionValueChange" />
+          </view>
+          <button wx:for="{{correctOptions}}" wx:key="value" class="edit-option {{selectedCorrection === item.value ? 'active' : ''}}" data-value="{{item.value}}" data-label="{{item.label}}" bindtap="setCorrection">
+            <text class="edit-option-symbol">{{item.icon}}</text>
+            <text>{{item.label}}</text>
+          </button>
+        </block>
+      </view>
+      <view class="image-edit-tabs">
+        <button wx:for="{{imageEditModes}}" wx:key="value" class="edit-tab {{imageEditMode === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setImageEditMode">{{item.label}}</button>
       </view>
     </view>
 
@@ -165,16 +211,21 @@
     </view>
 
     <view class="editor-actions">
-      <button hover-class="button-press" hover-stay-time="80" bindtap="saveToAlbum">
+      <button wx:if="{{tool === 'crop'}}" hover-class="button-press" hover-stay-time="80" bindtap="resetImageEdit">
+        <text class="button-icon">×</text>
+        <text>还原</text>
+      </button>
+      <button wx:else hover-class="button-press" hover-stay-time="80" bindtap="saveToAlbum">
         <text class="button-icon">↓</text>
         <text>{{needsImage ? '保存到相册' : '复制结果'}}</text>
       </button>
       <button class="primary" hover-class="button-press" hover-stay-time="80" bindtap="saveToDiary">
-        <text class="button-icon">✦</text>
-        <text>{{tool === 'colorPick' || tool === 'palette' || tool === 'gradient' ? '保存到灵感' : '完成操作'}}</text>
+        <text class="button-icon">{{tool === 'crop' ? '✓' : '✦'}}</text>
+        <text>{{tool === 'crop' ? '确认保存' : (tool === 'colorPick' || tool === 'palette' || tool === 'gradient' ? '保存到灵感' : '完成操作')}}</text>
       </button>
     </view>
   </view>
 
   <canvas canvas-id="paletteCanvas" class="palette-canvas"></canvas>
+  <canvas canvas-id="editCanvas" class="palette-canvas edit-canvas"></canvas>
 </view>

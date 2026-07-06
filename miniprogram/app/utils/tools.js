@@ -1,9 +1,9 @@
 const tools = [
   {
     id: "crop",
-    name: "图片裁剪",
+    name: "图片编辑",
     category: "常用",
-    desc: "比例、自由裁切",
+    desc: "裁剪、扩图、旋转、矫正",
     accent: "green",
     iconKey: "crop",
     iconText: "⌗",
