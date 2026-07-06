@@ -3,6 +3,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs/promises";
 import fsSync from "fs";
+import { Readable } from "stream";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -382,6 +383,28 @@ function signedImageUrl(value: string | null | undefined, req: express.Request):
   url.searchParams.set("exp", String(expiresAt));
   url.searchParams.set("sig", signImagePath(url.pathname, expiresAt));
   return url.toString();
+}
+
+async function proxySignedObjectUrl(req: express.Request, res: express.Response, signedUrl: string) {
+  const headers: Record<string, string> = {};
+  const range = req.headers.range;
+  if (typeof range === "string" && range) headers.Range = range;
+
+  const upstream = await fetch(signedUrl, { headers });
+  if (!upstream.ok && upstream.status !== 206) {
+    const message = await upstream.text().catch(() => "");
+    return res.status(upstream.status).send(message || "Object proxy failed.");
+  }
+
+  res.status(upstream.status);
+  for (const header of ["content-type", "content-length", "content-range", "accept-ranges", "last-modified", "etag"]) {
+    const value = upstream.headers.get(header);
+    if (value) res.setHeader(header, value);
+  }
+  res.setHeader("Cache-Control", "private, max-age=300");
+
+  if (!upstream.body) return res.end();
+  return Readable.fromWeb(upstream.body as any).pipe(res);
 }
 
 function mapVideoAssetRow(row: any, req: express.Request) {
@@ -2958,7 +2981,7 @@ app.get("/api/images/:imageId", requirePostgresAuthOrSignedPhoto, async (req, re
     }
     if (asset.storage_provider === "oss") {
       const signedUrl = await imageAssetStorage.getSignedReadUrl(asset.storage_key);
-      return res.redirect(302, signedUrl);
+      return proxySignedObjectUrl(req, res, signedUrl);
     }
     if (asset.storage_provider !== "local") {
       return res.status(501).json({ error: "Unsupported image storage provider." });
@@ -3003,7 +3026,7 @@ app.get("/api/combo-images/:imageId", requirePostgresAuthOrSignedPhoto, async (r
     }
     if (asset.storage_provider === "oss") {
       const signedUrl = await imageAssetStorage.getSignedReadUrl(asset.storage_key);
-      return res.redirect(302, signedUrl);
+      return proxySignedObjectUrl(req, res, signedUrl);
     }
     if (asset.storage_provider !== "local") {
       return res.status(501).json({ error: "Unsupported image storage provider." });
@@ -3071,7 +3094,7 @@ app.get("/api/videos/:videoId/poster", requirePostgresAuthOrSignedPhoto, async (
     }
     if (asset.storage_provider === "oss") {
       const signedUrl = await videoStorage.getSignedReadUrl(asset.storage_key, { process: OSS_VIDEO_POSTER_PROCESS });
-      return res.redirect(302, signedUrl);
+      return proxySignedObjectUrl(req, res, signedUrl);
     }
     if (asset.poster_url) {
       return res.redirect(302, asset.poster_url);
@@ -3109,7 +3132,7 @@ app.get("/api/videos/:videoId", requirePostgresAuthOrSignedPhoto, async (req, re
     }
     if (asset.storage_provider === "oss") {
       const signedUrl = await videoStorage.getSignedReadUrl(asset.storage_key);
-      return res.redirect(302, signedUrl);
+      return proxySignedObjectUrl(req, res, signedUrl);
     }
     if (asset.storage_provider !== "local") {
       return res.status(501).json({ error: "Unsupported video storage provider." });
@@ -3172,7 +3195,7 @@ app.get("/api/combo-generations/:generationId/video", requirePostgresAuthOrSigne
     }
     if (asset.storage_provider === "oss") {
       const signedUrl = await videoStorage.getSignedReadUrl(asset.storage_key);
-      return res.redirect(302, signedUrl);
+      return proxySignedObjectUrl(req, res, signedUrl);
     }
     if (asset.storage_provider !== "local") {
       return res.status(501).json({ error: "Unsupported video storage provider." });
@@ -3335,7 +3358,7 @@ async function handlePrimaryObjectProxy(req: express.Request, res: express.Respo
       ...runtimeConfig,
       videoStorageProvider: "oss",
     }).getSignedReadUrl(storageKey, variant === "thumb" ? { process: OSS_PRIMARY_THUMB_PROCESS } : undefined);
-    return res.redirect(302, signedUrl);
+    return proxySignedObjectUrl(req, res, signedUrl);
   } catch (err: any) {
     console.error(`Primary object ${variant} proxy error:`, err);
     return res.status(502).json({ error: err.message || "Primary object proxy failed." });
