@@ -66,38 +66,43 @@
   </view>
 
   <view class="smart-card">
-    <view class="smart-head">
+    <view class="smart-head" bindtap="toggleSmartSettingsOpen">
       <view>
         <text class="smart-title">自动入库</text>
         <text class="smart-desc">上传后匹配灵感册，确认后自动收录。</text>
       </view>
-      <text wx:if="{{smartSettingsSaving}}" class="smart-saving">同步中</text>
+      <view class="smart-head-action">
+        <text wx:if="{{smartSettingsSaving}}" class="smart-saving">同步中</text>
+        <text class="smart-toggle">{{smartSettingsOpen ? '收起' : '展开'}}</text>
+      </view>
     </view>
 
-    <view class="smart-row">
-      <view>
-        <text class="smart-row-title">图片灵感</text>
-        <text class="smart-row-desc">根据图片标签匹配灵感册</text>
+    <view wx:if="{{smartSettingsOpen}}" class="smart-settings-body">
+      <view class="smart-row">
+        <view>
+          <text class="smart-row-title">图片灵感</text>
+          <text class="smart-row-desc">根据图片标签匹配灵感册</text>
+        </view>
+        <switch
+          checked="{{smartSuggestImages}}"
+          disabled="{{accountState !== 'registered' || smartSettingsSaving}}"
+          color="#111111"
+          bindchange="toggleSmartSuggestImages"
+        />
       </view>
-      <switch
-        checked="{{smartSuggestImages}}"
-        disabled="{{accountState !== 'registered' || smartSettingsSaving}}"
-        color="#111111"
-        bindchange="toggleSmartSuggestImages"
-      />
-    </view>
 
-    <view class="smart-row">
-      <view>
-        <text class="smart-row-title">文档手稿</text>
-        <text class="smart-row-desc">根据文档标签匹配灵感册</text>
+      <view class="smart-row">
+        <view>
+          <text class="smart-row-title">文档手稿</text>
+          <text class="smart-row-desc">根据文档标签匹配灵感册</text>
+        </view>
+        <switch
+          checked="{{smartSuggestMarkdown}}"
+          disabled="{{accountState !== 'registered' || smartSettingsSaving}}"
+          color="#111111"
+          bindchange="toggleSmartSuggestMarkdown"
+        />
       </view>
-      <switch
-        checked="{{smartSuggestMarkdown}}"
-        disabled="{{accountState !== 'registered' || smartSettingsSaving}}"
-        color="#111111"
-        bindchange="toggleSmartSuggestMarkdown"
-      />
     </view>
   </view>
 

@@ -273,7 +273,7 @@
 }
 
 .smart-head {
-  margin-bottom: 10rpx;
+  margin-bottom: 0;
 }
 
 .smart-title,
@@ -302,6 +302,31 @@
   color: #6f7668;
   font-size: 20rpx;
   font-weight: 800;
+}
+
+.smart-head-action {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.smart-toggle {
+  display: block;
+  min-width: 72rpx;
+  height: 48rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  background: #111111;
+  color: #b7ff38;
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 48rpx;
+  text-align: center;
+}
+
+.smart-settings-body {
+  margin-top: 10rpx;
 }
 
 .smart-row {

@@ -66,6 +66,7 @@ Page({
     debugLoading: false,
     smartSettingsLoading: false,
     smartSettingsSaving: false,
+    smartSettingsOpen: false,
     smartSuggestImages: false,
     smartSuggestMarkdown: false,
     customTagLibraryEnabled: true,
@@ -190,6 +191,10 @@ Page({
 
   selectProfileTab(event) {
     this.setData({ activeTab: event.currentTarget.dataset.tab || "灵感册" });
+  },
+
+  toggleSmartSettingsOpen() {
+    this.setData({ smartSettingsOpen: !this.data.smartSettingsOpen });
   },
 
   async toggleSmartSuggestImages(event) {
