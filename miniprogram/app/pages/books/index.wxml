@@ -40,42 +40,44 @@
     </view>
 
     <scroll-view class="book-content" scroll-y enhanced show-scrollbar="{{false}}">
-      <view class="book-title-row">
-        <view>
-          <text class="current-label">当前灵感册</text>
-          <text class="current-title">{{selectedBook.title || "灵感册"}}</text>
-          <text class="current-desc">{{selectedBook.descriptionText}}</text>
-        </view>
-        <button class="collect-button" loading="{{uploading}}" bindtap="chooseUpload">⇪ 上传</button>
-      </view>
-
-      <view wx:if="{{selectedBook.tags && selectedBook.tags.length}}" class="book-tag-row">
-        <text wx:for="{{selectedBook.tags}}" wx:key="*this">#{{item}}</text>
-      </view>
-
-      <view wx:if="{{uploadStatus}}" class="upload-status {{uploading ? 'active' : ''}}">
-        <text>{{uploadStatus}}</text>
-      </view>
-
-      <view wx:if="{{cardsLoading}}" class="state compact">正在加载内容...</view>
-      <view wx:if="{{!cardsLoading && !cards.length}}" class="empty-state compact">
-        <text class="empty-title">这个册子还没有收录</text>
-        <text class="empty-desc">可以直接上传图片或文档收进当前册。</text>
-      </view>
-
-      <view class="book-items">
-        <button wx:for="{{cards}}" wx:key="id" class="book-item {{index === 0 ? 'cover' : ''}}" data-id="{{item.id}}" bindtap="openCard">
-          <view class="book-item-thumb">
-            <image wx:if="{{!item.isMd && item.image}}" src="{{item.image}}" mode="aspectFill"></image>
-            <view wx:else class="md-thumb">
-              <text class="md-thumb-title">{{item.title}}</text>
-              <text class="md-thumb-summary">{{item.summary}}</text>
-            </view>
-            <text wx:if="{{index === 0}}" class="cover-badge">封面</text>
+      <view class="book-content-inner">
+        <view class="book-title-row">
+          <view>
+            <text class="current-label">当前灵感册</text>
+            <text class="current-title">{{selectedBook.title || "灵感册"}}</text>
+            <text class="current-desc">{{selectedBook.descriptionText}}</text>
           </view>
-          <text class="item-title">{{item.title}}</text>
-          <text class="item-tags">{{item.termsText}}</text>
-        </button>
+          <button class="collect-button" loading="{{uploading}}" bindtap="chooseUpload">⇪ 上传</button>
+        </view>
+
+        <view wx:if="{{selectedBook.tags && selectedBook.tags.length}}" class="book-tag-row">
+          <text wx:for="{{selectedBook.tags}}" wx:key="*this">#{{item}}</text>
+        </view>
+
+        <view wx:if="{{uploadStatus}}" class="upload-status {{uploading ? 'active' : ''}}">
+          <text>{{uploadStatus}}</text>
+        </view>
+
+        <view wx:if="{{cardsLoading}}" class="state compact">正在加载内容...</view>
+        <view wx:if="{{!cardsLoading && !cards.length}}" class="empty-state compact">
+          <text class="empty-title">这个册子还没有收录</text>
+          <text class="empty-desc">可以直接上传图片或文档收进当前册。</text>
+        </view>
+
+        <view class="book-items">
+          <button wx:for="{{cards}}" wx:key="id" class="book-item {{index === 0 ? 'cover' : ''}}" data-id="{{item.id}}" bindtap="openCard">
+            <view class="book-item-thumb">
+              <image wx:if="{{!item.isMd && item.image}}" src="{{item.image}}" mode="aspectFill"></image>
+              <view wx:else class="md-thumb">
+                <text class="md-thumb-title">{{item.title}}</text>
+                <text class="md-thumb-summary">{{item.summary}}</text>
+              </view>
+              <text wx:if="{{index === 0}}" class="cover-badge">封面</text>
+            </view>
+            <text class="item-title">{{item.title}}</text>
+            <text class="item-tags">{{item.termsText}}</text>
+          </button>
+        </view>
       </view>
     </scroll-view>
   </view>
