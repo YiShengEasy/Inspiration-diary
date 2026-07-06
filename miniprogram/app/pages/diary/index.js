@@ -1,6 +1,6 @@
 const { request, uploadImage, resolveAssetUrl, downloadAsset } = require("../../utils/api");
 const { requireRegistered, refreshAccountStatus } = require("../../utils/auth");
-const { currentWeekId, days } = require("../../utils/dates");
+const { currentWeekId, shiftWeekId, days } = require("../../utils/dates");
 const { loadSmartSettings } = require("../../utils/smartSettings");
 const { loadEnabledCustomTagHints } = require("../../utils/customTagLibrary");
 
@@ -309,6 +309,19 @@ Page({
 
   openBooks() {
     if (requireRegistered()) wx.navigateTo({ url: "/pages/books/index" });
+  },
+
+  async changeWeek(event) {
+    const offset = Number(event.currentTarget.dataset.offset || 0);
+    if (!offset || this.data.loading) return;
+
+    const weekId = shiftWeekId(this.data.weekId, offset);
+    this.setData({
+      weekId,
+      weekLabel: weekLabel(weekId),
+      weekDateRange: weekDateRange(weekId)
+    });
+    await this.loadCards();
   },
 
   openBook(event) {

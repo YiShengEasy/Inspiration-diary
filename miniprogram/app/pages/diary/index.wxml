@@ -55,9 +55,9 @@
     </view>
 
     <view class="week-switcher">
-      <button class="week-nav" hover-class="button-press">‹</button>
+      <button class="week-nav" hover-class="button-press" data-offset="-1" bindtap="changeWeek">‹</button>
       <text class="week-pill-title">{{weekLabel}}</text>
-      <button class="week-nav" hover-class="button-press">›</button>
+      <button class="week-nav" hover-class="button-press" data-offset="1" bindtap="changeWeek">›</button>
     </view>
 
     <button class="summary-card" hover-class="button-press">
