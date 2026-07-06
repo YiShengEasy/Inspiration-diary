@@ -66,6 +66,19 @@ function sortNewestFirst(cards) {
   return cards.slice().sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
 }
 
+function buildWeekOptions(anchorWeekId, activeWeekId) {
+  return Array.from({ length: 5 }, (_item, index) => {
+    const weekId = shiftWeekId(anchorWeekId, -index);
+    return {
+      weekId,
+      label: weekLabel(weekId),
+      range: weekDateRange(weekId),
+      active: weekId === activeWeekId,
+      countText: "..."
+    };
+  });
+}
+
 function normalizeCard(card) {
   const terms = Array.isArray(card.terms) ? card.terms : [];
   const isCombo = card.type === "combo";
@@ -143,6 +156,9 @@ Page({
     totalTerms: 0,
     loading: false,
     uploading: false,
+    weekPickerOpen: false,
+    weekPickerLoading: false,
+    weekOptions: [],
     error: ""
   },
 
@@ -323,17 +339,66 @@ Page({
     if (requireRegistered()) wx.navigateTo({ url: "/pages/books/index" });
   },
 
+  async setWeek(weekId) {
+    if (!weekId || this.data.loading) return;
+
+    this.setData({
+      weekId,
+      weekLabel: weekLabel(weekId),
+      weekDateRange: weekDateRange(weekId),
+      weekPickerOpen: false,
+      weekOptions: this.data.weekOptions.map((option) => ({
+        ...option,
+        active: option.weekId === weekId
+      }))
+    });
+    await this.loadCards();
+  },
+
   async changeWeek(event) {
     const offset = Number(event.currentTarget.dataset.offset || 0);
     if (!offset || this.data.loading) return;
 
-    const weekId = shiftWeekId(this.data.weekId, offset);
-    this.setData({
-      weekId,
-      weekLabel: weekLabel(weekId),
-      weekDateRange: weekDateRange(weekId)
-    });
-    await this.loadCards();
+    await this.setWeek(shiftWeekId(this.data.weekId, offset));
+  },
+
+  async openWeekPicker() {
+    if (!requireRegistered()) return;
+
+    const weekOptions = buildWeekOptions(this.data.weekId || currentWeekId(), this.data.weekId);
+    this.setData({ weekPickerOpen: true, weekPickerLoading: true, weekOptions });
+
+    const nextOptions = await Promise.all(weekOptions.map(async (option) => {
+      try {
+        const body = await request({
+          url: `/api/db/cards?weekId=${encodeURIComponent(option.weekId)}&page=1&pageSize=1`
+        });
+        const total = typeof body.total === "number"
+          ? body.total
+          : (Array.isArray(body) ? body.length : ((body.cards || []).length));
+        return { ...option, countText: `${total} 条` };
+      } catch (err) {
+        return { ...option, countText: "-- 条" };
+      }
+    }));
+
+    if (this.data.weekPickerOpen) {
+      this.setData({ weekOptions: nextOptions, weekPickerLoading: false });
+    }
+  },
+
+  closeWeekPicker() {
+    this.setData({ weekPickerOpen: false });
+  },
+
+  noop() {},
+
+  async selectWeek(event) {
+    await this.setWeek(event.currentTarget.dataset.weekId);
+  },
+
+  async backToCurrentWeek() {
+    await this.setWeek(currentWeekId());
   },
 
   openBook(event) {

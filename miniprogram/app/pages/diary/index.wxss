@@ -772,6 +772,135 @@ button::after {
   transform: translateY(-3rpx);
 }
 
+.week-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(17, 17, 17, 0.28);
+}
+
+.week-sheet {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 58rpx 58rpx 0 0;
+  padding: 46rpx 38rpx 54rpx;
+  background: #ffffff;
+  box-shadow: 0 -24rpx 70rpx rgba(32, 24, 13, 0.14);
+}
+
+.sheet-close {
+  position: absolute;
+  right: 30rpx;
+  top: 30rpx;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f7f2;
+  color: #111111;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.week-sheet-title {
+  display: block;
+  color: #111111;
+  font-size: 44rpx;
+  line-height: 52rpx;
+  font-weight: 950;
+}
+
+.week-sheet-desc {
+  display: block;
+  margin: 10rpx 80rpx 28rpx 0;
+  color: #7d8178;
+  font-size: 24rpx;
+  line-height: 36rpx;
+}
+
+.week-options {
+  display: grid;
+  gap: 16rpx;
+}
+
+.week-option {
+  min-height: 104rpx;
+  border: 2rpx solid transparent;
+  border-radius: 34rpx;
+  background: #f7f7f2;
+}
+
+.week-option.active {
+  border-color: #b7ff38;
+  background: #f7ffe9;
+}
+
+.week-select {
+  width: 100%;
+  min-height: 104rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 16rpx 20rpx 16rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.week-option-title,
+.week-option-range {
+  display: block;
+}
+
+.week-option-title {
+  color: #111111;
+  font-size: 27rpx;
+  line-height: 34rpx;
+  font-weight: 950;
+}
+
+.week-option-range {
+  margin-top: 5rpx;
+  color: #7d8178;
+  font-size: 22rpx;
+  line-height: 28rpx;
+}
+
+.week-option-count {
+  flex-shrink: 0;
+  min-width: 78rpx;
+  height: 44rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111111;
+  color: #b7ff38;
+  font-size: 20rpx;
+  line-height: 24rpx;
+  font-weight: 950;
+}
+
+.week-current-button {
+  width: 100%;
+  height: 78rpx;
+  margin-top: 24rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111111;
+  color: #ffffff;
+  font-size: 26rpx;
+  line-height: 32rpx;
+  font-weight: 950;
+}
+
 /* 新增灵感册卡片 */
 .new-book-tile {
   background: #fff5e7;
