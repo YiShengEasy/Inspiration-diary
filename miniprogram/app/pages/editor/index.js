@@ -296,6 +296,8 @@ Page({
     selectedCorrection: "",
     correctionValue: 0,
     correctionPointerStyle: "left: 50%;",
+    correctionRulerLeft: 0,
+    correctionRulerWidth: 0,
     operationStatus: "",
     selectedFilter: "none",
     selectedPixel: "medium",
@@ -495,7 +497,10 @@ Page({
 
   setImageEditMode(event) {
     const value = event.currentTarget.dataset.value || "crop";
-    this.setData({ imageEditMode: value });
+    this.setData({
+      imageEditMode: value,
+      selectedCorrection: value === "correct" && !this.data.selectedCorrection ? "vertical" : this.data.selectedCorrection
+    });
     this.updateImageEditorClass();
   },
 
@@ -552,24 +557,58 @@ Page({
 
   setCorrection(event) {
     const value = event.currentTarget.dataset.value || "";
-    const nextCorrection = this.data.selectedCorrection === value ? "" : value;
     this.setData({
-      selectedCorrection: nextCorrection,
-      correctionValue: nextCorrection ? this.data.correctionValue : 0,
-      correctionPointerStyle: nextCorrection ? this.data.correctionPointerStyle : "left: 50%;",
+      selectedCorrection: value,
       operationStatus: event.currentTarget.dataset.label || "已调整矫正"
     });
     this.updateImageEditorClass();
   },
 
-  onCorrectionValueChange(event) {
-    const value = Number(event.detail.value || 0);
+  setCorrectionValue(value) {
+    const nextValue = Math.max(-40, Math.min(40, Math.round(Number(value || 0))));
     this.setData({
-      correctionValue: value,
-      correctionPointerStyle: `left: ${((value + 40) / 80) * 100}%;`,
-      operationStatus: `矫正 ${value}`
+      correctionValue: nextValue,
+      correctionPointerStyle: `left: ${((nextValue + 40) / 80) * 100}%;`,
+      selectedCorrection: this.data.selectedCorrection || "vertical",
+      operationStatus: `矫正 ${nextValue}`
     });
     this.updateImageEditorClass();
+  },
+
+  setCorrectionValueFromTouch(touch) {
+    if (!touch) return;
+    const width = Number(this.data.correctionRulerWidth || 0);
+    const left = Number(this.data.correctionRulerLeft || 0);
+    if (!width) return;
+    const progress = Math.max(0, Math.min(1, (touch.clientX - left) / width));
+    this.setCorrectionValue(progress * 80 - 40);
+  },
+
+  onCorrectionRulerStart(event) {
+    const touch = event.touches && event.touches[0];
+    wx.createSelectorQuery()
+      .in(this)
+      .select(".correct-ruler")
+      .boundingClientRect((rect) => {
+        if (!rect) return;
+        const progress = touch ? Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width)) : 0.5;
+        this.setData({
+          correctionRulerLeft: rect.left,
+          correctionRulerWidth: rect.width
+        });
+        this.setCorrectionValue(progress * 80 - 40);
+      })
+      .exec();
+  },
+
+  onCorrectionRulerMove(event) {
+    const touch = event.touches && event.touches[0];
+    this.setCorrectionValueFromTouch(touch);
+  },
+
+  onCorrectionValueChange(event) {
+    const value = Number(event.detail.value || 0);
+    this.setCorrectionValue(value);
   },
 
   resetImageEdit() {

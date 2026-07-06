@@ -105,12 +105,11 @@
           </button>
         </block>
         <block wx:elif="{{imageEditMode === 'correct'}}">
-          <view class="correct-ruler">
+          <view class="correct-ruler" catchtouchstart="onCorrectionRulerStart" catchtouchmove="onCorrectionRulerMove">
             <view class="ruler-line">
               <text wx:for="{{correctTicks}}" wx:key="*this">{{item}}</text>
             </view>
             <view class="ruler-pointer" style="{{correctionPointerStyle}}"></view>
-            <slider class="edit-slider correct-slider" min="-40" max="40" step="1" value="{{correctionValue}}" activeColor="#b7ff38" backgroundColor="rgba(255,255,255,0.18)" block-size="18" block-color="#ffffff" bindchanging="onCorrectionValueChange" bindchange="onCorrectionValueChange" />
           </view>
           <button wx:for="{{correctOptions}}" wx:key="value" class="edit-option {{selectedCorrection === item.value ? 'active' : ''}}" data-value="{{item.value}}" data-label="{{item.label}}" bindtap="setCorrection">
             <text class="edit-option-symbol">{{item.icon}}</text>

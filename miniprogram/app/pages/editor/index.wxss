@@ -785,13 +785,15 @@ button::after {
 }
 
 .correct-ruler {
-  height: 108rpx;
+  height: 118rpx;
+  padding: 0 4rpx;
+  box-sizing: border-box;
 }
 
 .ruler-line {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 8rpx;
+  right: 8rpx;
   top: 30rpx;
   height: 56rpx;
   display: flex;
@@ -839,14 +841,6 @@ button::after {
   border-right: 12rpx solid transparent;
   border-top: 20rpx solid #ffffff;
   transform: translateX(-50%);
-}
-
-.edit-slider {
-  position: absolute;
-  left: 20rpx;
-  right: 20rpx;
-  bottom: -8rpx;
-  opacity: 0.01;
 }
 
 .edit-option {
