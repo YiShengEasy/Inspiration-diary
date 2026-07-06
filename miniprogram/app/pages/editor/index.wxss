@@ -456,18 +456,6 @@ button::after {
   font-weight: 900;
 }
 
-.result-row {
-  height: 58rpx;
-  margin-top: 12rpx;
-  padding: 0 18rpx;
-  border-radius: 18rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #f3f3ef;
-  animation: row-in 220ms ease-out both;
-}
-
 .tool-panel {
   margin-top: 16rpx;
   border-radius: 22rpx;
@@ -617,21 +605,6 @@ button::after {
   color: #111111;
   font-size: 20rpx;
   font-weight: 900;
-}
-
-.result-row:nth-of-type(2) {
-  animation-delay: 40ms;
-}
-
-.result-label,
-.result-value {
-  font-size: 21rpx;
-  line-height: 26rpx;
-  font-weight: 800;
-}
-
-.result-label {
-  color: #7c8078;
 }
 
 .editor-actions {

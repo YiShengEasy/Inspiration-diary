@@ -158,15 +158,6 @@
       </view>
     </view>
 
-    <view class="result-row">
-      <text class="result-label">当前工具</text>
-      <text class="result-value">{{toolName}}</text>
-    </view>
-    <view class="result-row">
-      <text class="result-label">图片状态</text>
-      <text class="result-value">{{needsImage ? (filePath ? '已选择，可操作' : '未选择') : '无需图片'}}</text>
-    </view>
-
     <view class="editor-actions">
       <button hover-class="button-press" hover-stay-time="80" bindtap="saveToAlbum">
         <text class="button-icon">↓</text>
