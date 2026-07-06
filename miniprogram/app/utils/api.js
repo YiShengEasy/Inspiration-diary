@@ -94,7 +94,7 @@ function parseUploadBody(data) {
   }
 }
 
-function uploadImage({ url, filePath, name = "image", formData = {} }) {
+function uploadImage({ url, filePath, name = "image", formData = {}, header = {} }) {
   return new Promise((resolve, reject) => {
     const token = getToken();
 
@@ -103,7 +103,10 @@ function uploadImage({ url, filePath, name = "image", formData = {} }) {
       filePath,
       name,
       formData,
-      header: token ? { Authorization: `Bearer ${token}` } : {},
+      header: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...header
+      },
       success(res) {
         const body = parseUploadBody(res.data);
         if (res.statusCode >= 200 && res.statusCode < 300) {

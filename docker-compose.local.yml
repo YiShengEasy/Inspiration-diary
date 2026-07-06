@@ -30,7 +30,9 @@ services:
       APP_ENV: local
       DEPLOYMENT_PROFILE: local-docker
       NODE_ENV: production
+      PORT: "3000"
       DATABASE_URL: postgresql://yisheng@host.docker.internal:5432/inspiration_diary
+      AUTH_COOKIE_SECURE: "false"
       WECHAT_MOCK: "true"
       MINI_DEBUG_PASSWORD_LOGIN: "true"
     ports:

@@ -3,6 +3,7 @@ const { requireRegistered, refreshAccountStatus } = require("../../utils/auth");
 const { currentWeekId, shiftWeekId, days } = require("../../utils/dates");
 const { loadSmartSettings } = require("../../utils/smartSettings");
 const { loadEnabledCustomTagHints } = require("../../utils/customTagLibrary");
+const { loadAiUploadHeaders } = require("../../utils/aiSettings");
 
 const dismissedSmartSuggestions = new Set();
 
@@ -376,14 +377,16 @@ Page({
           await this.loadCards();
           await this.maybeSuggestBookMembership(card);
 
-          const [bookHints, customTagHints] = await Promise.all([
+          const [bookHints, customTagHints, aiHeaders] = await Promise.all([
             this.loadBookHintsForSmartImage(),
-            loadEnabledCustomTagHints()
+            loadEnabledCustomTagHints(),
+            loadAiUploadHeaders()
           ]);
 
           uploadImage({
             url: "/api/analyze-image",
             filePath,
+            header: aiHeaders,
             formData: {
               source: "miniprogram",
               ...(bookHints.length ? { bookHints: JSON.stringify(bookHints) } : {}),

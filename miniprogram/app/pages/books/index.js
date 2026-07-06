@@ -2,6 +2,7 @@ const { request, uploadImage, uploadDocument, resolveAssetUrl, downloadAsset } =
 const { requireRegistered } = require("../../utils/auth");
 const { currentWeekId } = require("../../utils/dates");
 const { loadEnabledCustomTagHints } = require("../../utils/customTagLibrary");
+const { loadAiUploadHeaders } = require("../../utils/aiSettings");
 
 function formatTermsText(terms) {
   const visibleTerms = terms.slice(0, 3);
@@ -308,11 +309,15 @@ Page({
     });
     wx.setStorageSync(`miniCard:${cardId}`, normalizeCard(card));
 
-    const customTagHints = await loadEnabledCustomTagHints();
+    const [customTagHints, aiHeaders] = await Promise.all([
+      loadEnabledCustomTagHints(),
+      loadAiUploadHeaders()
+    ]);
 
     uploadImage({
       url: "/api/analyze-image",
       filePath,
+      header: aiHeaders,
       formData: {
         source: "miniprogram",
         ...(customTagHints.length ? { customTagHints: JSON.stringify(customTagHints) } : {})
