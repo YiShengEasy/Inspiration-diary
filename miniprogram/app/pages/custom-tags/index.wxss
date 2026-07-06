@@ -55,10 +55,15 @@
 }
 
 .tag-card {
+  margin-bottom: 22rpx;
   padding: 24rpx;
   border-radius: 10rpx;
   border: 1rpx solid #eeeeea;
   background: #fbfbf7;
+}
+
+.library-card {
+  background: #ffffff;
 }
 
 .tag-master-row,
@@ -73,8 +78,46 @@
 }
 
 .tag-master-row {
-  min-height: 88rpx;
-  border-bottom: 1rpx solid #eeeeea;
+  min-height: 84rpx;
+}
+
+.tag-summary-row {
+  min-height: 58rpx;
+  margin-top: 16rpx;
+  padding: 0 18rpx;
+  border-radius: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  background: #f7f8f4;
+  color: #6f7668;
+  font-size: 20rpx;
+  font-weight: 850;
+}
+
+.section-label-row {
+  margin-bottom: 18rpx;
+}
+
+.section-title,
+.section-desc,
+.tag-editor-kicker {
+  display: block;
+}
+
+.section-title {
+  color: #151712;
+  font-size: 27rpx;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+.section-desc {
+  margin-top: 7rpx;
+  color: #7c8178;
+  font-size: 21rpx;
+  line-height: 1.35;
 }
 
 .tag-row-title {
@@ -93,7 +136,7 @@
 }
 
 .tag-create-row {
-  margin-top: 18rpx;
+  margin-top: 0;
 }
 
 .tag-input {
@@ -124,6 +167,7 @@
 }
 
 .tag-small-button::after,
+.tag-edit-button::after,
 .tag-state-button::after,
 .tag-delete-group::after,
 .tag-add-button::after,
@@ -158,6 +202,13 @@
 .tag-group-copy {
   min-width: 0;
   flex: 1;
+}
+
+.tag-group-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
 }
 
 .tag-group-title-line {
@@ -200,19 +251,29 @@
   line-height: 1.2;
 }
 
+.tag-edit-button,
 .tag-state-button {
   flex: 0 0 auto;
-  min-width: 112rpx;
+  min-width: 92rpx;
   height: 58rpx;
   margin: 0;
-  padding: 0 18rpx;
+  padding: 0 16rpx;
   border-radius: 8rpx;
-  border: 1rpx solid #dfe4d5;
-  background: #f2ffe2;
-  color: #445125;
   font-size: 20rpx;
   font-weight: 900;
   line-height: 58rpx;
+}
+
+.tag-edit-button {
+  border: 1rpx solid #e1dfd6;
+  background: #ffffff;
+  color: #151712;
+}
+
+.tag-state-button {
+  border: 1rpx solid #dfe4d5;
+  background: #f2ffe2;
+  color: #445125;
 }
 
 .tag-state-button.off {
@@ -238,8 +299,10 @@
 
 .tag-editor {
   margin-top: 22rpx;
-  padding-top: 20rpx;
-  border-top: 1rpx solid #eeeeea;
+  padding: 22rpx;
+  border-radius: 10rpx;
+  border: 1rpx solid #e3e9d8;
+  background: #ffffff;
 }
 
 .tag-editor-head {
@@ -251,6 +314,15 @@
   font-size: 27rpx;
   font-weight: 900;
   line-height: 1.2;
+}
+
+.tag-editor-kicker {
+  margin-bottom: 6rpx;
+  color: #8b916f;
+  font-size: 18rpx;
+  font-weight: 950;
+  line-height: 1.2;
+  letter-spacing: 0;
 }
 
 .tag-delete-group {

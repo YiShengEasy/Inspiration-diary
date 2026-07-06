@@ -34,7 +34,7 @@ Page({
     const normalizedGroups = normalizeCustomTagGroups(groups);
     const selectedId = normalizedGroups.some((group) => group.id === selectedGroupId)
       ? selectedGroupId
-      : (normalizedGroups[0] && normalizedGroups[0].id) || "";
+      : "";
     const selectedGroup = normalizedGroups.find((group) => group.id === selectedId) || null;
 
     return {

@@ -8,11 +8,11 @@
     <text wx:if="{{saving || loading}}" class="sync-text">{{saving ? '同步中' : '加载中'}}</text>
   </view>
 
-  <view class="tag-card">
+  <view class="tag-card library-card">
     <view class="tag-master-row">
       <view>
-        <text class="tag-row-title">词库参与识别</text>
-        <text class="tag-row-desc">{{enabledCount}} / {{totalCount}} 个词参与识别</text>
+        <text class="tag-row-title">AI 识别参考词库</text>
+        <text class="tag-row-desc">总开关关闭后，所有自定义词都不会参与识别。</text>
       </view>
       <switch
         checked="{{libraryEnabled}}"
@@ -21,7 +21,19 @@
         bindchange="toggleLibrary"
       />
     </view>
+    <view class="tag-summary-row">
+      <text>{{enabledCount}} / {{totalCount}} 个词参与识别</text>
+      <text>{{libraryEnabled ? '词库已启用' : '词库已关闭'}}</text>
+    </view>
+  </view>
 
+  <view class="tag-card">
+    <view class="section-label-row">
+      <view>
+        <text class="section-title">标签组</text>
+        <text class="section-desc">按主题管理词组，点编辑后再维护具体标签词。</text>
+      </view>
+    </view>
     <view class="tag-create-row">
       <input
         class="tag-input"
@@ -46,9 +58,12 @@
           </view>
           <text class="tag-group-meta">{{item.terms.length}} 个词</text>
         </view>
-        <button class="tag-state-button {{item.enabled === false ? 'off' : ''}}" data-id="{{item.id}}" bindtap="toggleGroup">
-          {{item.enabled === false ? '已关闭' : '启用中'}}
-        </button>
+        <view class="tag-group-actions">
+          <button class="tag-edit-button" data-id="{{item.id}}" bindtap="selectGroup">编辑</button>
+          <button class="tag-state-button {{item.enabled === false ? 'off' : ''}}" data-id="{{item.id}}" bindtap="toggleGroup">
+            {{item.enabled === false ? '关闭中' : '启用中'}}
+          </button>
+        </view>
       </view>
     </view>
 
@@ -59,6 +74,7 @@
     <view wx:if="{{selectedGroup}}" class="tag-editor">
       <view class="tag-editor-head">
         <view>
+          <text class="tag-editor-kicker">正在编辑</text>
           <text class="tag-editor-title">{{selectedGroup.name}}</text>
           <text class="tag-editor-desc">当前分组{{selectedGroup.enabled === false ? '不会' : '会'}}参与 AI 识别。</text>
         </view>
@@ -86,6 +102,9 @@
       <view wx:else class="tag-empty small">
         <text>这个分组还没有标签词。</text>
       </view>
+    </view>
+    <view wx:else class="tag-empty small">
+      <text>选择一个标签组后，在这里编辑标签词。</text>
     </view>
   </view>
 </view>
