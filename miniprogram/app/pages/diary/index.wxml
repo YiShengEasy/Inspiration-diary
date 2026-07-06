@@ -144,20 +144,22 @@
     <view wx:if="{{weekPickerOpen}}" class="week-sheet-backdrop" bindtap="closeWeekPicker">
       <view class="week-sheet" catchtap="noop">
         <button class="sheet-close" hover-class="button-press" bindtap="closeWeekPicker">×</button>
-        <text class="week-sheet-title">切换周视图</text>
-        <text class="week-sheet-desc">选择最近一周查看每日灵感。</text>
-        <view class="week-options">
-          <view wx:for="{{weekOptions}}" wx:key="weekId" class="week-option {{item.active ? 'active' : ''}}">
-            <button class="week-select" hover-class="button-press" data-week-id="{{item.weekId}}" bindtap="selectWeek">
-              <view>
-                <text class="week-option-title">{{item.label}}</text>
-                <text class="week-option-range">{{item.range}}</text>
-              </view>
-              <text class="week-option-count">{{item.countText}}</text>
-            </button>
+        <scroll-view class="week-sheet-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+          <text class="week-sheet-title">切换周视图</text>
+          <text class="week-sheet-desc">选择最近一周查看每日灵感。</text>
+          <view class="week-options">
+            <view wx:for="{{weekOptions}}" wx:key="weekId" class="week-option {{item.active ? 'active' : ''}}">
+              <button class="week-select" hover-class="button-press" data-week-id="{{item.weekId}}" bindtap="selectWeek">
+                <view>
+                  <text class="week-option-title">{{item.label}}</text>
+                  <text class="week-option-range">{{item.range}}</text>
+                </view>
+                <text class="week-option-count">{{item.countText}}</text>
+              </button>
+            </view>
           </view>
-        </view>
-        <button class="week-current-button" hover-class="button-press" bindtap="backToCurrentWeek">回到本周</button>
+          <button class="week-current-button" hover-class="button-press" bindtap="backToCurrentWeek">回到本周</button>
+        </scroll-view>
       </view>
     </view>
   </view>

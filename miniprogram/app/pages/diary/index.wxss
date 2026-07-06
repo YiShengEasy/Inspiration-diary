@@ -801,15 +801,23 @@ button::after {
 .week-sheet {
   position: relative;
   width: 100%;
+  max-height: 82vh;
   box-sizing: border-box;
   border-radius: 58rpx 58rpx 0 0;
-  padding: 46rpx 38rpx 54rpx;
+  padding: 46rpx 38rpx calc(28rpx + env(safe-area-inset-bottom));
   background: #ffffff;
   box-shadow: 0 -24rpx 70rpx rgba(32, 24, 13, 0.14);
 }
 
+.week-sheet-scroll {
+  max-height: calc(82vh - 74rpx - env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  padding-bottom: 26rpx;
+}
+
 .sheet-close {
   position: absolute;
+  z-index: 2;
   right: 30rpx;
   top: 30rpx;
   width: 56rpx;
