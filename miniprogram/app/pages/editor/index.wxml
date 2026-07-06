@@ -15,9 +15,10 @@
     <view wx:else class="header-spacer"></view>
   </view>
 
-  <view class="editor-canvas {{tool === 'pixel' ? 'pixelated' : ''}}">
-    <view wx:if="{{needsImage && filePath}}" class="preview-frame {{cropRatioClass}}">
-      <image class="preview-image {{previewClass}}" src="{{resultPath || filePath}}" mode="aspectFill"></image>
+  <view class="editor-canvas">
+    <view wx:if="{{showImagePreview}}" class="preview-frame {{cropRatioClass}}">
+      <image class="preview-image" src="{{displayPath}}" mode="aspectFit" data-src="{{displayPath}}" binderror="onPreviewImageError"></image>
+      <view wx:if="{{previewClass}}" class="effect-overlay {{previewClass}}"></view>
       <view wx:if="{{tool === 'crop'}}" class="crop-guides"></view>
       <text wx:if="{{tool === 'watermark' && watermarkText}}" class="watermark-mark watermark-{{watermarkPosition}}">{{watermarkText}}</text>
       <view wx:if="{{tool === 'colorPick' || tool === 'palette' || tool === 'gradient'}}" class="floating-palette">

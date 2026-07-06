@@ -86,8 +86,8 @@ function hexToRgb(hex) {
 function luminance(hex) {
   const rgb = hexToRgb(hex);
   if (!rgb) return 0;
-    const channel = (value) => {
-      const next = value / 255;
+  const channel = (value) => {
+    const next = value / 255;
     return next <= 0.03928 ? next / 12.92 : Math.pow((next + 0.055) / 1.055, 2.4);
   };
   return 0.2126 * channel(rgb.r) + 0.7152 * channel(rgb.g) + 0.0722 * channel(rgb.b);
@@ -119,6 +119,8 @@ Page({
     controlDesc: "上传图片后可继续调整参数",
     filePath: "",
     resultPath: "",
+    displayPath: "",
+    showImagePreview: false,
     previewClass: "",
     cropRatioClass: "crop-free",
     selectedCrop: "free",
@@ -158,13 +160,16 @@ Page({
   applyTool(toolId, filePath = this.data.filePath) {
     const tool = getTool(toolId);
     const state = toolState(tool.id);
+    const displayPath = filePath || "";
     this.setData({
       tool: tool.id,
       toolName: tool.name,
       toolDesc: tool.desc,
       toolIcon: getToolIcon(tool.id),
-      filePath,
-      resultPath: filePath,
+      filePath: displayPath,
+      resultPath: displayPath,
+      displayPath,
+      showImagePreview: state.needsImage && !!displayPath,
       needsImage: state.needsImage,
       controlTitle: state.controlTitle,
       controlDesc: state.controlDesc
@@ -193,10 +198,17 @@ Page({
 
         this.setData({
           filePath,
-          resultPath: filePath
+          resultPath: filePath,
+          displayPath: filePath,
+          showImagePreview: true
         });
       }
     });
+  },
+
+  onPreviewImageError(event) {
+    console.warn("Tool preview image failed:", event.currentTarget.dataset.src, event.detail);
+    wx.showToast({ title: "图片预览失败，请重新选择", icon: "none" });
   },
 
   goBack() {
