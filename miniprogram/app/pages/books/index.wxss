@@ -1,8 +1,9 @@
 .page {
-  min-height: 100vh;
+  height: 100vh;
   box-sizing: border-box;
   background: #fffaf1;
   color: #111111;
+  overflow: hidden;
 }
 
 button {
@@ -26,11 +27,14 @@ button::after {
   min-height: 0;
   display: grid;
   grid-template-columns: 230rpx 1fr;
+  overflow: hidden;
 }
 
 .books-sidebar {
   min-width: 0;
-  padding: 24rpx 16rpx;
+  height: 100vh;
+  min-height: 0;
+  padding: 24rpx 16rpx 190rpx;
   box-sizing: border-box;
   border-right: 2rpx solid #e9dfce;
   background:
@@ -38,6 +42,7 @@ button::after {
     repeating-linear-gradient(0deg, transparent 0 40rpx, rgba(154, 128, 100, 0.06) 42rpx);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .bookshelf-label {
@@ -78,8 +83,8 @@ button::after {
 }
 
 .book-list {
-  flex: 0 0 auto;
-  max-height: 390rpx;
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 17rpx 0;
 }
 
@@ -149,6 +154,8 @@ button::after {
 }
 
 .book-crud {
+  flex: 0 0 auto;
+  margin-top: auto;
   display: grid;
   gap: 12rpx;
 }
