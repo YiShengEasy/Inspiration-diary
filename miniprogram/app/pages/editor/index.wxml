@@ -8,21 +8,45 @@
       <text class="title">{{toolName}}</text>
       <text class="subtitle">{{toolDesc}}</text>
     </view>
-    <button class="header-button icon-button" hover-class="button-press" hover-stay-time="80" bindtap="chooseImage">
+    <button wx:if="{{needsImage}}" class="header-button icon-button" hover-class="button-press" hover-stay-time="80" bindtap="chooseImage">
       <text class="button-icon">↻</text>
       <text class="button-text">换图</text>
     </button>
+    <view wx:else class="header-spacer"></view>
   </view>
 
   <view class="editor-canvas {{tool === 'pixel' ? 'pixelated' : ''}}">
-    <image wx:if="{{filePath}}" class="preview-image" src="{{resultPath || filePath}}" mode="aspectFit"></image>
-    <view wx:else class="empty-preview" bindtap="chooseImage">
+    <view wx:if="{{needsImage && filePath}}" class="preview-frame {{cropRatioClass}}">
+      <image class="preview-image {{previewClass}}" src="{{resultPath || filePath}}" mode="aspectFill"></image>
+      <view wx:if="{{tool === 'crop'}}" class="crop-guides"></view>
+      <text wx:if="{{tool === 'watermark' && watermarkText}}" class="watermark-mark watermark-{{watermarkPosition}}">{{watermarkText}}</text>
+      <view wx:if="{{tool === 'colorPick' || tool === 'palette' || tool === 'gradient'}}" class="floating-palette">
+        <text wx:for="{{swatches}}" wx:key="*this" style="background: {{item}};"></text>
+      </view>
+    </view>
+
+    <view wx:elif="{{needsImage}}" class="empty-preview" bindtap="chooseImage">
       <view class="empty-mark">
         <text>+</text>
       </view>
       <text class="empty-title">选择一张图片</text>
-      <text class="empty-desc">从相册或相机导入后预览</text>
+      <text class="empty-desc">上传后留在当前工具继续操作</text>
     </view>
+
+    <view wx:else class="utility-preview">
+      <view wx:if="{{tool === 'rgbhex'}}" class="color-result" style="background: {{hexValue}};">
+        <text>{{hexValue}}</text>
+      </view>
+      <view wx:elif="{{tool === 'contrast'}}" class="contrast-result" style="background: {{contrastBg}}; color: {{contrastFg}};">
+        <text class="contrast-demo">灵感日记</text>
+        <text class="contrast-score">{{contrastScore}} · {{contrastLevel}}</text>
+      </view>
+      <view wx:else class="more-preview">
+        <text class="more-preview-icon">{{toolIcon}}</text>
+        <text>选择下方工具继续操作</text>
+      </view>
+    </view>
+
     <view class="canvas-badge">
       <text class="tool-icon">{{toolIcon}}</text>
       <text>{{toolName}}</text>
@@ -32,13 +56,105 @@
   <view class="controls">
     <view class="control-head">
       <view>
-        <text class="control-title">本地预览</text>
-        <text class="control-desc">预览结果可保存到相册或灵感日记</text>
+        <text class="control-title">{{controlTitle}}</text>
+        <text class="control-desc">{{controlDesc}}</text>
       </view>
-      <button class="choose-button" hover-class="button-press" hover-stay-time="80" bindtap="chooseImage">
+      <button wx:if="{{needsImage}}" class="choose-button" hover-class="button-press" hover-stay-time="80" bindtap="chooseImage">
         <text class="button-icon">＋</text>
         <text>选择图片</text>
       </button>
+    </view>
+
+    <view wx:if="{{tool === 'crop'}}" class="tool-panel">
+      <text class="panel-label">裁剪比例</text>
+      <view class="chip-row">
+        <button wx:for="{{cropOptions}}" wx:key="value" class="chip {{selectedCrop === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setCrop">{{item.label}}</button>
+      </view>
+    </view>
+
+    <view wx:if="{{tool === 'filter'}}" class="tool-panel">
+      <text class="panel-label">滤镜风格</text>
+      <view class="chip-row">
+        <button wx:for="{{filterOptions}}" wx:key="value" class="chip {{selectedFilter === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setFilter">{{item.label}}</button>
+      </view>
+    </view>
+
+    <view wx:if="{{tool === 'pixel'}}" class="tool-panel">
+      <text class="panel-label">像素强度</text>
+      <view class="chip-row">
+        <button wx:for="{{pixelOptions}}" wx:key="value" class="chip {{selectedPixel === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setPixel">{{item.label}}</button>
+      </view>
+    </view>
+
+    <view wx:if="{{tool === 'film'}}" class="tool-panel">
+      <text class="panel-label">胶片色调</text>
+      <view class="chip-row">
+        <button wx:for="{{filmOptions}}" wx:key="value" class="chip {{selectedFilm === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setFilm">{{item.label}}</button>
+      </view>
+    </view>
+
+    <view wx:if="{{tool === 'watermark'}}" class="tool-panel">
+      <text class="panel-label">水印文字</text>
+      <input class="tool-input" value="{{watermarkText}}" placeholder="输入水印文字" bindinput="onWatermarkInput" />
+      <text class="panel-label small">位置</text>
+      <view class="chip-row">
+        <button wx:for="{{watermarkPositions}}" wx:key="value" class="chip {{watermarkPosition === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setWatermarkPosition">{{item.label}}</button>
+      </view>
+    </view>
+
+    <view wx:if="{{tool === 'colorPick'}}" class="tool-panel">
+      <text class="panel-label">提取色</text>
+      <view class="swatch-row">
+        <button wx:for="{{swatches}}" wx:key="*this" class="swatch {{selectedColor === item ? 'active' : ''}}" style="background: {{item}};" data-color="{{item}}" bindtap="selectSwatch"></button>
+      </view>
+      <button class="copy-row" data-value="{{selectedColor}}" bindtap="copyValue">{{selectedColor}} · 复制色值</button>
+    </view>
+
+    <view wx:if="{{tool === 'palette' || tool === 'gradient'}}" class="tool-panel">
+      <text class="panel-label">{{tool === 'gradient' ? '渐变方案' : '色卡方案'}}</text>
+      <view class="palette-row">
+        <button wx:for="{{paletteSets}}" wx:key="label" class="palette-card {{selectedPalette === index ? 'active' : ''}}" data-index="{{index}}" bindtap="selectPalette">
+          <view class="palette-preview">
+            <text wx:for="{{item.colors}}" wx:key="*this" style="background: {{item}};"></text>
+          </view>
+          <text>{{item.label}}</text>
+        </button>
+      </view>
+    </view>
+
+    <view wx:if="{{tool === 'contrast'}}" class="tool-panel">
+      <text class="panel-label">对比度检测</text>
+      <input class="tool-input" value="{{contrastFg}}" data-key="fg" placeholder="#111111" bindinput="onContrastInput" />
+      <input class="tool-input" value="{{contrastBg}}" data-key="bg" placeholder="#B7FF38" bindinput="onContrastInput" />
+      <button class="copy-row" data-value="{{contrastScore}}" bindtap="copyValue">对比度 {{contrastScore}} · {{contrastLevel}}</button>
+    </view>
+
+    <view wx:if="{{tool === 'rgbhex'}}" class="tool-panel">
+      <text class="panel-label">RGB 转 HEX</text>
+      <view class="rgb-row">
+        <input value="{{rgbR}}" type="number" data-channel="R" bindinput="onRgbInput" />
+        <input value="{{rgbG}}" type="number" data-channel="G" bindinput="onRgbInput" />
+        <input value="{{rgbB}}" type="number" data-channel="B" bindinput="onRgbInput" />
+      </view>
+      <input class="tool-input" value="{{hexValue}}" bindinput="onHexInput" />
+      <button class="copy-row" data-value="{{hexValue}}" bindtap="copyValue">{{hexValue}} · 复制</button>
+    </view>
+
+    <view wx:if="{{tool === 'ai'}}" class="tool-panel">
+      <text class="panel-label">AI 风格预设</text>
+      <view class="chip-row">
+        <button wx:for="{{aiOptions}}" wx:key="value" class="chip {{selectedAi === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setAiPreset">{{item.label}}</button>
+      </view>
+    </view>
+
+    <view wx:if="{{tool === 'more'}}" class="tool-panel">
+      <text class="panel-label">所有工具</text>
+      <view class="mini-tool-grid">
+        <button wx:for="{{tools}}" wx:key="id" class="mini-tool" data-tool-id="{{item.id}}" bindtap="openToolFromList">
+          <text>{{item.iconText}}</text>
+          <text>{{item.name}}</text>
+        </button>
+      </view>
     </view>
 
     <view class="result-row">
@@ -47,17 +163,17 @@
     </view>
     <view class="result-row">
       <text class="result-label">图片状态</text>
-      <text class="result-value">{{filePath ? '已选择' : '未选择'}}</text>
+      <text class="result-value">{{needsImage ? (filePath ? '已选择，可操作' : '未选择') : '无需图片'}}</text>
     </view>
 
     <view class="editor-actions">
       <button hover-class="button-press" hover-stay-time="80" bindtap="saveToAlbum">
         <text class="button-icon">↓</text>
-        <text>保存到相册</text>
+        <text>{{needsImage ? '保存到相册' : '复制结果'}}</text>
       </button>
       <button class="primary" hover-class="button-press" hover-stay-time="80" bindtap="saveToDiary">
         <text class="button-icon">✦</text>
-        <text>保存到灵感日记</text>
+        <text>完成操作</text>
       </button>
     </view>
   </view>

@@ -1,4 +1,5 @@
 const { tools } = require("../../utils/tools");
+const { requireRegistered } = require("../../utils/auth");
 
 const categories = ["常用", "色彩", "风格", "AI", "更多"];
 const featuredToolIds = ["colorPick", "pixel", "filter"];
@@ -67,8 +68,7 @@ Page({
 
     const tool = tools.find((item) => item.id === id);
     if (tool && tool.locked) {
-      wx.showToast({ title: "登录后开放", icon: "none" });
-      return;
+      if (!requireRegistered()) return;
     }
 
     wx.navigateTo({ url: `/pages/editor/index?tool=${id}` });
