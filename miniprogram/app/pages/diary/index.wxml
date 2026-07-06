@@ -131,7 +131,7 @@
           </view>
           <view wx:else class="empty-day">
             <text class="empty-day-icon">＋</text>
-            <text>添加今天的灵感</text>
+            <text>添加这一天的灵感</text>
           </view>
         </button>
       </view>

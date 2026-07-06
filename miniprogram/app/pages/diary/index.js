@@ -299,8 +299,15 @@ Page({
   },
 
   openDay(event) {
+    const dayIndex = Number(event.currentTarget.dataset.index || 0);
+    const day = this.data.cardsByDay[dayIndex];
+    if (!day || !day.count) {
+      this.chooseUpload(dayIndex);
+      return;
+    }
+
     wx.navigateTo({
-      url: `/pages/day-detail/index?dayIndex=${event.currentTarget.dataset.index}&weekId=${encodeURIComponent(this.data.weekId)}`
+      url: `/pages/day-detail/index?dayIndex=${dayIndex}&weekId=${encodeURIComponent(this.data.weekId)}`
     });
   },
 
@@ -339,8 +346,9 @@ Page({
     wx.navigateTo({ url: "/pages/register-complete/index" });
   },
 
-  chooseUpload() {
+  chooseUpload(targetDayIndex) {
     if (!requireRegistered() || this.data.uploading) return;
+    const dayIndex = Number.isFinite(Number(targetDayIndex)) ? Number(targetDayIndex) : todayDayIndex();
 
     wx.chooseMedia({
       count: 1,
@@ -363,7 +371,7 @@ Page({
           const card = {
             id: cardId,
             weekId: this.data.weekId,
-            dayIndex: todayDayIndex(),
+            dayIndex,
             imageUrl: stored.imageUrl,
             thumbnailUrl: stored.thumbnailUrl || stored.imageUrl,
             photoUid: stored.photoUid || "",
