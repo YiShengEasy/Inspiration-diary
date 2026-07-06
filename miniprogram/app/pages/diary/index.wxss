@@ -590,8 +590,8 @@ button::after {
 }
 
 .stack-0 {
-  z-index: 1;
-  transform: translate(0, 0) rotate(-5deg);
+  z-index: 3;
+  transform: translate(26rpx, 6rpx) rotate(5deg);
 }
 
 .stack-1 {
@@ -600,8 +600,8 @@ button::after {
 }
 
 .stack-2 {
-  z-index: 3;
-  transform: translate(26rpx, 6rpx) rotate(5deg);
+  z-index: 1;
+  transform: translate(0, 0) rotate(-5deg);
 }
 
 .more-count {
