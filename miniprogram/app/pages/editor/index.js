@@ -36,7 +36,7 @@ const correctOptions = [
   { label: "垂直", value: "vertical", icon: "▱" },
   { label: "水平", value: "horizontal", icon: "▰" }
 ];
-const rotateTicks = ["-25", "-20", "-15", "-10", "-5", "0"];
+const rotateTicks = ["-25", "-15", "-5", "0", "5", "15", "25"];
 const correctTicks = ["-40", "-30", "-20", "-10", "0", "10", "20", "30", "40"];
 const filterOptions = [
   { label: "原始", value: "none" },
@@ -503,6 +503,17 @@ Page({
     if (value === "flipX") next.flipX = !this.data.flipX;
     if (value === "flipY") next.flipY = !this.data.flipY;
     this.setData({ ...next, operationStatus: event.currentTarget.dataset.label || "已调整方向" });
+    this.updateImageEditorClass();
+  },
+
+  stepRotateAngle(event) {
+    const delta = Number(event.currentTarget.dataset.delta || 0);
+    const value = Math.max(-25, Math.min(25, Number(this.data.rotationFineAngle || 0) + delta));
+    this.setData({
+      rotationFineAngle: value,
+      rotatePointerStyle: `left: ${((value + 25) / 50) * 100}%;`,
+      operationStatus: `旋转 ${value}°`
+    });
     this.updateImageEditorClass();
   },
 
