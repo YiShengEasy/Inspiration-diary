@@ -1,3 +1,6 @@
+const { request, uploadImage } = require("../../utils/api");
+const { requireRegistered } = require("../../utils/auth");
+const { currentWeekId } = require("../../utils/dates");
 const { tools } = require("../../utils/tools");
 
 const IMAGE_TOOLS = new Set(["crop", "colorPick", "pixel", "filter", "palette", "gradient", "watermark", "film", "ai"]);
@@ -40,6 +43,8 @@ const paletteSets = [
   { label: "像素", colors: ["#111111", "#b7ff38", "#6d5dfc", "#f7f7f2"] }
 ];
 const defaultSwatches = ["#111111", "#b7ff38", "#7ed4d8", "#ff7f6f", "#f3ead7"];
+const PALETTE_CANVAS_ID = "paletteCanvas";
+const PALETTE_CANVAS_SIZE = 80;
 
 function getTool(id) {
   return tools.find((tool) => tool.id === id) || tools[0];
@@ -99,6 +104,68 @@ function contrastRatio(foreground, background) {
   return ((lighter + 0.05) / (darker + 0.05)).toFixed(2);
 }
 
+function shouldExtractPalette(toolId) {
+  return toolId === "colorPick" || toolId === "palette" || toolId === "gradient";
+}
+
+function todayDayIndex() {
+  const day = new Date().getDay();
+  if (day === 0 || day === 6) return 5;
+  return Math.max(0, day - 1);
+}
+
+function colorDistance(a, b) {
+  const left = hexToRgb(a);
+  const right = hexToRgb(b);
+  if (!left || !right) return 999;
+  return Math.sqrt(
+    Math.pow(left.r - right.r, 2)
+    + Math.pow(left.g - right.g, 2)
+    + Math.pow(left.b - right.b, 2)
+  );
+}
+
+function extractSwatchesFromPixels(data) {
+  const buckets = {};
+  for (let index = 0; index < data.length; index += 16) {
+    const r = data[index];
+    const g = data[index + 1];
+    const b = data[index + 2];
+    const alpha = data[index + 3];
+    if (alpha < 80) continue;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const saturation = max - min;
+    const brightness = (r + g + b) / 3;
+    if (brightness > 238 && saturation < 22) continue;
+
+    const qr = Math.min(255, Math.round(r / 32) * 32);
+    const qg = Math.min(255, Math.round(g / 32) * 32);
+    const qb = Math.min(255, Math.round(b / 32) * 32);
+    const key = `${qr},${qg},${qb}`;
+    const score = 1 + saturation / 255 + (brightness > 35 && brightness < 225 ? 0.25 : 0);
+    buckets[key] = (buckets[key] || 0) + score;
+  }
+
+  const ranked = Object.entries(buckets)
+    .map(([key, score]) => {
+      const [r, g, b] = key.split(",").map(Number);
+      return { hex: rgbToHex(r, g, b), score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const swatches = [];
+  for (const item of ranked) {
+    if (swatches.every((color) => colorDistance(color, item.hex) > 48)) {
+      swatches.push(item.hex);
+    }
+    if (swatches.length >= 5) break;
+  }
+
+  return swatches.length ? swatches : defaultSwatches;
+}
+
 function toolState(toolId) {
   const needsImage = IMAGE_TOOLS.has(toolId);
   return {
@@ -133,6 +200,8 @@ Page({
     selectedPalette: 0,
     swatches: defaultSwatches,
     selectedColor: defaultSwatches[0],
+    paletteStatus: "",
+    savingDiary: false,
     rgbR: 183,
     rgbG: 255,
     rgbB: 56,
@@ -175,6 +244,9 @@ Page({
       controlDesc: state.controlDesc
     });
     this.updatePreviewClass();
+    if (displayPath && shouldExtractPalette(tool.id)) {
+      this.extractPalette(displayPath);
+    }
   },
 
   updatePreviewClass() {
@@ -202,6 +274,49 @@ Page({
           displayPath: filePath,
           showImagePreview: true
         });
+        if (shouldExtractPalette(this.data.tool)) {
+          this.extractPalette(filePath);
+        }
+      }
+    });
+  },
+
+  extractPalette(filePath = this.data.displayPath) {
+    if (!filePath) return;
+
+    this.setData({ paletteStatus: "正在提取图片主色..." });
+    wx.getImageInfo({
+      src: filePath,
+      success: (info) => {
+        const ctx = wx.createCanvasContext(PALETTE_CANVAS_ID, this);
+        ctx.clearRect(0, 0, PALETTE_CANVAS_SIZE, PALETTE_CANVAS_SIZE);
+        ctx.drawImage(info.path, 0, 0, PALETTE_CANVAS_SIZE, PALETTE_CANVAS_SIZE);
+        ctx.draw(false, () => {
+          wx.canvasGetImageData({
+            canvasId: PALETTE_CANVAS_ID,
+            x: 0,
+            y: 0,
+            width: PALETTE_CANVAS_SIZE,
+            height: PALETTE_CANVAS_SIZE,
+            success: (res) => {
+              const swatches = extractSwatchesFromPixels(res.data || []);
+              this.setData({
+                swatches,
+                selectedColor: swatches[0],
+                selectedPalette: -1,
+                paletteStatus: "已从图片提取主色"
+              });
+            },
+            fail: (err) => {
+              console.warn("Palette image data failed:", err);
+              this.setData({ paletteStatus: "取色失败，可切换预设色卡" });
+            }
+          });
+        });
+      },
+      fail: (err) => {
+        console.warn("Palette image info failed:", err);
+        this.setData({ paletteStatus: "取色失败，请重新选择图片" });
       }
     });
   },
@@ -254,7 +369,8 @@ Page({
     this.setData({
       selectedPalette: index,
       swatches: colors,
-      selectedColor: colors[0]
+      selectedColor: colors[0],
+      paletteStatus: "已切换预设色卡"
     });
   },
 
@@ -336,10 +452,64 @@ Page({
     });
   },
 
-  saveToDiary() {
+  async savePaletteCard(path) {
+    const selectedColor = this.data.selectedColor || defaultSwatches[0];
+    const paletteTerms = this.data.swatches
+      .slice(0, 4)
+      .map((color) => color.replace("#", "HEX-"));
+    const terms = ["色卡", "主色", selectedColor.replace("#", "HEX-"), ...paletteTerms]
+      .filter((term, index, list) => term && list.indexOf(term) === index)
+      .slice(0, 8);
+    const cardId = `mini_${Date.now()}`;
+
+    const stored = await uploadImage({
+      url: "/api/store-image",
+      filePath: path,
+      formData: { source: "miniprogram-toolbox" }
+    });
+    const card = {
+      id: cardId,
+      weekId: currentWeekId(),
+      dayIndex: todayDayIndex(),
+      imageUrl: stored.imageUrl,
+      thumbnailUrl: stored.thumbnailUrl || stored.imageUrl,
+      photoUid: stored.photoUid || "",
+      photoHash: stored.photoHash || "",
+      terms,
+      insightNote: `工具箱色卡：主色 ${selectedColor}，色组 ${this.data.swatches.join(" / ")}`,
+      decoType: "tape",
+      angle: 0,
+      createdAt: Date.now(),
+      type: "image"
+    };
+
+    await request({ url: "/api/db/cards", method: "POST", data: card });
+    wx.setStorageSync(`miniCard:${cardId}`, card);
+  },
+
+  async saveToDiary() {
     const path = this.data.resultPath || this.data.filePath;
     if (this.data.needsImage && !path) {
       wx.showToast({ title: "请先选择图片", icon: "none" });
+      return;
+    }
+
+    if (shouldExtractPalette(this.data.tool)) {
+      if (!requireRegistered() || this.data.savingDiary) return;
+
+      this.setData({ savingDiary: true });
+      wx.showLoading({ title: "正在保存" });
+      try {
+        await this.savePaletteCard(path);
+        wx.hideLoading();
+        wx.showToast({ title: "已保存到灵感", icon: "success" });
+      } catch (err) {
+        console.warn("Save palette card failed:", err);
+        wx.hideLoading();
+        wx.showToast({ title: "保存失败", icon: "none" });
+      } finally {
+        this.setData({ savingDiary: false });
+      }
       return;
     }
 

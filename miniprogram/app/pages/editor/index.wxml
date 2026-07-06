@@ -105,6 +105,7 @@
 
     <view wx:if="{{tool === 'colorPick'}}" class="tool-panel">
       <text class="panel-label">提取色</text>
+      <text wx:if="{{paletteStatus}}" class="palette-status">{{paletteStatus}}</text>
       <view class="swatch-row">
         <button wx:for="{{swatches}}" wx:key="*this" class="swatch {{selectedColor === item ? 'active' : ''}}" style="background: {{item}};" data-color="{{item}}" bindtap="selectSwatch"></button>
       </view>
@@ -113,6 +114,11 @@
 
     <view wx:if="{{tool === 'palette' || tool === 'gradient'}}" class="tool-panel">
       <text class="panel-label">{{tool === 'gradient' ? '渐变方案' : '色卡方案'}}</text>
+      <text wx:if="{{paletteStatus}}" class="palette-status">{{paletteStatus}}</text>
+      <view class="swatch-row">
+        <button wx:for="{{swatches}}" wx:key="*this" class="swatch {{selectedColor === item ? 'active' : ''}}" style="background: {{item}};" data-color="{{item}}" bindtap="selectSwatch"></button>
+      </view>
+      <button class="copy-row" data-value="{{selectedColor}}" bindtap="copyValue">{{selectedColor}} · 复制选中色值</button>
       <view class="palette-row">
         <button wx:for="{{paletteSets}}" wx:key="label" class="palette-card {{selectedPalette === index ? 'active' : ''}}" data-index="{{index}}" bindtap="selectPalette">
           <view class="palette-preview">
@@ -165,8 +171,10 @@
       </button>
       <button class="primary" hover-class="button-press" hover-stay-time="80" bindtap="saveToDiary">
         <text class="button-icon">✦</text>
-        <text>完成操作</text>
+        <text>{{tool === 'colorPick' || tool === 'palette' || tool === 'gradient' ? '保存到灵感' : '完成操作'}}</text>
       </button>
     </view>
   </view>
+
+  <canvas canvas-id="paletteCanvas" class="palette-canvas"></canvas>
 </view>
