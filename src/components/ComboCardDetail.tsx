@@ -1,4 +1,4 @@
-import { Clipboard, Download, Image as ImageIcon, Loader2, Plus, Save, Trash, Upload } from "lucide-react";
+import { ChevronDown, Clipboard, Download, Image as ImageIcon, Loader2, Plus, Save, Trash, Upload } from "lucide-react";
 import type { ClipboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ComboCardDetail as ComboDetail, ComboGeneration, ComboImage, ComboImageRole, ImageCard } from "../types";
@@ -24,6 +24,33 @@ const roleOptions: Array<{ value: ComboImageRole; label: string }> = [
   { value: "story", label: "故事图" },
   { value: "other", label: "其他角色" },
 ];
+
+function RoleSelect({
+  value,
+  onChange,
+  className = "",
+}: {
+  value: ComboImageRole;
+  onChange: (value: ComboImageRole) => void;
+  className?: string;
+}) {
+  return (
+    <span className={`relative inline-flex min-w-[104px] ${className}`}>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value as ComboImageRole)}
+        className="h-9 w-full appearance-none rounded-[6px] border border-stone-900/10 bg-[#fffaf0] py-0 pl-3 pr-9 text-xs font-bold text-stone-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition-colors hover:border-stone-900/18 focus:border-[#8b916f]/70 focus:bg-white dark:border-white/10 dark:bg-white/[0.07] dark:text-stone-100 dark:hover:border-white/18 dark:focus:border-amber-200/40"
+      >
+        {roleOptions.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute right-2.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full bg-stone-900/[0.045] text-stone-500 dark:bg-white/[0.08] dark:text-stone-300">
+        <ChevronDown size={13} strokeWidth={2.2} />
+      </span>
+    </span>
+  );
+}
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
@@ -67,6 +94,8 @@ export function ComboCardDetailView({
   const [role, setRole] = useState<ComboImageRole>("character");
   const [promptNote, setPromptNote] = useState("");
   const [dirtyGenerations, setDirtyGenerations] = useState<Record<string, boolean>>({});
+  const [savingGenerationId, setSavingGenerationId] = useState("");
+  const [generationSaveStatus, setGenerationSaveStatus] = useState<Record<string, "clean" | "dirty" | "saving" | "error">>({});
   const rootRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
@@ -103,6 +132,8 @@ export function ComboCardDetailView({
       setDetail(next);
       onCardChanged(next.card);
       setDirtyGenerations({});
+      setSavingGenerationId("");
+      setGenerationSaveStatus({});
     } catch (err) {
       setError(err instanceof Error ? err.message : "组合详情加载失败");
     } finally {
@@ -189,6 +220,8 @@ export function ComboCardDetailView({
 
   async function saveGeneration(generation: ComboGeneration) {
     setSaving(true);
+    setSavingGenerationId(generation.id);
+    setGenerationSaveStatus((current) => ({ ...current, [generation.id]: "saving" }));
     setError("");
     try {
       const result = await updateComboGeneration({
@@ -202,10 +235,13 @@ export function ComboCardDetailView({
         generations: current.generations.map((item) => item.id === generation.id ? result.generation : item),
       } : current);
       setDirtyGenerations((current) => ({ ...current, [generation.id]: false }));
+      setGenerationSaveStatus((current) => ({ ...current, [generation.id]: "clean" }));
     } catch (err) {
+      setGenerationSaveStatus((current) => ({ ...current, [generation.id]: "error" }));
       setError(err instanceof Error ? err.message : "生成记录更新失败");
     } finally {
       setSaving(false);
+      setSavingGenerationId("");
     }
   }
 
@@ -286,15 +322,10 @@ export function ComboCardDetailView({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h4 className="font-serif text-sm font-bold italic text-stone-700 dark:text-stone-200">参考图片</h4>
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <RoleSelect
               value={role}
-              onChange={(event) => setRole(event.target.value as ComboImageRole)}
-              className="h-9 rounded-[6px] border border-stone-900/10 bg-white/75 px-2 text-xs font-semibold text-stone-800 outline-none dark:border-white/10 dark:bg-white/[0.07] dark:text-stone-100"
-            >
-              {roleOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
+              onChange={setRole}
+            />
             <button
               type="button"
               onClick={() => imageInputRef.current?.click()}
@@ -321,15 +352,11 @@ export function ComboCardDetailView({
               <div key={image.id} className="overflow-hidden rounded-[8px] border border-stone-900/10 bg-white/75 shadow-sm dark:border-white/10 dark:bg-white/[0.055]">
                 <img src={image.imageUrl} alt={image.originalName} className="aspect-square w-full bg-stone-100 object-cover dark:bg-stone-900" loading="lazy" />
                 <div className="space-y-2 p-2">
-                  <select
+                  <RoleSelect
                     value={image.role}
-                    onChange={(event) => void handleRoleChange(image, event.target.value as ComboImageRole)}
-                    className="h-8 w-full rounded-[6px] border border-stone-900/10 bg-[#fbf7ed] px-2 text-xs font-bold text-stone-800 outline-none dark:border-white/10 dark:bg-stone-900 dark:text-stone-100"
-                  >
-                    {roleOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
+                    onChange={(nextRole) => void handleRoleChange(image, nextRole)}
+                    className="w-full"
+                  />
                   <div>
                     <div className="truncate text-[11px] font-bold text-stone-800 dark:text-stone-100">{image.originalName || roleLabels[image.role]}</div>
                     <div className="mt-0.5 text-[10px] font-mono text-stone-500">{formatBytes(image.sizeBytes)}</div>
@@ -411,14 +438,31 @@ export function ComboCardDetailView({
                       generations: current.generations.map((item) => item.id === generation.id ? { ...item, promptNote: nextPrompt } : item),
                     } : current);
                     setDirtyGenerations((current) => ({ ...current, [generation.id]: true }));
+                    setGenerationSaveStatus((current) => ({ ...current, [generation.id]: "dirty" }));
                   }}
                   placeholder="这一条视频的提示词或备注"
                   className="min-h-[84px] w-full resize-y rounded-[6px] border border-stone-900/10 bg-[#fbf7ed] px-3 py-2 text-sm leading-relaxed text-stone-800 outline-none focus:border-stone-800/30 dark:border-white/10 dark:bg-stone-900 dark:text-stone-100"
                 />
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0 text-[10px] font-mono text-stone-500">
-                    <span className="truncate">{generation.originalName || "视频记录"}</span>
-                    <span> · {formatBytes(generation.sizeBytes)}</span>
+                    <div className="truncate">{generation.originalName || "视频记录"} · {formatBytes(generation.sizeBytes)}</div>
+                    <div className={`mt-1 font-semibold ${
+                      generationSaveStatus[generation.id] === "error"
+                        ? "text-red-600 dark:text-red-300"
+                        : dirtyGenerations[generation.id]
+                          ? "text-amber-700 dark:text-amber-300"
+                          : generationSaveStatus[generation.id] === "saving"
+                            ? "text-[#6f7557] dark:text-amber-200"
+                            : "text-stone-400 dark:text-stone-500"
+                    }`}>
+                      {generationSaveStatus[generation.id] === "saving"
+                        ? "提示词保存中..."
+                        : generationSaveStatus[generation.id] === "error"
+                          ? "提示词保存失败"
+                          : dirtyGenerations[generation.id]
+                            ? "提示词未保存"
+                            : "提示词已保存"}
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <button
@@ -433,10 +477,10 @@ export function ComboCardDetailView({
                       type="button"
                       onClick={() => void saveGeneration(generation)}
                       disabled={saving || !dirtyGenerations[generation.id]}
-                      className="inline-flex h-8 items-center gap-1 rounded-[6px] bg-stone-900 px-2.5 text-xs font-bold text-[#fbf7ed] hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-amber-200 dark:text-stone-950"
+                      className="inline-flex h-8 items-center gap-1 rounded-[6px] border border-[#8b916f]/25 bg-[#dfe5c9] px-2.5 text-xs font-bold text-stone-800 shadow-sm transition-colors hover:bg-[#d4dbbc] disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-200/20 dark:bg-amber-200 dark:text-stone-950"
                     >
-                      <Save size={12} />
-                      保存
+                      {savingGenerationId === generation.id ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                      保存提示词
                     </button>
                     <button
                       type="button"
