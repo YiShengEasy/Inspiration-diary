@@ -36,8 +36,18 @@ const correctOptions = [
   { label: "垂直", value: "vertical", icon: "▱" },
   { label: "水平", value: "horizontal", icon: "▰" }
 ];
-const rotateTicks = ["-45", "-30", "-15", "0", "15", "30", "45"];
 const correctTicks = ["-40", "-30", "-20", "-10", "0", "10", "20", "30", "40"];
+const rotateMarks = Array.from({ length: 19 }, (_item, index) => {
+  const angle = -45 + index * 5;
+  const isMajor = angle % 15 === 0;
+  return {
+    angle,
+    label: isMajor ? String(angle) : "",
+    markStyle: `transform: rotate(${angle}deg) translateY(202rpx);`,
+    labelStyle: `transform: translateX(-50%) rotate(${-angle}deg);`,
+    major: isMajor
+  };
+});
 const filterOptions = [
   { label: "原始", value: "none" },
   { label: "低饱和", value: "soft" },
@@ -311,7 +321,7 @@ Page({
     expandOptions,
     rotateOptions,
     correctOptions,
-    rotateTicks,
+    rotateMarks,
     correctTicks,
     filterOptions,
     pixelOptions,

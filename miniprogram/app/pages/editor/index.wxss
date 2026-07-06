@@ -701,13 +701,12 @@ button::after {
 .wheel-arc::before {
   content: "";
   position: absolute;
-  left: 34rpx;
-  right: 34rpx;
-  bottom: 22rpx;
-  height: 50rpx;
-  background:
-    repeating-conic-gradient(from 250deg at 50% 410rpx, rgba(255, 255, 255, 0.86) 0deg 0.75deg, transparent 0.75deg 3deg);
-  opacity: 0.9;
+  left: 42rpx;
+  right: 42rpx;
+  bottom: 26rpx;
+  height: 4rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .wheel-arc::after {
@@ -723,58 +722,38 @@ button::after {
   box-shadow: 0 0 22rpx rgba(183, 255, 56, 0.45);
 }
 
-.wheel-arc text {
+.wheel-mark {
   position: absolute;
-  z-index: 1;
-  bottom: 62rpx;
-  width: 54rpx;
-  margin-left: -27rpx;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.64);
-  font-size: 21rpx;
-  line-height: 26rpx;
-  font-weight: 750;
-}
-
-.wheel-arc text:nth-child(1) {
-  left: 9%;
-  bottom: 36rpx;
-  transform: rotate(34deg);
-}
-
-.wheel-arc text:nth-child(2) {
-  left: 22%;
-  bottom: 58rpx;
-  transform: rotate(24deg);
-}
-
-.wheel-arc text:nth-child(3) {
-  left: 37%;
-  bottom: 76rpx;
-  transform: rotate(10deg);
-}
-
-.wheel-arc text:nth-child(4) {
   left: 50%;
-  bottom: 84rpx;
+  top: 50%;
+  z-index: 1;
+  width: 3rpx;
+  height: 24rpx;
+  margin-left: -1.5rpx;
+  transform-origin: 50% 0;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.64);
 }
 
-.wheel-arc text:nth-child(5) {
-  left: 63%;
-  bottom: 76rpx;
-  transform: rotate(-10deg);
+.wheel-mark.major {
+  width: 4rpx;
+  height: 36rpx;
+  margin-left: -2rpx;
+  background: rgba(255, 255, 255, 0.92);
 }
 
-.wheel-arc text:nth-child(6) {
-  left: 78%;
-  bottom: 58rpx;
-  transform: rotate(-24deg);
-}
-
-.wheel-arc text:nth-child(7) {
-  left: 91%;
-  bottom: 36rpx;
-  transform: rotate(-34deg);
+.wheel-mark text {
+  position: absolute;
+  left: 50%;
+  top: 46rpx;
+  width: 68rpx;
+  margin-left: -34rpx;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 20rpx;
+  line-height: 24rpx;
+  font-weight: 800;
+  transform-origin: 50% 50%;
 }
 
 .wheel-pointer {

@@ -91,7 +91,9 @@
           <view class="rotate-wheel" bindtouchstart="onRotateWheelStart" catchtouchmove="onRotateWheelMove" bindtouchend="onRotateWheelEnd" bindtouchcancel="onRotateWheelEnd">
             <view class="wheel-window">
               <view class="wheel-arc" style="{{rotateWheelStyle}}">
-                <text wx:for="{{rotateTicks}}" wx:key="*this">{{item}}</text>
+                <view wx:for="{{rotateMarks}}" wx:key="angle" class="wheel-mark {{item.major ? 'major' : ''}}" style="{{item.markStyle}}">
+                  <text wx:if="{{item.label}}" style="{{item.labelStyle}}">{{item.label}}</text>
+                </view>
               </view>
             </view>
             <view class="wheel-pointer"></view>
