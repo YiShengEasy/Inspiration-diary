@@ -62,6 +62,10 @@ function formatTermsText(terms) {
   return `${visibleTerms.join(" / ")}${terms.length > 3 ? " ..." : ""}`;
 }
 
+function sortNewestFirst(cards) {
+  return cards.slice().sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+}
+
 function normalizeCard(card) {
   const terms = Array.isArray(card.terms) ? card.terms : [];
   const isCombo = card.type === "combo";
@@ -166,7 +170,7 @@ Page({
         url: `/api/db/cards?weekId=${encodeURIComponent(this.data.weekId)}&page=1&pageSize=200`
       });
       const rawCards = Array.isArray(body) ? body : body.cards || [];
-      const cards = await Promise.all(rawCards.map((card) => hydrateCardMedia(normalizeCard(card))));
+      const cards = sortNewestFirst(await Promise.all(rawCards.map((card) => hydrateCardMedia(normalizeCard(card)))));
       cacheCards(cards);
 
       const cardsByDay = days.map((day, index) => {

@@ -20,6 +20,10 @@ function normalizeCard(card) {
   };
 }
 
+function sortNewestFirst(cards) {
+  return cards.slice().sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+}
+
 async function hydrateCardMedia(card) {
   if (!card || card.isMd || !card.image) return card;
   return {
@@ -55,9 +59,9 @@ Page({
         url: `/api/db/cards?weekId=${encodeURIComponent(this.data.weekId)}&page=1&pageSize=200`
       });
       const rawCards = Array.isArray(body) ? body : body.cards || [];
-      const cards = await Promise.all(rawCards
+      const cards = sortNewestFirst(await Promise.all(rawCards
         .filter((card) => Number(card.dayIndex) === this.data.dayIndex)
-        .map((card) => hydrateCardMedia(normalizeCard(card))));
+        .map((card) => hydrateCardMedia(normalizeCard(card)))));
       cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
       this.setData({ cards });
     } catch (err) {
