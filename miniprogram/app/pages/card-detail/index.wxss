@@ -200,13 +200,35 @@ button::after {
   background: #111111;
 }
 
+.combo-generation-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56rpx;
+  gap: 12rpx;
+  align-items: flex-start;
+  margin-top: 14rpx;
+}
+
 .combo-prompt {
   display: block;
-  margin-top: 14rpx;
   color: #4b4740;
   font-size: 24rpx;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+.mini-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56rpx;
+  height: 56rpx;
+  margin: 0;
+  border-radius: 999rpx;
+  background: #111111;
+  color: #b7ff38;
+  font-size: 28rpx;
+  font-weight: 950;
+  line-height: 1;
 }
 
 .combo-empty {
@@ -251,6 +273,34 @@ button::after {
   word-break: break-all;
 }
 
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14rpx;
+  padding: 22rpx 6rpx 0;
+}
+
+.detail-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  margin: 0;
+  border-radius: 999rpx;
+  background: #111111;
+  color: #b7ff38;
+  font-size: 34rpx;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: 0 10rpx 24rpx rgba(17, 17, 17, 0.12);
+}
+
+.detail-icon-button.danger {
+  background: #fff1f1;
+  color: #c44545;
+}
+
 .shell-card {
   display: flex;
   flex-direction: column;
@@ -284,15 +334,4 @@ button::after {
   font-size: 28rpx;
   font-weight: 950;
   line-height: 76rpx;
-}
-
-.delete-button {
-  height: 78rpx;
-  margin-top: 24rpx;
-  border-radius: 999rpx;
-  background: #241f1a;
-  color: #fffaf3;
-  font-size: 28rpx;
-  font-weight: 900;
-  line-height: 78rpx;
 }

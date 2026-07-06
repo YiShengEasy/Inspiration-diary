@@ -32,7 +32,10 @@
       <view wx:if="{{comboDetail.generations.length}}" class="combo-generation-list">
         <view wx:for="{{comboDetail.generations}}" wx:key="id" class="combo-generation">
           <video src="{{item.videoUrl}}" poster="{{item.posterUrl}}" controls object-fit="contain"></video>
-          <text class="combo-prompt">{{item.promptNote}}</text>
+          <view class="combo-generation-copy">
+            <text class="combo-prompt">{{item.promptNote}}</text>
+            <button class="mini-icon-button" data-url="{{item.videoUrl}}" bindtap="downloadComboVideo">↓</button>
+          </view>
         </view>
       </view>
       <text wx:else class="combo-empty">暂无生成记录</text>
@@ -48,7 +51,10 @@
       <text class="field-value">{{id}}</text>
     </view>
 
-    <button class="delete-button" bindtap="deleteCard">删除</button>
+    <view class="detail-actions">
+      <button class="detail-icon-button" bindtap="downloadCardAsset">↓</button>
+      <button class="detail-icon-button danger" bindtap="deleteCard">×</button>
+    </view>
   </view>
 
   <view wx:else class="shell-card">
