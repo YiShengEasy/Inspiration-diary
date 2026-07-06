@@ -1,7 +1,8 @@
 .editor-page {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: #111111;
   color: #ffffff;
   animation: page-fade 180ms ease-out both;
@@ -108,8 +109,8 @@ button::after {
 
 .editor-canvas {
   position: relative;
-  flex: 1;
-  min-height: 640rpx;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -408,8 +409,11 @@ button::after {
 
 .controls {
   flex: 0 0 auto;
-  padding: 36rpx 32rpx 44rpx;
-  border-radius: 44rpx 44rpx 0 0;
+  max-height: 34vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  border-radius: 38rpx 38rpx 0 0;
   box-sizing: border-box;
   background: #ffffff;
   color: #111111;
@@ -420,7 +424,7 @@ button::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24rpx;
+  gap: 18rpx;
 }
 
 .control-title,
@@ -429,34 +433,34 @@ button::after {
 }
 
 .control-title {
-  font-size: 32rpx;
-  line-height: 38rpx;
+  font-size: 29rpx;
+  line-height: 34rpx;
   font-weight: 900;
 }
 
 .control-desc {
   width: 390rpx;
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  line-height: 30rpx;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  line-height: 26rpx;
   color: #7c8078;
 }
 
 .choose-button {
-  flex: 0 0 152rpx;
-  height: 70rpx;
+  flex: 0 0 142rpx;
+  height: 60rpx;
   border-radius: 999rpx;
   background: #111111;
   color: #b7ff38;
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 900;
 }
 
 .result-row {
-  height: 72rpx;
-  margin-top: 18rpx;
-  padding: 0 22rpx;
-  border-radius: 20rpx;
+  height: 58rpx;
+  margin-top: 12rpx;
+  padding: 0 18rpx;
+  border-radius: 18rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -465,26 +469,26 @@ button::after {
 }
 
 .tool-panel {
-  margin-top: 22rpx;
-  border-radius: 26rpx;
-  padding: 22rpx;
+  margin-top: 16rpx;
+  border-radius: 22rpx;
+  padding: 18rpx;
   background: #f7f7f2;
 }
 
 .panel-label {
   display: block;
-  margin-bottom: 16rpx;
+  margin-bottom: 12rpx;
   color: #111111;
-  font-size: 24rpx;
-  line-height: 30rpx;
+  font-size: 22rpx;
+  line-height: 28rpx;
   font-weight: 950;
 }
 
 .panel-label.small {
-  margin-top: 18rpx;
-  margin-bottom: 12rpx;
+  margin-top: 14rpx;
+  margin-bottom: 10rpx;
   color: #7c8078;
-  font-size: 21rpx;
+  font-size: 19rpx;
 }
 
 .chip-row,
@@ -492,17 +496,17 @@ button::after {
 .palette-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12rpx;
+  gap: 10rpx;
 }
 
 .chip {
-  min-width: 112rpx;
-  height: 58rpx;
+  min-width: 98rpx;
+  height: 50rpx;
   border-radius: 999rpx;
-  padding: 0 20rpx;
+  padding: 0 18rpx;
   background: #ffffff;
   color: #111111;
-  font-size: 22rpx;
+  font-size: 21rpx;
   font-weight: 900;
 }
 
@@ -513,21 +517,21 @@ button::after {
 
 .tool-input {
   width: 100%;
-  height: 72rpx;
+  height: 60rpx;
   box-sizing: border-box;
-  border-radius: 20rpx;
-  padding: 0 20rpx;
+  border-radius: 18rpx;
+  padding: 0 18rpx;
   background: #ffffff;
   color: #111111;
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 850;
 }
 
 .swatch {
-  width: 70rpx;
-  height: 70rpx;
-  border-radius: 24rpx;
-  border: 5rpx solid #ffffff;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 20rpx;
+  border: 4rpx solid #ffffff;
   box-shadow: inset 0 0 0 2rpx rgba(17, 17, 17, 0.08);
 }
 
@@ -537,28 +541,28 @@ button::after {
 
 .copy-row {
   width: 100%;
-  height: 64rpx;
-  margin-top: 16rpx;
-  border-radius: 20rpx;
+  height: 54rpx;
+  margin-top: 12rpx;
+  border-radius: 18rpx;
   background: #111111;
   color: #b7ff38;
-  font-size: 23rpx;
+  font-size: 21rpx;
   font-weight: 950;
 }
 
 .palette-card {
   flex: 1 1 180rpx;
-  min-height: 112rpx;
-  border-radius: 24rpx;
-  padding: 14rpx;
+  min-height: 90rpx;
+  border-radius: 20rpx;
+  padding: 12rpx;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 12rpx;
+  gap: 9rpx;
   align-items: stretch;
   background: #ffffff;
   color: #111111;
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 950;
 }
 
@@ -569,7 +573,7 @@ button::after {
 .palette-preview {
   display: flex;
   overflow: hidden;
-  height: 34rpx;
+  height: 28rpx;
   border-radius: 999rpx;
 }
 
@@ -580,18 +584,18 @@ button::after {
 .rgb-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12rpx;
-  margin-bottom: 14rpx;
+  gap: 10rpx;
+  margin-bottom: 12rpx;
 }
 
 .rgb-row input {
-  height: 72rpx;
-  border-radius: 20rpx;
-  padding: 0 16rpx;
+  height: 60rpx;
+  border-radius: 18rpx;
+  padding: 0 14rpx;
   box-sizing: border-box;
   background: #ffffff;
   color: #111111;
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 900;
   text-align: center;
 }
@@ -599,19 +603,19 @@ button::after {
 .mini-tool-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12rpx;
+  gap: 10rpx;
 }
 
 .mini-tool {
-  min-height: 82rpx;
-  border-radius: 22rpx;
+  min-height: 68rpx;
+  border-radius: 18rpx;
   display: grid;
   grid-template-columns: 36rpx 1fr;
   justify-content: flex-start;
-  padding: 0 18rpx;
+  padding: 0 16rpx;
   background: #ffffff;
   color: #111111;
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 900;
 }
 
@@ -621,8 +625,8 @@ button::after {
 
 .result-label,
 .result-value {
-  font-size: 24rpx;
-  line-height: 30rpx;
+  font-size: 21rpx;
+  line-height: 26rpx;
   font-weight: 800;
 }
 
@@ -632,17 +636,17 @@ button::after {
 
 .editor-actions {
   display: flex;
-  gap: 18rpx;
-  margin-top: 28rpx;
+  gap: 14rpx;
+  margin-top: 18rpx;
 }
 
 .editor-actions button {
   flex: 1;
-  height: 88rpx;
+  height: 70rpx;
   border-radius: 999rpx;
   background: #f2f2ed;
   color: #111111;
-  font-size: 26rpx;
+  font-size: 23rpx;
   font-weight: 900;
 }
 
