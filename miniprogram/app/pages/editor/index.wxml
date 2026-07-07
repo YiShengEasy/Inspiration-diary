@@ -1,30 +1,44 @@
 <view class="editor-page">
   <view class="editor-header">
-    <button class="header-button icon-button" hover-class="button-press" hover-stay-time="80" bindtap="goBack">
+    <button class="header-button icon-button" hover-class="button-press" hover-stay-time="80" bindtap="handleHeaderBack">
       <text class="button-icon back-icon">‹</text>
       <text class="button-text">返回</text>
     </button>
     <view class="header-title">
-      <text class="title">{{toolName}}</text>
-      <text class="subtitle">{{toolDesc}}</text>
+      <text class="title">{{tool === 'pixel' ? (beadStage === 'crop' ? '裁剪图片' : '拼豆图纸') : toolName}}</text>
+      <text class="subtitle">{{tool === 'pixel' ? (beadStage === 'crop' ? '选择生成区域' : beadPatternSummary) : toolDesc}}</text>
     </view>
-    <button wx:if="{{needsImage}}" class="header-button icon-button" hover-class="button-press" hover-stay-time="80" bindtap="chooseImage">
+    <button wx:if="{{tool === 'pixel' && beadStage === 'crop'}}" class="header-button next-button" hover-class="button-press" hover-stay-time="80" bindtap="nextBeadStep">
+      <text>下一步</text>
+    </button>
+    <button wx:elif="{{needsImage}}" class="header-button icon-button" hover-class="button-press" hover-stay-time="80" bindtap="chooseImage">
       <text class="button-icon">↻</text>
-      <text class="button-text">换图</text>
+      <text class="button-text">{{tool === 'pixel' ? '导入' : '换图'}}</text>
     </button>
     <view wx:else class="header-spacer"></view>
   </view>
 
   <view class="editor-canvas">
-    <view wx:if="{{showImagePreview}}" class="preview-frame {{tool === 'crop' ? imageEditorFrameClass : cropRatioClass}} {{tool === 'crop' ? 'image-editor-frame' : ''}}">
-      <image class="preview-image {{tool === 'crop' ? imageEditorImageClass : ''}}" style="{{tool === 'crop' ? imageEditorStyle : ''}}" src="{{displayPath}}" mode="aspectFit" data-src="{{displayPath}}" binderror="onPreviewImageError"></image>
+    <view wx:if="{{showImagePreview}}" class="preview-frame {{tool === 'pixel' ? (beadStage === 'crop' ? beadCropFrameClass : 'bead-pattern-frame') : (tool === 'crop' ? imageEditorFrameClass : cropRatioClass)}} {{tool === 'crop' ? 'image-editor-frame' : ''}} {{tool === 'pixel' && beadStage === 'crop' ? 'pixel-crop-frame image-editor-frame' : ''}}" bindtouchstart="onBeadCropStart" catchtouchmove="onBeadCropMove">
+      <image class="preview-image {{tool === 'crop' ? imageEditorImageClass : ''}}" style="{{tool === 'crop' ? imageEditorStyle : (tool === 'pixel' && beadStage === 'crop' ? beadCropImageStyle : '')}}" src="{{displayPath}}" mode="{{tool === 'pixel' && beadStage === 'pattern' ? 'aspectFit' : 'aspectFit'}}" data-src="{{displayPath}}" binderror="onPreviewImageError"></image>
       <view wx:if="{{previewClass}}" class="effect-overlay {{previewClass}}"></view>
-      <view wx:if="{{tool === 'crop' && imageEditMode === 'crop'}}" class="crop-guides"></view>
-      <view wx:if="{{tool === 'crop'}}" class="edit-border">
+      <view wx:if="{{(tool === 'crop' && imageEditMode === 'crop') || (tool === 'pixel' && beadStage === 'crop')}}" class="crop-guides"></view>
+      <view wx:if="{{tool === 'crop' || (tool === 'pixel' && beadStage === 'crop')}}" class="edit-border">
         <text class="handle top"></text>
         <text class="handle right"></text>
         <text class="handle bottom"></text>
         <text class="handle left"></text>
+      </view>
+      <view wx:if="{{tool === 'pixel' && beadStage === 'pattern'}}" class="bead-left-toolbar">
+        <button bindtap="backToBeadCrop">⌃</button>
+        <button class="disabled">✋</button>
+        <button class="active">✎</button>
+        <button class="disabled">⌫</button>
+        <button class="disabled">▣</button>
+        <text>A1</text>
+      </view>
+      <view wx:if="{{tool === 'pixel' && beadGenerating}}" class="bead-generating">
+        <text>生成中...</text>
       </view>
       <text wx:if="{{tool === 'crop' && operationStatus}}" class="restore-badge">{{operationStatus}}</text>
       <text wx:if="{{tool === 'watermark' && watermarkText}}" class="watermark-mark watermark-{{watermarkPosition}}">{{watermarkText}}</text>
@@ -61,7 +75,7 @@
     </view>
   </view>
 
-  <view class="controls {{tool === 'crop' ? 'image-edit-sheet' : ''}}">
+  <view class="controls {{tool === 'crop' ? 'image-edit-sheet' : ''}} {{tool === 'pixel' ? (beadStage === 'pattern' ? 'bead-result-sheet' : 'bead-crop-sheet') : ''}}">
     <view class="control-head">
       <view>
         <text class="control-title">{{controlTitle}}</text>
@@ -129,7 +143,7 @@
       </view>
     </view>
 
-    <view wx:if="{{tool === 'pixel'}}" class="tool-panel">
+    <view wx:if="{{tool === 'pixel' && beadStage === 'crop'}}" class="tool-panel bead-crop-panel">
       <text class="panel-label">图纸尺寸</text>
       <view class="chip-row">
         <button wx:for="{{pixelOptions}}" wx:key="value" class="chip {{selectedPixel === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setPixel">{{item.label}}格</button>
@@ -141,6 +155,11 @@
         <text>格</text>
       </view>
 
+      <text class="panel-label small">构图比例</text>
+      <view class="chip-row">
+        <button wx:for="{{beadRatioOptions}}" wx:key="value" class="chip {{beadCropRatio === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setBeadCropRatio">{{item.label}}</button>
+      </view>
+
       <text class="panel-label small">品牌色卡</text>
       <view class="chip-row">
         <button wx:for="{{beadBrandOptions}}" wx:key="value" class="chip {{beadBrand === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setBeadBrand">{{item.label}}</button>
@@ -149,6 +168,14 @@
       <text class="panel-label small">颜色数量</text>
       <view class="chip-row">
         <button wx:for="{{beadColorOptions}}" wx:key="*this" class="chip {{beadColorCount === item ? 'active' : ''}}" data-value="{{item}}" bindtap="setBeadColorCount">{{item}} 色</button>
+      </view>
+    </view>
+
+    <view wx:if="{{tool === 'pixel' && beadStage === 'pattern'}}" class="tool-panel bead-pattern-panel">
+      <view class="bead-pattern-actions">
+        <button class="{{beadMirror ? 'active' : ''}}" data-key="mirror" bindtap="toggleBeadOption">镜像</button>
+        <button class="{{beadShowGrid ? 'active' : ''}}" data-key="grid" bindtap="toggleBeadOption">▦ 网格</button>
+        <button class="{{beadShowCodes ? 'active' : ''}}" data-key="codes" bindtap="toggleBeadOption"># 色号</button>
       </view>
 
       <view wx:if="{{beadPatternSummary}}" class="bead-summary">
@@ -160,14 +187,11 @@
           <text>材料清单</text>
           <text>{{beadMaterials.length}} 色</text>
         </view>
-        <scroll-view scroll-y class="bead-material-list">
+        <scroll-view scroll-x class="bead-material-list">
           <view wx:for="{{beadMaterials}}" wx:key="code" class="bead-material">
-            <text class="bead-material-index">{{index + 1}}</text>
             <text class="bead-material-color" style="background: {{item.hex}};"></text>
-            <view>
-              <text class="bead-material-name">{{item.code}} · {{item.name}}</text>
-              <text class="bead-material-count">{{item.count}} 颗</text>
-            </view>
+            <text class="bead-material-name">{{item.code}}</text>
+            <text class="bead-material-count">{{item.count}}</text>
           </view>
         </scroll-view>
       </view>
@@ -257,11 +281,11 @@
       </button>
       <button wx:else hover-class="button-press" hover-stay-time="80" bindtap="saveToAlbum">
         <text class="button-icon">↓</text>
-        <text>{{needsImage ? '保存到相册' : '复制结果'}}</text>
+        <text>{{tool === 'pixel' ? '导出图纸' : (needsImage ? '保存到相册' : '复制结果')}}</text>
       </button>
       <button class="primary" hover-class="button-press" hover-stay-time="80" bindtap="saveToDiary">
         <text class="button-icon">{{tool === 'crop' ? '✓' : '✦'}}</text>
-        <text>{{tool === 'crop' ? '确认保存' : (tool === 'pixel' ? '生成图纸' : (tool === 'colorPick' || tool === 'palette' || tool === 'gradient' ? '保存到灵感' : '完成操作'))}}</text>
+        <text>{{tool === 'crop' ? '确认保存' : (tool === 'pixel' ? (beadStage === 'crop' ? '下一步' : '重新生成') : (tool === 'colorPick' || tool === 'palette' || tool === 'gradient' ? '保存到灵感' : '完成操作'))}}</text>
       </button>
     </view>
   </view>

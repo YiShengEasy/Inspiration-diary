@@ -52,6 +52,16 @@ button::after {
   font-weight: 800;
 }
 
+.next-button {
+  flex-basis: 140rpx;
+  border: 5rpx solid #111111;
+  border-radius: 999rpx;
+  background: #f6a6bd;
+  color: #111111;
+  font-size: 26rpx;
+  font-weight: 950;
+}
+
 .icon-button {
   flex-direction: column;
   gap: 2rpx;
@@ -157,15 +167,41 @@ button::after {
 }
 
 .preview-frame.crop-landscape32,
+.preview-frame.crop-landscape43,
+.preview-frame.crop-wide,
 .preview-frame.expand-landscape43,
 .preview-frame.expand-wide {
   width: 88%;
   height: 360rpx;
 }
 
+.preview-frame.crop-portrait34 {
+  width: 72%;
+  height: 620rpx;
+}
+
 .preview-frame.expand-square {
   width: 78%;
   height: 520rpx;
+}
+
+.preview-frame.pixel-crop-frame {
+  border: 4rpx solid rgba(255, 255, 255, 0.92);
+  border-radius: 0;
+  box-shadow: 0 0 0 999rpx rgba(0, 0, 0, 0.5);
+}
+
+.preview-frame.bead-pattern-frame {
+  width: 94%;
+  height: 100%;
+  max-height: 960rpx;
+  border-radius: 10rpx;
+  background: #efede7;
+  box-shadow: none;
+}
+
+.preview-frame.bead-pattern-frame .preview-image {
+  background: #efede7;
 }
 
 .preview-frame.expand-story {
@@ -307,6 +343,69 @@ button::after {
   inset: 0;
   z-index: 3;
   pointer-events: none;
+}
+
+.bead-left-toolbar {
+  position: absolute;
+  left: 22rpx;
+  top: 36rpx;
+  z-index: 5;
+  width: 92rpx;
+  border: 5rpx solid #111111;
+  border-radius: 999rpx;
+  padding: 16rpx 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20rpx;
+  background: rgba(245, 245, 242, 0.88);
+}
+
+.bead-left-toolbar button {
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 999rpx;
+  background: transparent;
+  color: #777b72;
+  font-size: 28rpx;
+  font-weight: 950;
+}
+
+.bead-left-toolbar button.active {
+  border: 5rpx solid #111111;
+  background: #c9879c;
+  color: #111111;
+}
+
+.bead-left-toolbar button.disabled {
+  opacity: 0.45;
+}
+
+.bead-left-toolbar text {
+  width: 58rpx;
+  height: 58rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14rpx;
+  background: #c96e5a;
+  color: #111111;
+  font-size: 22rpx;
+  font-weight: 950;
+}
+
+.bead-generating {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(17, 17, 17, 0.36);
+  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 950;
 }
 
 .edit-border::before,
@@ -599,6 +698,17 @@ button::after {
   border-radius: 0;
 }
 
+.controls.bead-crop-sheet {
+  max-height: 38vh;
+  border-radius: 0;
+}
+
+.controls.bead-result-sheet {
+  max-height: 36vh;
+  border-radius: 0;
+  background: #f4f4f0;
+}
+
 .image-edit-sheet .control-head {
   display: none;
 }
@@ -651,6 +761,55 @@ button::after {
   border-radius: 22rpx;
   padding: 18rpx;
   background: #f7f7f2;
+}
+
+.bead-crop-panel {
+  background: #ffffff;
+}
+
+.bead-crop-panel .chip {
+  min-width: 116rpx;
+  height: 74rpx;
+  border: 4rpx solid #f0efe9;
+  border-radius: 22rpx;
+  color: #8d90a0;
+  font-size: 24rpx;
+}
+
+.bead-crop-panel .chip.active {
+  border-color: #111111;
+  background: #f6a6bd;
+  color: #111111;
+  box-shadow: 0 8rpx 0 #111111;
+}
+
+.bead-pattern-panel {
+  margin-top: 8rpx;
+  padding: 0;
+  background: transparent;
+}
+
+.bead-pattern-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10rpx;
+}
+
+.bead-pattern-actions button {
+  height: 58rpx;
+  border: 4rpx solid #dedbd1;
+  border-radius: 18rpx;
+  padding: 0 20rpx;
+  background: #ffffff;
+  color: #777b72;
+  font-size: 22rpx;
+  font-weight: 950;
+}
+
+.bead-pattern-actions button.active {
+  border-color: #3a7bd5;
+  background: #eef5ff;
+  color: #244d91;
 }
 
 .image-edit-options {
@@ -1011,9 +1170,8 @@ button::after {
 
 .bead-materials {
   margin-top: 14rpx;
-  border-radius: 20rpx;
-  padding: 14rpx;
-  background: #ffffff;
+  padding: 0;
+  background: transparent;
 }
 
 .bead-material-head {
@@ -1027,35 +1185,33 @@ button::after {
 }
 
 .bead-material-list {
-  height: 220rpx;
+  width: 100%;
+  height: 96rpx;
+  white-space: nowrap;
 }
 
 .bead-material {
-  display: grid;
-  grid-template-columns: 34rpx 38rpx minmax(0, 1fr);
-  gap: 10rpx;
+  display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  min-height: 48rpx;
-  border-top: 1rpx solid #f0efe8;
-}
-
-.bead-material:first-child {
-  border-top: 0;
-}
-
-.bead-material-index {
-  color: #9a8b74;
-  font-size: 19rpx;
-  font-weight: 950;
+  justify-content: center;
+  min-width: 96rpx;
+  height: 86rpx;
+  margin-right: 12rpx;
+  border-radius: 18rpx;
+  background: #ffffff;
+  color: #111111;
+  vertical-align: top;
+  box-shadow: 0 4rpx 14rpx rgba(17, 17, 17, 0.08);
 }
 
 .bead-material-color {
-  width: 30rpx;
-  height: 30rpx;
+  width: 28rpx;
+  height: 20rpx;
   border-radius: 999rpx;
-  border: 3rpx solid #f3f1e8;
+  border: 2rpx solid rgba(17, 17, 17, 0.1);
   box-sizing: border-box;
-  box-shadow: inset 0 0 0 1rpx rgba(17, 17, 17, 0.12);
+  box-shadow: none;
 }
 
 .bead-material-name,
@@ -1064,21 +1220,18 @@ button::after {
 }
 
 .bead-material-name {
-  overflow: hidden;
   color: #111111;
-  font-size: 20rpx;
-  line-height: 24rpx;
-  font-weight: 900;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 23rpx;
+  line-height: 27rpx;
+  font-weight: 950;
 }
 
 .bead-material-count {
-  margin-top: 2rpx;
-  color: #7c8078;
-  font-size: 18rpx;
-  line-height: 22rpx;
-  font-weight: 800;
+  margin-top: 1rpx;
+  color: #111111;
+  font-size: 21rpx;
+  line-height: 25rpx;
+  font-weight: 950;
 }
 
 .tool-input {

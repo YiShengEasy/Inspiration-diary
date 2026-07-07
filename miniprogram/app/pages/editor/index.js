@@ -55,9 +55,18 @@ const filterOptions = [
   { label: "黑白", value: "mono" }
 ];
 const pixelOptions = [
-  { label: "32", value: 32 },
-  { label: "48", value: 48 },
-  { label: "64", value: 64 }
+  { label: "36X", value: 36 },
+  { label: "52X", value: 52 },
+  { label: "72X", value: 72 },
+  { label: "104X", value: 104 },
+  { label: "156X", value: 156 }
+];
+const beadRatioOptions = [
+  { label: "自定义", value: "custom", className: "crop-free" },
+  { label: "1:1", value: "square", className: "crop-square" },
+  { label: "4:3", value: "landscape43", className: "crop-landscape43" },
+  { label: "3:4", value: "portrait34", className: "crop-portrait34" },
+  { label: "16:9", value: "wide", className: "crop-wide" }
 ];
 const beadBrandOptions = [
   { label: "通用", value: "generic" },
@@ -301,7 +310,37 @@ function materialListFromCells(cells, selectedPalette) {
 function clampGridSize(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(8, Math.min(80, parsed));
+  return Math.max(8, Math.min(156, parsed));
+}
+
+function beadRatioValue(value, gridWidth, gridHeight) {
+  if (value === "square") return 1;
+  if (value === "landscape43") return 4 / 3;
+  if (value === "portrait34") return 3 / 4;
+  if (value === "wide") return 16 / 9;
+  return gridWidth / gridHeight;
+}
+
+function beadCropClass(value) {
+  const option = beadRatioOptions.find((item) => item.value === value);
+  return option ? option.className : "crop-free";
+}
+
+function sourceCropRectForRatio(info, ratio, offsetX = 0, offsetY = 0) {
+  const sourceRatio = info.width / info.height;
+  if (Math.abs(sourceRatio - ratio) < 0.01) {
+    return { sx: 0, sy: 0, sw: info.width, sh: info.height };
+  }
+
+  if (sourceRatio > ratio) {
+    const sw = info.height * ratio;
+    const maxX = Math.max(0, info.width - sw);
+    return { sx: Math.max(0, Math.min(maxX, maxX / 2 + offsetX * maxX / 2)), sy: 0, sw, sh: info.height };
+  }
+
+  const sh = info.width / ratio;
+  const maxY = Math.max(0, info.height - sh);
+  return { sx: 0, sy: Math.max(0, Math.min(maxY, maxY / 2 + offsetY * maxY / 2)), sw: info.width, sh };
 }
 
 function extractSwatchesFromPixels(data) {
@@ -347,6 +386,13 @@ function extractSwatchesFromPixels(data) {
 
 function toolState(toolId) {
   const needsImage = IMAGE_TOOLS.has(toolId);
+  if (toolId === "pixel") {
+    return {
+      needsImage,
+      controlTitle: "裁剪图片",
+      controlDesc: "选择生成区域、画板边长和构图比例"
+    };
+  }
   return {
     needsImage,
     controlTitle: needsImage ? "工具操作" : "参数设置",
@@ -391,11 +437,25 @@ Page({
     correctionRulerWidth: 0,
     operationStatus: "",
     selectedFilter: "none",
-    selectedPixel: 48,
-    beadGridWidth: 48,
-    beadGridHeight: 48,
+    selectedPixel: 72,
+    beadStage: "crop",
+    beadGridWidth: 72,
+    beadGridHeight: 72,
+    beadCropRatio: "custom",
+    beadCropFrameClass: "crop-free",
+    beadCropOffsetX: 0,
+    beadCropOffsetY: 0,
+    beadCropDragStartX: 0,
+    beadCropDragStartY: 0,
+    beadCropDragOffsetX: 0,
+    beadCropDragOffsetY: 0,
+    beadCropImageStyle: "transform: scale(1.08);",
     beadBrand: "generic",
-    beadColorCount: 16,
+    beadColorCount: 32,
+    beadGenerating: false,
+    beadShowGrid: true,
+    beadShowCodes: true,
+    beadMirror: false,
     beadPatternPath: "",
     beadMaterials: [],
     beadPatternSummary: "",
@@ -425,6 +485,7 @@ Page({
     correctTicks,
     filterOptions,
     pixelOptions,
+    beadRatioOptions,
     beadBrandOptions,
     beadColorOptions,
     filmOptions,
@@ -444,7 +505,7 @@ Page({
     const tool = getTool(toolId);
     const state = toolState(tool.id);
     const displayPath = filePath || "";
-    this.setData({
+    const nextState = {
       tool: tool.id,
       toolName: tool.name,
       toolDesc: tool.desc,
@@ -456,7 +517,18 @@ Page({
       needsImage: state.needsImage,
       controlTitle: state.controlTitle,
       controlDesc: state.controlDesc
-    });
+    };
+    if (tool.id === "pixel") {
+      Object.assign(nextState, {
+        beadStage: "crop",
+        beadPatternPath: "",
+        beadMaterials: [],
+        beadPatternSummary: "",
+        beadGenerating: false,
+        beadCropFrameClass: beadCropClass(this.data.beadCropRatio)
+      });
+    }
+    this.setData(nextState);
     this.updatePreviewClass();
     this.updateImageEditorClass();
     if (displayPath && shouldExtractPalette(tool.id)) {
@@ -465,10 +537,9 @@ Page({
   },
 
   updatePreviewClass() {
-    const { tool, selectedFilter, selectedPixel, selectedFilm, selectedAi } = this.data;
+    const { tool, selectedFilter, selectedFilm, selectedAi } = this.data;
     let previewClass = "";
     if (tool === "filter") previewClass = `filter-${selectedFilter}`;
-    if (tool === "pixel" && !this.data.beadPatternPath) previewClass = "pixel-medium";
     if (tool === "film") previewClass = `film-${selectedFilm}`;
     if (tool === "ai") previewClass = `ai-${selectedAi}`;
     this.setData({ previewClass });
@@ -528,9 +599,16 @@ Page({
           resultPath: filePath,
           displayPath: filePath,
           showImagePreview: true,
+          beadStage: this.data.tool === "pixel" ? "crop" : this.data.beadStage,
           beadPatternPath: "",
           beadMaterials: [],
-          beadPatternSummary: ""
+          beadPatternSummary: "",
+          beadGenerating: false,
+          beadCropOffsetX: 0,
+          beadCropOffsetY: 0,
+          beadCropImageStyle: "transform: scale(1.08);",
+          controlTitle: this.data.tool === "pixel" ? "裁剪图片" : this.data.controlTitle,
+          controlDesc: this.data.tool === "pixel" ? "选择生成区域、画板边长和构图比例" : this.data.controlDesc
         });
         if (shouldExtractPalette(this.data.tool)) {
           this.extractPalette(filePath);
@@ -586,6 +664,14 @@ Page({
 
   goBack() {
     wx.navigateBack();
+  },
+
+  handleHeaderBack() {
+    if (this.data.tool === "pixel" && this.data.beadStage === "pattern") {
+      this.backToBeadCrop();
+      return;
+    }
+    this.goBack();
   },
 
   setCrop(event) {
@@ -740,16 +826,23 @@ Page({
   },
 
   setPixel(event) {
-    const size = clampGridSize(event.currentTarget.dataset.value, 48);
+    const size = clampGridSize(event.currentTarget.dataset.value, 72);
     this.setData({
       selectedPixel: size,
       beadGridWidth: size,
       beadGridHeight: size,
+      beadStage: "crop",
       beadPatternPath: "",
       beadMaterials: [],
       beadPatternSummary: "",
+      beadGenerating: false,
+      beadCropOffsetX: 0,
+      beadCropOffsetY: 0,
+      beadCropImageStyle: "transform: scale(1.08);",
       resultPath: this.data.filePath,
-      displayPath: this.data.filePath
+      displayPath: this.data.filePath,
+      controlTitle: "裁剪图片",
+      controlDesc: "选择生成区域、画板边长和构图比例"
     });
     this.updatePreviewClass();
   },
@@ -761,23 +854,88 @@ Page({
     this.setData({
       [key]: nextValue,
       selectedPixel: "",
+      beadStage: "crop",
       beadPatternPath: "",
       beadMaterials: [],
       beadPatternSummary: "",
+      beadGenerating: false,
+      beadCropOffsetX: 0,
+      beadCropOffsetY: 0,
+      beadCropImageStyle: "transform: scale(1.08);",
       resultPath: this.data.filePath,
-      displayPath: this.data.filePath
+      displayPath: this.data.filePath,
+      controlTitle: "裁剪图片",
+      controlDesc: "选择生成区域、画板边长和构图比例"
     });
     this.updatePreviewClass();
+  },
+
+  setBeadCropRatio(event) {
+    const value = event.currentTarget.dataset.value || "custom";
+    this.setData({
+      beadCropRatio: value,
+      beadCropFrameClass: beadCropClass(value),
+      beadCropOffsetX: 0,
+      beadCropOffsetY: 0,
+      beadCropImageStyle: "transform: scale(1.08);",
+      beadStage: "crop",
+      beadPatternPath: "",
+      beadMaterials: [],
+      beadPatternSummary: "",
+      beadGenerating: false,
+      resultPath: this.data.filePath,
+      displayPath: this.data.filePath,
+      controlTitle: "裁剪图片",
+      controlDesc: "选择生成区域、画板边长和构图比例"
+    });
+    this.updatePreviewClass();
+  },
+
+  updateBeadCropImageStyle() {
+    const offsetX = Number(this.data.beadCropOffsetX || 0);
+    const offsetY = Number(this.data.beadCropOffsetY || 0);
+    this.setData({
+      beadCropImageStyle: `transform: translate(${Math.round(offsetX * 60)}rpx, ${Math.round(offsetY * 60)}rpx) scale(1.08);`
+    });
+  },
+
+  onBeadCropStart(event) {
+    if (this.data.tool !== "pixel" || this.data.beadStage !== "crop") return;
+    const touch = event.touches && event.touches[0];
+    if (!touch) return;
+    this.setData({
+      beadCropDragStartX: touch.clientX,
+      beadCropDragStartY: touch.clientY,
+      beadCropDragOffsetX: Number(this.data.beadCropOffsetX || 0),
+      beadCropDragOffsetY: Number(this.data.beadCropOffsetY || 0)
+    });
+  },
+
+  onBeadCropMove(event) {
+    if (this.data.tool !== "pixel" || this.data.beadStage !== "crop") return;
+    const touch = event.touches && event.touches[0];
+    if (!touch) return;
+    const nextX = Math.max(-1, Math.min(1, Number(this.data.beadCropDragOffsetX || 0) - (touch.clientX - Number(this.data.beadCropDragStartX || touch.clientX)) / 180));
+    const nextY = Math.max(-1, Math.min(1, Number(this.data.beadCropDragOffsetY || 0) - (touch.clientY - Number(this.data.beadCropDragStartY || touch.clientY)) / 180));
+    this.setData({
+      beadCropOffsetX: nextX,
+      beadCropOffsetY: nextY
+    });
+    this.updateBeadCropImageStyle();
   },
 
   setBeadBrand(event) {
     this.setData({
       beadBrand: event.currentTarget.dataset.value || "generic",
+      beadStage: "crop",
       beadPatternPath: "",
       beadMaterials: [],
       beadPatternSummary: "",
+      beadGenerating: false,
       resultPath: this.data.filePath,
-      displayPath: this.data.filePath
+      displayPath: this.data.filePath,
+      controlTitle: "裁剪图片",
+      controlDesc: "选择生成区域、画板边长和构图比例"
     });
     this.updatePreviewClass();
   },
@@ -786,13 +944,43 @@ Page({
     const count = Number(event.currentTarget.dataset.value || 16);
     this.setData({
       beadColorCount: count,
+      beadStage: "crop",
       beadPatternPath: "",
       beadMaterials: [],
       beadPatternSummary: "",
+      beadGenerating: false,
       resultPath: this.data.filePath,
-      displayPath: this.data.filePath
+      displayPath: this.data.filePath,
+      controlTitle: "裁剪图片",
+      controlDesc: "选择生成区域、画板边长和构图比例"
     });
     this.updatePreviewClass();
+  },
+
+  async toggleBeadOption(event) {
+    const key = event.currentTarget.dataset.key;
+    if (key === "grid") this.setData({ beadShowGrid: !this.data.beadShowGrid });
+    if (key === "codes") this.setData({ beadShowCodes: !this.data.beadShowCodes });
+    if (key === "mirror") this.setData({ beadMirror: !this.data.beadMirror, beadPatternPath: "", beadPatternSummary: "", beadMaterials: [] });
+    if (this.data.beadStage === "pattern") await this.generateBeadPattern();
+  },
+
+  async nextBeadStep() {
+    await this.generateBeadPattern();
+  },
+
+  backToBeadCrop() {
+    this.setData({
+      beadStage: "crop",
+      resultPath: this.data.filePath,
+      displayPath: this.data.filePath,
+      beadPatternPath: "",
+      beadMaterials: [],
+      beadPatternSummary: "",
+      beadGenerating: false,
+      controlTitle: "裁剪图片",
+      controlDesc: "选择生成区域、画板边长和构图比例"
+    });
   },
 
   buildBeadPatternImage() {
@@ -804,14 +992,24 @@ Page({
     const fullPalette = paletteForBrand(this.data.beadBrand);
     const colorLimit = Math.min(Number(this.data.beadColorCount || 16), fullPalette.length);
     const brandLabel = (beadBrandOptions.find((item) => item.value === this.data.beadBrand) || beadBrandOptions[0]).label;
+    const cropRatio = beadRatioValue(this.data.beadCropRatio, gridWidth, gridHeight);
 
     return new Promise((resolve, reject) => {
       wx.getImageInfo({
         src: sourcePath,
         success: (info) => {
+          const cropRect = sourceCropRectForRatio(info, cropRatio, Number(this.data.beadCropOffsetX || 0), Number(this.data.beadCropOffsetY || 0));
           const ctx = wx.createCanvasContext(EDIT_CANVAS_ID, this);
           ctx.clearRect(0, 0, EDIT_CANVAS_SIZE, EDIT_CANVAS_SIZE);
-          ctx.drawImage(info.path, 0, 0, gridWidth, gridHeight);
+          if (this.data.beadMirror) {
+            ctx.save();
+            ctx.translate(gridWidth, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(info.path, cropRect.sx, cropRect.sy, cropRect.sw, cropRect.sh, 0, 0, gridWidth, gridHeight);
+            ctx.restore();
+          } else {
+            ctx.drawImage(info.path, cropRect.sx, cropRect.sy, cropRect.sw, cropRect.sh, 0, 0, gridWidth, gridHeight);
+          }
           ctx.draw(false, () => {
             wx.canvasGetImageData({
               canvasId: EDIT_CANVAS_ID,
@@ -889,7 +1087,7 @@ Page({
                     } else {
                       ctx.fillRect(x, y, cellSize, cellSize);
                     }
-                    if (cellSize >= 15) {
+                    if (this.data.beadShowCodes && cellSize >= 15) {
                       ctx.setFillStyle(luminance(material.hex) > 0.55 ? "#111111" : "#ffffff");
                       ctx.setFontSize(Math.max(8, Math.floor(cellSize * 0.42)));
                       ctx.setTextAlign("center");
@@ -898,7 +1096,7 @@ Page({
                   }
                 }
 
-                if (cellSize >= 10) {
+                if (this.data.beadShowGrid && cellSize >= 10) {
                   ctx.setStrokeStyle("rgba(17,17,17,0.12)");
                   ctx.setLineWidth(1);
                   for (let col = 0; col <= gridWidth; col += 1) {
@@ -978,17 +1176,27 @@ Page({
       return null;
     }
 
+    this.setData({
+      beadStage: "pattern",
+      beadGenerating: true,
+      controlTitle: "拼豆图纸",
+      controlDesc: "查看材料清单，切换网格和色号后导出"
+    });
     wx.showLoading({ title: "正在生成" });
     try {
       const result = await this.buildBeadPatternImage();
       this.setData({
+        beadStage: "pattern",
         beadPatternPath: result.path,
         beadMaterials: result.materials,
         beadPatternSummary: result.summary,
         resultPath: result.path,
         displayPath: result.path,
         showImagePreview: true,
-        previewClass: ""
+        previewClass: "",
+        beadGenerating: false,
+        controlTitle: "拼豆图纸",
+        controlDesc: "查看材料清单，切换网格和色号后导出"
       });
       wx.hideLoading();
       wx.showToast({ title: "图纸已生成", icon: "success" });
@@ -996,6 +1204,12 @@ Page({
     } catch (err) {
       wx.hideLoading();
       console.warn("Generate bead pattern failed:", err);
+      this.setData({
+        beadStage: "crop",
+        beadGenerating: false,
+        controlTitle: "裁剪图片",
+        controlDesc: "选择生成区域、画板边长和构图比例"
+      });
       wx.showToast({ title: err.message || "生成失败", icon: "none" });
       return null;
     }
