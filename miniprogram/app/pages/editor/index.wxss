@@ -54,12 +54,13 @@ button::after {
 
 .next-button {
   flex-basis: 140rpx;
-  border: 5rpx solid #111111;
+  border: 0;
   border-radius: 999rpx;
-  background: #f6a6bd;
-  color: #111111;
+  background: #b7ff38;
+  color: #132006;
   font-size: 26rpx;
   font-weight: 950;
+  box-shadow: 0 10rpx 28rpx rgba(183, 255, 56, 0.16);
 }
 
 .icon-button {
@@ -195,13 +196,13 @@ button::after {
   width: 94%;
   height: 100%;
   max-height: 960rpx;
-  border-radius: 10rpx;
-  background: #efede7;
+  border-radius: 18rpx;
+  background: #f7f7f2;
   box-shadow: none;
 }
 
 .preview-frame.bead-pattern-frame .preview-image {
-  background: #efede7;
+  background: #f7f7f2;
 }
 
 .preview-frame.expand-story {
@@ -351,7 +352,7 @@ button::after {
   top: 36rpx;
   z-index: 5;
   width: 92rpx;
-  border: 5rpx solid #111111;
+  border: 2rpx solid rgba(17, 17, 17, 0.1);
   border-radius: 999rpx;
   padding: 16rpx 0;
   box-sizing: border-box;
@@ -359,7 +360,8 @@ button::after {
   flex-direction: column;
   align-items: center;
   gap: 20rpx;
-  background: rgba(245, 245, 242, 0.88);
+  background: rgba(247, 247, 242, 0.92);
+  box-shadow: 0 18rpx 50rpx rgba(17, 17, 17, 0.18);
 }
 
 .bead-left-toolbar button {
@@ -373,9 +375,8 @@ button::after {
 }
 
 .bead-left-toolbar button.active {
-  border: 5rpx solid #111111;
-  background: #c9879c;
-  color: #111111;
+  background: #111111;
+  color: #b7ff38;
 }
 
 .bead-left-toolbar button.disabled {
@@ -389,8 +390,8 @@ button::after {
   align-items: center;
   justify-content: center;
   border-radius: 14rpx;
-  background: #c96e5a;
-  color: #111111;
+  background: #111111;
+  color: #b7ff38;
   font-size: 22rpx;
   font-weight: 950;
 }
@@ -706,7 +707,7 @@ button::after {
 .controls.bead-result-sheet {
   max-height: 36vh;
   border-radius: 0;
-  background: #f4f4f0;
+  background: #ffffff;
 }
 
 .image-edit-sheet .control-head {
@@ -769,18 +770,18 @@ button::after {
 
 .bead-crop-panel .chip {
   min-width: 116rpx;
-  height: 74rpx;
-  border: 4rpx solid #f0efe9;
-  border-radius: 22rpx;
-  color: #8d90a0;
-  font-size: 24rpx;
+  height: 60rpx;
+  border: 0;
+  border-radius: 999rpx;
+  background: #f2f2ed;
+  color: #7c8078;
+  font-size: 22rpx;
 }
 
 .bead-crop-panel .chip.active {
-  border-color: #111111;
-  background: #f6a6bd;
-  color: #111111;
-  box-shadow: 0 8rpx 0 #111111;
+  background: #111111;
+  color: #b7ff38;
+  box-shadow: none;
 }
 
 .bead-pattern-panel {
@@ -807,9 +808,9 @@ button::after {
 }
 
 .bead-pattern-actions button.active {
-  border-color: #3a7bd5;
-  background: #eef5ff;
-  color: #244d91;
+  border-color: #111111;
+  background: #111111;
+  color: #b7ff38;
 }
 
 .image-edit-options {
