@@ -115,6 +115,26 @@ function updateCachedCardInsightNote(cardId: string, weekId: string, insightNote
   }
 }
 
+function updateCachedCardFavorite(cardId: string, weekId: string | undefined, isFavorite: boolean, favoritedAt: number | null) {
+  const updateCard = (card: ImageCard) => (
+    card.id === cardId ? { ...card, isFavorite, favoritedAt } : card
+  );
+
+  if (weekId) {
+    const existing = activeWeekCardsMemory.get(weekId) || [];
+    const updated = existing.map(updateCard);
+    activeWeekCardsMemory.set(weekId, updated);
+    notifyCardsSubscribers(weekId, updated);
+  }
+
+  const allCards = activeWeekCardsMemory.get("all");
+  if (allCards) {
+    const nextAllCards = allCards.map(updateCard);
+    activeWeekCardsMemory.set("all", nextAllCards);
+    notifyCardsSubscribers("all", nextAllCards);
+  }
+}
+
 /**
  * Real-time or locally notified subscription to image cards for a given week identifier.
  */
@@ -182,6 +202,7 @@ export async function loadAllCardsPage(params: {
   page: number;
   pageSize: number;
   query?: string;
+  favoriteOnly?: boolean;
 }): Promise<PaginatedCardsResult> {
   const page = Math.max(1, params.page);
   const pageSize = Math.max(1, params.pageSize);
@@ -189,9 +210,15 @@ export async function loadAllCardsPage(params: {
   if (!isPostgresMode) {
     const allCards = activeWeekCardsMemory.get("all") || [];
     const q = (params.query || "").trim().toLowerCase();
-    const filtered = q
-      ? allCards.filter((card) => card.terms.some((term) => term.toLowerCase().includes(q)))
-      : allCards;
+    const filtered = allCards.filter((card) => {
+      if (params.favoriteOnly && !card.isFavorite) return false;
+      if (!q) return true;
+      if (card.terms.some((term) => term.toLowerCase().includes(q))) return true;
+      if (card.mdName?.toLowerCase().includes(q)) return true;
+      if (card.mdSummary?.toLowerCase().includes(q)) return true;
+      if (card.insightNote?.toLowerCase().includes(q)) return true;
+      return false;
+    });
     const total = filtered.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const safePage = Math.min(page, totalPages);
@@ -214,6 +241,9 @@ export async function loadAllCardsPage(params: {
     const query = (params.query || "").trim();
     if (query) {
       searchParams.set("q", query);
+    }
+    if (params.favoriteOnly) {
+      searchParams.set("favorite", "true");
     }
 
     const res = await authFetch(`/api/db/cards?${searchParams.toString()}`);
@@ -715,6 +745,34 @@ export async function updateCardInsightNote(cardId: string, weekId: string, insi
       console.error("Firestore updateCardInsightNote error:", err);
     });
   }
+}
+
+export async function updateCardFavorite(cardId: string, weekId: string | undefined, favorite: boolean): Promise<{ isFavorite: boolean; favoritedAt: number | null }> {
+  if (isPostgresMode) {
+    const res = await authFetch(`/api/db/cards/${encodeURIComponent(cardId)}/favorite`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ favorite }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to update favorite: ${res.statusText}`);
+    }
+    const body = await res.json();
+    const next = {
+      isFavorite: Boolean(body.isFavorite),
+      favoritedAt: body.favoritedAt == null ? null : Number(body.favoritedAt),
+    };
+    updateCachedCardFavorite(cardId, weekId, next.isFavorite, next.favoritedAt);
+    return next;
+  }
+
+  const favoritedAt = favorite ? Date.now() : null;
+  await updateDoc(doc(db, "cards", cardId), {
+    isFavorite: favorite,
+    favoritedAt,
+  });
+  updateCachedCardFavorite(cardId, weekId, favorite, favoritedAt);
+  return { isFavorite: favorite, favoritedAt };
 }
 
 /**

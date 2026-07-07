@@ -20,6 +20,8 @@ interface DaySlotProps {
   onZoom: (card: ImageCard) => void;
   onUpdateTerms: (cardId: string, terms: string[]) => void;
   onBookMembershipChanged?: () => void;
+  onToggleFavorite?: (card: ImageCard) => void;
+  favoriteUpdatingCardIds?: Set<string>;
   onBatchUploadStart?: () => void;
   onBatchUploadEnd?: () => void;
 }
@@ -52,6 +54,8 @@ export default function DaySlot({
   onZoom,
   onUpdateTerms,
   onBookMembershipChanged,
+  onToggleFavorite,
+  favoriteUpdatingCardIds,
   onBatchUploadStart,
   onBatchUploadEnd,
 }: DaySlotProps) {
@@ -484,6 +488,8 @@ export default function DaySlot({
                       }}
                       onUpdateTerms={onUpdateTerms}
                       onBookMembershipChanged={onBookMembershipChanged}
+                      onToggleFavorite={onToggleFavorite}
+                      isFavoriteUpdating={favoriteUpdatingCardIds?.has(card.id)}
                     />
                   </motion.div>
                 </div>

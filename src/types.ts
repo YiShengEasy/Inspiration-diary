@@ -15,6 +15,8 @@ export interface ImageCard {
   mdSummary?: string;
   mdName?: string;
   insightNote?: string;
+  isFavorite?: boolean;
+  favoritedAt?: number | null;
   videoAssets?: VideoAsset[];
   imageAssets?: ImageAsset[];
   comboSummary?: ComboSummary;

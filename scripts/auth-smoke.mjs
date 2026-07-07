@@ -29,6 +29,13 @@ async function json(res) {
 const unauth = await request("/api/db/cards?weekId=all&page=1&pageSize=1");
 assert(unauth.status === 401, `expected unauth cards 401, got ${unauth.status}`);
 
+const unauthFavorite = await request("/api/db/cards/missing/favorite", {
+  method: "PUT",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ favorite: true }),
+});
+assert(unauthFavorite.status === 401, `expected unauth favorite 401, got ${unauthFavorite.status}`);
+
 const regA = await request("/api/auth/register", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -132,12 +139,93 @@ const insightSearchBodyA = await json(insightSearchA);
 assert(insightSearchA.ok, `A insight search failed ${insightSearchA.status}: ${JSON.stringify(insightSearchBodyA)}`);
 assert(insightSearchBodyA.total === 1, `expected A insight search total 1, got ${insightSearchBodyA.total}`);
 
+const invalidFavoriteA = await request(`/api/db/cards/${encodeURIComponent(cardId)}/favorite`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json", Cookie: cookieA },
+  body: JSON.stringify({ favorite: "yes" }),
+});
+assert(invalidFavoriteA.status === 400, `expected invalid favorite 400, got ${invalidFavoriteA.status}`);
+
+const favoriteByB = await request(`/api/db/cards/${encodeURIComponent(cardId)}/favorite`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json", Cookie: cookieB },
+  body: JSON.stringify({ favorite: true }),
+});
+assert(favoriteByB.status === 404, `expected B favorite A card 404, got ${favoriteByB.status}`);
+
+const favoriteA = await request(`/api/db/cards/${encodeURIComponent(cardId)}/favorite`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json", Cookie: cookieA },
+  body: JSON.stringify({ favorite: true }),
+});
+const favoriteBodyA = await json(favoriteA);
+assert(favoriteA.ok, `favorite A card failed ${favoriteA.status}: ${JSON.stringify(favoriteBodyA)}`);
+assert(favoriteBodyA.id === cardId, `expected favorite response id ${cardId}, got ${favoriteBodyA.id}`);
+assert(favoriteBodyA.isFavorite === true, "expected favorite response isFavorite true");
+assert(typeof favoriteBodyA.favoritedAt === "number", `expected numeric favoritedAt, got ${favoriteBodyA.favoritedAt}`);
+
+const favoriteSearchA = await request(`/api/db/cards?weekId=all&page=1&pageSize=10&favorite=true&q=${encodeURIComponent(term)}`, {
+  headers: { Cookie: cookieA },
+});
+const favoriteSearchBodyA = await json(favoriteSearchA);
+assert(favoriteSearchA.ok, `A favorite search failed ${favoriteSearchA.status}: ${JSON.stringify(favoriteSearchBodyA)}`);
+assert(favoriteSearchBodyA.total === 1, `expected A favorite search total 1, got ${favoriteSearchBodyA.total}`);
+assert(favoriteSearchBodyA.cards?.[0]?.isFavorite === true, "expected favorite search card to be marked favorite");
+
+const favoriteCurrentWeekA = await request(`/api/db/cards?weekId=2026-W25&favorite=true&q=${encodeURIComponent(term)}`, {
+  headers: { Cookie: cookieA },
+});
+const favoriteCurrentWeekBodyA = await json(favoriteCurrentWeekA);
+assert(favoriteCurrentWeekA.ok, `A current week favorite search failed ${favoriteCurrentWeekA.status}: ${JSON.stringify(favoriteCurrentWeekBodyA)}`);
+assert(Array.isArray(favoriteCurrentWeekBodyA), "expected current week favorite response array");
+assert(favoriteCurrentWeekBodyA.length === 1, `expected current week favorite length 1, got ${favoriteCurrentWeekBodyA.length}`);
+assert(favoriteCurrentWeekBodyA[0]?.id === cardId, `expected current week favorite card ${cardId}, got ${favoriteCurrentWeekBodyA[0]?.id}`);
+
+const favoriteSearchMissA = await request(`/api/db/cards?weekId=all&page=1&pageSize=10&favorite=true&q=${encodeURIComponent(`smoke-cover-only-${suffix}`)}`, {
+  headers: { Cookie: cookieA },
+});
+const favoriteSearchMissBodyA = await json(favoriteSearchMissA);
+assert(favoriteSearchMissA.ok, `A favorite miss search failed ${favoriteSearchMissA.status}: ${JSON.stringify(favoriteSearchMissBodyA)}`);
+assert(favoriteSearchMissBodyA.total === 0, `expected A favorite miss total 0, got ${favoriteSearchMissBodyA.total}`);
+
 const listB = await request(`/api/db/cards?weekId=all&page=1&pageSize=10&q=${encodeURIComponent(term)}`, {
   headers: { Cookie: cookieB },
 });
 const bodyB = await json(listB);
 assert(listB.ok, `list B failed ${listB.status}: ${JSON.stringify(bodyB)}`);
 assert(bodyB.total === 0, `expected B total 0, got ${bodyB.total}`);
+
+const favoriteSearchB = await request(`/api/db/cards?weekId=all&page=1&pageSize=10&favorite=true&q=${encodeURIComponent(term)}`, {
+  headers: { Cookie: cookieB },
+});
+const favoriteSearchBodyB = await json(favoriteSearchB);
+assert(favoriteSearchB.ok, `B favorite search failed ${favoriteSearchB.status}: ${JSON.stringify(favoriteSearchBodyB)}`);
+assert(favoriteSearchBodyB.total === 0, `expected B favorite search total 0, got ${favoriteSearchBodyB.total}`);
+
+const unfavoriteA = await request(`/api/db/cards/${encodeURIComponent(cardId)}/favorite`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json", Cookie: cookieA },
+  body: JSON.stringify({ favorite: false }),
+});
+const unfavoriteBodyA = await json(unfavoriteA);
+assert(unfavoriteA.ok, `unfavorite A card failed ${unfavoriteA.status}: ${JSON.stringify(unfavoriteBodyA)}`);
+assert(unfavoriteBodyA.isFavorite === false, "expected unfavorite response isFavorite false");
+assert(unfavoriteBodyA.favoritedAt === null, `expected null favoritedAt after unfavorite, got ${unfavoriteBodyA.favoritedAt}`);
+
+const favoriteAfterUnfavoriteA = await request(`/api/db/cards?weekId=all&page=1&pageSize=10&favorite=true&q=${encodeURIComponent(term)}`, {
+  headers: { Cookie: cookieA },
+});
+const favoriteAfterUnfavoriteBodyA = await json(favoriteAfterUnfavoriteA);
+assert(favoriteAfterUnfavoriteA.ok, `A favorite after unfavorite failed ${favoriteAfterUnfavoriteA.status}: ${JSON.stringify(favoriteAfterUnfavoriteBodyA)}`);
+assert(favoriteAfterUnfavoriteBodyA.total === 0, `expected favorite total 0 after unfavorite, got ${favoriteAfterUnfavoriteBodyA.total}`);
+
+const regularAfterUnfavoriteA = await request(`/api/db/cards?weekId=all&page=1&pageSize=10&q=${encodeURIComponent(term)}`, {
+  headers: { Cookie: cookieA },
+});
+const regularAfterUnfavoriteBodyA = await json(regularAfterUnfavoriteA);
+assert(regularAfterUnfavoriteA.ok, `A regular after unfavorite failed ${regularAfterUnfavoriteA.status}: ${JSON.stringify(regularAfterUnfavoriteBodyA)}`);
+assert(regularAfterUnfavoriteBodyA.total === 1, `expected regular total 1 after unfavorite, got ${regularAfterUnfavoriteBodyA.total}`);
+assert(regularAfterUnfavoriteBodyA.cards?.[0]?.isFavorite === false, "expected regular card to remain visible and not favorite after unfavorite");
 
 const unauthBooks = await request("/api/db/books");
 assert(unauthBooks.status === 401, `expected unauth books 401, got ${unauthBooks.status}`);

@@ -574,6 +574,8 @@ function mapCardRows(rows: any[], req: express.Request) {
     mdSummary: row.md_summary || "",
     mdName: row.md_name || "",
     insightNote: row.insight_note || "",
+    isFavorite: Boolean(row.is_favorite),
+    favoritedAt: row.favorited_at == null ? null : Number(row.favorited_at),
     videoAssets: mapVideoAssetsValue(row.video_assets, req),
     imageAssets: mapImageAssetsValue(row.image_assets, req),
     comboSummary: (row.type || "image") === "combo" ? {
@@ -787,6 +789,8 @@ if (dbType === "postgres") {
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_summary TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS md_name VARCHAR(255);");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS insight_note TEXT;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false;");
+        await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS favorited_at BIGINT;");
         await client.query(`
           CREATE TABLE IF NOT EXISTS video_assets (
             id VARCHAR(80) PRIMARY KEY,
@@ -905,6 +909,8 @@ if (dbType === "postgres") {
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_created_at ON cards(user_id, created_at DESC);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_week_created_at ON cards(user_id, week_id, created_at);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_photo_uid ON cards(user_id, photo_uid);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_favorite_created_at ON cards(user_id, is_favorite, created_at DESC);");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_cards_user_favorited_at ON cards(user_id, favorited_at DESC);");
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_user_week ON notes(user_id, week_id);");
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_user_key ON settings(user_id, key);");
         await client.query(`
@@ -1449,7 +1455,7 @@ app.post("/api/videos/upload", requirePostgresAuth, videoUpload.single("video"),
     }
 
     const cardResult = await client.query(
-      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
               ${comboSummarySelectSql},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
@@ -2113,7 +2119,7 @@ app.get("/api/db/books", requirePostgresAuth, async (req, res) => {
            SELECT row_to_json(c)
            FROM (
              SELECT c2.id, c2.week_id, c2.day_index, c2.image_url, c2.thumbnail_url, c2.photo_uid, c2.photo_hash,
-                    c2.terms, c2.deco_type, c2.angle, c2.created_at, c2.type, c2.md_content, c2.md_summary, c2.md_name, c2.insight_note,
+                    c2.terms, c2.deco_type, c2.angle, c2.created_at, c2.type, c2.md_content, c2.md_summary, c2.md_name, c2.insight_note, c2.is_favorite, c2.favorited_at,
                     ${comboSummarySelectSqlForC2}
              FROM inspiration_book_cards bc2
              INNER JOIN cards c2 ON c2.id = bc2.card_id AND c2.user_id = $1
@@ -2297,7 +2303,7 @@ app.get("/api/db/books/:bookId/cards", requirePostgresAuth, async (req, res) => 
     const offsetParam = values.length;
     const cardsResult = await pgPool.query(
       `SELECT c.id, c.week_id, c.day_index, c.image_url, c.thumbnail_url, c.photo_uid, c.photo_hash,
-              c.terms, c.deco_type, c.angle, c.created_at, c.type, c.md_content, c.md_summary, c.md_name, c.insight_note,
+              c.terms, c.deco_type, c.angle, c.created_at, c.type, c.md_content, c.md_summary, c.md_name, c.insight_note, c.is_favorite, c.favorited_at,
               ${comboSummarySelectSqlForC},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
@@ -2423,10 +2429,22 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     const userId = authReq.user!.id;
     const weekId = req.query.weekId as string;
+    const favoriteOnly = String(req.query.favorite || "").toLowerCase() === "true";
+    const q = String(req.query.q || "").trim();
 
     if (weekId && weekId !== "all") {
+      const whereClauses: string[] = ["user_id = $1", "week_id = $2"];
+      const values: Array<string | number> = [userId, weekId];
+      if (q) {
+        values.push(`%${q}%`);
+        whereClauses.push(`terms_text ILIKE $${values.length}`);
+      }
+      if (favoriteOnly) {
+        whereClauses.push("is_favorite = true");
+      }
+
       const result = await pgPool.query(
-        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
                 ${comboSummarySelectSql},
                 (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                  FROM video_assets va
@@ -2435,9 +2453,9 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
                  FROM image_assets ia
                  WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
          FROM cards
-         WHERE user_id = $1 AND week_id = $2
+         WHERE ${whereClauses.join(" AND ")}
          ORDER BY day_index ASC, created_at DESC`,
-        [userId, weekId]
+        values
       );
       return res.json(mapCardRows(result.rows, req));
     }
@@ -2446,13 +2464,14 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const rawPageSize = Number.parseInt(String(req.query.pageSize || "12"), 10) || 12;
     const pageSize = Math.min(60, Math.max(1, rawPageSize));
     const offset = (page - 1) * pageSize;
-    const q = String(req.query.q || "").trim();
-
     const whereClauses: string[] = ["user_id = $1"];
     const values: Array<string | number> = [userId];
     if (q) {
       values.push(`%${q}%`);
       whereClauses.push(`terms_text ILIKE $${values.length}`);
+    }
+    if (favoriteOnly) {
+      whereClauses.push("is_favorite = true");
     }
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
@@ -2468,7 +2487,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const offsetParam = values.length;
 
     const result = await pgPool.query(
-      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+      `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
               ${comboSummarySelectSql},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
@@ -2547,7 +2566,7 @@ app.post("/api/db/combo-cards", requirePostgresAuth, async (req: AuthenticatedRe
 
     const cardResult = await pgPool.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
-              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
               ${comboSummarySelectSql},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
@@ -2578,7 +2597,7 @@ app.get("/api/db/cards/:id/combo", requirePostgresAuth, async (req: Authenticate
   try {
     const cardResult = await pgPool.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
-              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
               ${comboSummarySelectSql},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
@@ -2887,7 +2906,7 @@ app.get("/api/db/cards/:id", requirePostgresAuth, async (req: AuthenticatedReque
   try {
     const result = await pgPool.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
-              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note,
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
               ${comboSummarySelectSql},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
@@ -3418,7 +3437,7 @@ app.get("/api/db/cards/:cardId/book-suggestions", requirePostgresAuth, async (re
     const userId = authReq.user!.id;
     const cardResult = await pgPool.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash,
-              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note
+              terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at
        FROM cards
        WHERE id = $1 AND user_id = $2`,
       [req.params.cardId, userId]
@@ -3511,6 +3530,42 @@ app.post("/api/db/cards/:cardId/book-suggestion-feedback", requirePostgresAuth, 
   } catch (err: any) {
     console.error("Error recording book suggestion feedback:", err);
     return res.status(500).json({ error: err.message || "Failed to record book suggestion feedback." });
+  }
+});
+
+app.put("/api/db/cards/:id/favorite", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+
+  const favorite = req.body?.favorite;
+  if (typeof favorite !== "boolean") {
+    return res.status(400).json({ error: "favorite boolean is required." });
+  }
+
+  const favoritedAt = favorite ? Date.now() : null;
+  try {
+    const result = await pgPool.query(
+      `UPDATE cards
+       SET is_favorite = $1, favorited_at = $2
+       WHERE id = $3 AND user_id = $4
+       RETURNING id, is_favorite, favorited_at`,
+      [favorite, favoritedAt, req.params.id, req.user!.id]
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return res.status(404).json({ error: "Card not found" });
+    }
+
+    return res.json({
+      id: row.id,
+      isFavorite: Boolean(row.is_favorite),
+      favoritedAt: row.favorited_at == null ? null : Number(row.favorited_at),
+    });
+  } catch (err: any) {
+    console.error("Error updating card favorite:", err);
+    return res.status(500).json({ error: err.message || "Failed to update favorite" });
   }
 });
 

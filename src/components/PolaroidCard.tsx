@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ImageCard } from "../types";
-import { FileVideo, Layers3, Plus, X } from "lucide-react";
+import { FileVideo, Layers3, Plus, Star, X } from "lucide-react";
 
 interface PolaroidCardProps {
   key?: React.Key;
@@ -10,6 +10,8 @@ interface PolaroidCardProps {
   onZoom: (card: ImageCard) => void;
   onUpdateTerms: (cardId: string, terms: string[]) => void;
   onBookMembershipChanged?: () => void;
+  onToggleFavorite?: (card: ImageCard) => void;
+  isFavoriteUpdating?: boolean;
   deleteCardTitle?: string;
 }
 
@@ -19,6 +21,8 @@ export default function PolaroidCard({
   onDeleteTerm,
   onZoom,
   onUpdateTerms,
+  onToggleFavorite,
+  isFavoriteUpdating = false,
   deleteCardTitle,
 }: PolaroidCardProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -189,6 +193,26 @@ export default function PolaroidCard({
             <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
           </div>
         )}
+
+        {onToggleFavorite ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleFavorite(card);
+            }}
+            disabled={isFavoriteUpdating}
+            className={`absolute -top-2 left-2 z-40 grid h-7 w-7 place-items-center rounded-full border shadow-sm transition-all active:scale-95 disabled:cursor-wait disabled:opacity-60 ${
+              card.isFavorite
+                ? "border-amber-500/40 bg-amber-300 text-stone-950 shadow-amber-900/10 dark:border-amber-200/50 dark:bg-amber-300 dark:text-stone-950"
+                : "border-stone-200 bg-stone-100 text-stone-400 opacity-0 hover:text-amber-700 group-hover/card:opacity-100 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-500 dark:hover:text-amber-200"
+            }`}
+            title={card.isFavorite ? "取消收藏" : "收藏这条灵感"}
+            aria-label={card.isFavorite ? "取消收藏" : "收藏这条灵感"}
+          >
+            <Star size={13} className={card.isFavorite ? "fill-current" : ""} />
+          </button>
+        ) : null}
 
         {/* Delete button of entire Polaroid card */}
         <button

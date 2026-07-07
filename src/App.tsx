@@ -10,6 +10,7 @@ import {
   deleteCard,
   updateCardTerms,
   updateCardInsightNote,
+  updateCardFavorite,
   refreshCards,
   loadSettings,
   saveSettings,
@@ -34,7 +35,7 @@ import CardBookPopover from "./components/CardBookPopover";
 import { ComboCardDetailView } from "./components/ComboCardDetail";
 import LoginScreen from "./components/LoginScreen";
 import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText, Tags, FileVideo, Upload } from "lucide-react";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText, Tags, FileVideo, Upload, Star } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
 import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
@@ -77,6 +78,8 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchScope, setSearchScope] = useState<"current" | "all">("current");
+  const [favoriteOnly, setFavoriteOnly] = useState<boolean>(false);
+  const [favoriteUpdatingCardIds, setFavoriteUpdatingCardIds] = useState<Set<string>>(() => new Set());
   const [mainView, setMainView] = useState<"board" | "books" | "tags">("board");
   const [bookRefreshToken, setBookRefreshToken] = useState<number>(0);
   const [customTagGroups, setCustomTagGroups] = useState<CustomTagGroup[]>([]);
@@ -292,13 +295,14 @@ export default function App() {
     return () => unsubscribe();
   }, [authUser, weekId, searchScope, mainView]);
 
-  const loadHistoricalCardsPage = async (page = allCardsPage) => {
+  const loadHistoricalCardsPage = useCallback(async (page = allCardsPage) => {
     setIsLoadingAllCards(true);
     try {
       const result = await loadAllCardsPage({
         page,
         pageSize: ALL_CARDS_PAGE_SIZE,
         query: searchQuery,
+        favoriteOnly,
       });
       setAllCardsPageCards(result.cards);
       setAllCardsTotal(result.total);
@@ -312,18 +316,18 @@ export default function App() {
     } finally {
       setIsLoadingAllCards(false);
     }
-  };
+  }, [allCardsPage, favoriteOnly, searchQuery]);
 
   useEffect(() => {
     if (!authUser) return;
     if (mainView !== "board") return;
     if (searchScope !== "all") return;
     void loadHistoricalCardsPage(allCardsPage);
-  }, [authUser, mainView, searchScope, allCardsPage, searchQuery]);
+  }, [authUser, mainView, searchScope, allCardsPage, loadHistoricalCardsPage]);
 
   useEffect(() => {
     setAllCardsPage(1);
-  }, [searchQuery, searchScope]);
+  }, [searchQuery, searchScope, favoriteOnly]);
 
   // Fetch / subscribe for notes of the current week
   useEffect(() => {
@@ -1106,6 +1110,12 @@ export default function App() {
     setZoomedCard((current) => current?.id === cardId ? { ...current, insightNote } : current);
   }, []);
 
+  const syncCardFavorite = useCallback((cardId: string, isFavorite: boolean, favoritedAt: number | null) => {
+    setCards((current) => current.map((card) => card.id === cardId ? { ...card, isFavorite, favoritedAt } : card));
+    setAllCardsPageCards((current) => current.map((card) => card.id === cardId ? { ...card, isFavorite, favoritedAt } : card));
+    setZoomedCard((current) => current?.id === cardId ? { ...current, isFavorite, favoritedAt } : current);
+  }, []);
+
   const syncCardVideoAssets = useCallback((card: ImageCard) => {
     setCards((current) => current.map((item) => item.id === card.id ? card : item));
     setAllCardsPageCards((current) => current.map((item) => item.id === card.id ? card : item));
@@ -1117,6 +1127,32 @@ export default function App() {
     setAllCardsPageCards((current) => current.map((item) => item.id === card.id ? card : item));
     setZoomedCard((current) => current?.id === card.id ? card : current);
   }, []);
+
+  const handleToggleFavorite = useCallback(async (card: ImageCard) => {
+    const nextFavorite = !card.isFavorite;
+    const optimisticFavoritedAt = nextFavorite ? Date.now() : null;
+    const previousFavorite = Boolean(card.isFavorite);
+    const previousFavoritedAt = card.favoritedAt ?? null;
+
+    setFavoriteUpdatingCardIds((current) => new Set(current).add(card.id));
+    syncCardFavorite(card.id, nextFavorite, optimisticFavoritedAt);
+    try {
+      const result = await updateCardFavorite(card.id, card.weekId, nextFavorite);
+      syncCardFavorite(card.id, result.isFavorite, result.favoritedAt);
+      if (searchScope === "all") {
+        await loadHistoricalCardsPage(allCardsPage);
+      }
+    } catch (err) {
+      console.error("Failed to update favorite:", err);
+      syncCardFavorite(card.id, previousFavorite, previousFavoritedAt);
+    } finally {
+      setFavoriteUpdatingCardIds((current) => {
+        const next = new Set(current);
+        next.delete(card.id);
+        return next;
+      });
+    }
+  }, [allCardsPage, loadHistoricalCardsPage, searchScope, syncCardFavorite]);
 
   // Populate the active week with gorgeous design mock-up data cards and notes
   const [isInjectingMock, setIsInjectingMock] = useState(false);
@@ -1254,9 +1290,11 @@ export default function App() {
 
   // Dynamically filter cards based on user search query (matching terms/keywords case-insensitively)
   const filteredCards = cards.filter((card) => {
+    if (favoriteOnly && !card.isFavorite) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
     if (card.terms.some((term) => term.toLowerCase().includes(q))) return true;
+    if (card.insightNote?.toLowerCase().includes(q)) return true;
     if (card.type === "md") {
       if (card.mdName?.toLowerCase().includes(q)) return true;
       if (card.mdSummary?.toLowerCase().includes(q)) return true;
@@ -1800,6 +1838,21 @@ export default function App() {
               </button>
             </div>
 
+            <button
+              type="button"
+              onClick={() => setFavoriteOnly((current) => !current)}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-all active:scale-95 ${
+                favoriteOnly
+                  ? "border-amber-500/40 bg-amber-300 text-stone-950 shadow-sm dark:border-amber-200/40 dark:bg-amber-300 dark:text-stone-950"
+                  : "border-stone-200/70 bg-white/70 text-stone-500 hover:text-amber-800 dark:border-stone-700 dark:bg-stone-800/80 dark:text-stone-400 dark:hover:text-amber-200"
+              }`}
+              title={favoriteOnly ? "显示全部灵感" : "只看收藏"}
+              aria-pressed={favoriteOnly}
+            >
+              <Star size={13} className={favoriteOnly ? "fill-current" : ""} />
+              <span>收藏</span>
+            </button>
+
             {searchQuery && (
               <div className="text-xs text-stone-500 dark:text-stone-400 font-serif italic flex items-center gap-1 bg-amber-500/5 px-2.5 py-1.5 border border-amber-500/10 rounded-xl select-none">
                 <span>匹配：</span>
@@ -1926,6 +1979,8 @@ export default function App() {
                           onZoom={setZoomedCard}
                           onUpdateTerms={handleUpdateCardTerms}
                           onBookMembershipChanged={handleBookMembershipChanged}
+                          onToggleFavorite={handleToggleFavorite}
+                          isFavoriteUpdating={favoriteUpdatingCardIds.has(card.id)}
                         />
                       </div>
                     ))}
@@ -1989,6 +2044,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onToggleFavorite={handleToggleFavorite}
+                    favoriteUpdatingCardIds={favoriteUpdatingCardIds}
                     onBatchUploadStart={handleBatchUploadStart}
                     onBatchUploadEnd={handleBatchUploadEnd}
                   />
@@ -2006,6 +2063,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onToggleFavorite={handleToggleFavorite}
+                    favoriteUpdatingCardIds={favoriteUpdatingCardIds}
                     onBatchUploadStart={handleBatchUploadStart}
                     onBatchUploadEnd={handleBatchUploadEnd}
                   />
@@ -2023,6 +2082,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onToggleFavorite={handleToggleFavorite}
+                    favoriteUpdatingCardIds={favoriteUpdatingCardIds}
                     onBatchUploadStart={handleBatchUploadStart}
                     onBatchUploadEnd={handleBatchUploadEnd}
                   />
@@ -2044,6 +2105,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onToggleFavorite={handleToggleFavorite}
+                    favoriteUpdatingCardIds={favoriteUpdatingCardIds}
                     onBatchUploadStart={handleBatchUploadStart}
                     onBatchUploadEnd={handleBatchUploadEnd}
                   />
@@ -2061,6 +2124,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onToggleFavorite={handleToggleFavorite}
+                    favoriteUpdatingCardIds={favoriteUpdatingCardIds}
                     onBatchUploadStart={handleBatchUploadStart}
                     onBatchUploadEnd={handleBatchUploadEnd}
                   />
@@ -2079,6 +2144,8 @@ export default function App() {
                     onZoom={setZoomedCard}
                     onUpdateTerms={handleUpdateCardTerms}
                     onBookMembershipChanged={handleBookMembershipChanged}
+                    onToggleFavorite={handleToggleFavorite}
+                    favoriteUpdatingCardIds={favoriteUpdatingCardIds}
                     onBatchUploadStart={handleBatchUploadStart}
                     onBatchUploadEnd={handleBatchUploadEnd}
                   />
@@ -2598,27 +2665,43 @@ export default function App() {
                             : `${getDayLabelForDayIndex(zoomedCard.dayIndex)} 灵感记录`}
                       </h3>
                     </div>
-                    <div className="relative shrink-0">
+                    <div className="flex shrink-0 items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setIsDetailBookPopoverOpen((current) => !current)}
-                        className={`grid h-9 w-9 place-items-center rounded-full border shadow-sm transition-all active:scale-95 ${
-                          isDetailBookPopoverOpen
-                            ? "border-stone-900/25 bg-stone-900 text-[#fbf7ed] dark:border-amber-200/50 dark:bg-amber-200 dark:text-stone-950"
-                            : "border-stone-900/10 bg-[#fbf7ed] text-stone-700 hover:-translate-y-0.5 hover:border-stone-900/20 hover:bg-white dark:border-white/10 dark:bg-white/[0.07] dark:text-amber-100 dark:hover:border-amber-200/30 dark:hover:bg-white/[0.12]"
+                        onClick={() => void handleToggleFavorite(zoomedCard)}
+                        disabled={favoriteUpdatingCardIds.has(zoomedCard.id)}
+                        className={`grid h-9 w-9 place-items-center rounded-full border shadow-sm transition-all active:scale-95 disabled:cursor-wait disabled:opacity-60 ${
+                          zoomedCard.isFavorite
+                            ? "border-amber-500/40 bg-amber-300 text-stone-950 dark:border-amber-200/50 dark:bg-amber-300 dark:text-stone-950"
+                            : "border-stone-900/10 bg-[#fbf7ed] text-stone-600 hover:-translate-y-0.5 hover:border-amber-700/20 hover:text-amber-800 dark:border-white/10 dark:bg-white/[0.07] dark:text-stone-300 dark:hover:border-amber-200/30 dark:hover:text-amber-200"
                         }`}
-                        title="收录到灵感册"
-                        aria-label="收录到灵感册"
+                        title={zoomedCard.isFavorite ? "取消收藏" : "收藏这条灵感"}
+                        aria-label={zoomedCard.isFavorite ? "取消收藏" : "收藏这条灵感"}
                       >
-                        <BookOpen size={16} />
+                        <Star size={16} className={zoomedCard.isFavorite ? "fill-current" : ""} />
                       </button>
-                      {isDetailBookPopoverOpen ? (
-                        <CardBookPopover
-                          cardId={zoomedCard.id}
-                          onClose={() => setIsDetailBookPopoverOpen(false)}
-                          onChanged={handleBookMembershipChanged}
-                        />
-                      ) : null}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setIsDetailBookPopoverOpen((current) => !current)}
+                          className={`grid h-9 w-9 place-items-center rounded-full border shadow-sm transition-all active:scale-95 ${
+                            isDetailBookPopoverOpen
+                              ? "border-stone-900/25 bg-stone-900 text-[#fbf7ed] dark:border-amber-200/50 dark:bg-amber-200 dark:text-stone-950"
+                              : "border-stone-900/10 bg-[#fbf7ed] text-stone-700 hover:-translate-y-0.5 hover:border-stone-900/20 hover:bg-white dark:border-white/10 dark:bg-white/[0.07] dark:text-amber-100 dark:hover:border-amber-200/30 dark:hover:bg-white/[0.12]"
+                          }`}
+                          title="收录到灵感册"
+                          aria-label="收录到灵感册"
+                        >
+                          <BookOpen size={16} />
+                        </button>
+                        {isDetailBookPopoverOpen ? (
+                          <CardBookPopover
+                            cardId={zoomedCard.id}
+                            onClose={() => setIsDetailBookPopoverOpen(false)}
+                            onChanged={handleBookMembershipChanged}
+                          />
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                   <p className="mt-1.5 font-mono text-[10px] text-stone-400 dark:text-stone-500">
