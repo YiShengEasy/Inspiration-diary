@@ -65,7 +65,7 @@ type UploadTargetOptions = {
 };
 
 export default function App() {
-  const shouldShowMockTools = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK_TOOLS === "true";
+  const shouldShowMockTools = import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK_TOOLS !== "false";
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -1228,6 +1228,7 @@ export default function App() {
   };
 
   const handleClearCurrentWeek = async () => {
+    if (!shouldShowMockTools) return;
     if (!weekId) return;
     setMockSuccessMessage("");
     try {
