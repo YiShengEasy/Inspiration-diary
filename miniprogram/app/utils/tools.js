@@ -21,9 +21,9 @@ const tools = [
   },
   {
     id: "pixel",
-    name: "像素风",
+    name: "拼豆图纸",
     category: "风格",
-    desc: "本地风格转化",
+    desc: "图片转拼豆图纸",
     accent: "lime",
     iconKey: "grid",
     iconText: "▦",

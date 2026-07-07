@@ -130,9 +130,46 @@
     </view>
 
     <view wx:if="{{tool === 'pixel'}}" class="tool-panel">
-      <text class="panel-label">像素强度</text>
+      <text class="panel-label">图纸尺寸</text>
       <view class="chip-row">
-        <button wx:for="{{pixelOptions}}" wx:key="value" class="chip {{selectedPixel === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setPixel">{{item.label}}</button>
+        <button wx:for="{{pixelOptions}}" wx:key="value" class="chip {{selectedPixel === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setPixel">{{item.label}}格</button>
+      </view>
+      <view class="bead-size-row">
+        <input type="number" value="{{beadGridWidth}}" data-axis="width" bindinput="onBeadGridInput" />
+        <text>×</text>
+        <input type="number" value="{{beadGridHeight}}" data-axis="height" bindinput="onBeadGridInput" />
+        <text>格</text>
+      </view>
+
+      <text class="panel-label small">品牌色卡</text>
+      <view class="chip-row">
+        <button wx:for="{{beadBrandOptions}}" wx:key="value" class="chip {{beadBrand === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setBeadBrand">{{item.label}}</button>
+      </view>
+
+      <text class="panel-label small">颜色数量</text>
+      <view class="chip-row">
+        <button wx:for="{{beadColorOptions}}" wx:key="*this" class="chip {{beadColorCount === item ? 'active' : ''}}" data-value="{{item}}" bindtap="setBeadColorCount">{{item}} 色</button>
+      </view>
+
+      <view wx:if="{{beadPatternSummary}}" class="bead-summary">
+        <text>{{beadPatternSummary}}</text>
+      </view>
+
+      <view wx:if="{{beadMaterials.length}}" class="bead-materials">
+        <view class="bead-material-head">
+          <text>材料清单</text>
+          <text>{{beadMaterials.length}} 色</text>
+        </view>
+        <scroll-view scroll-y class="bead-material-list">
+          <view wx:for="{{beadMaterials}}" wx:key="code" class="bead-material">
+            <text class="bead-material-index">{{index + 1}}</text>
+            <text class="bead-material-color" style="background: {{item.hex}};"></text>
+            <view>
+              <text class="bead-material-name">{{item.code}} · {{item.name}}</text>
+              <text class="bead-material-count">{{item.count}} 颗</text>
+            </view>
+          </view>
+        </scroll-view>
       </view>
     </view>
 
@@ -224,7 +261,7 @@
       </button>
       <button class="primary" hover-class="button-press" hover-stay-time="80" bindtap="saveToDiary">
         <text class="button-icon">{{tool === 'crop' ? '✓' : '✦'}}</text>
-        <text>{{tool === 'crop' ? '确认保存' : (tool === 'colorPick' || tool === 'palette' || tool === 'gradient' ? '保存到灵感' : '完成操作')}}</text>
+        <text>{{tool === 'crop' ? '确认保存' : (tool === 'pixel' ? '生成图纸' : (tool === 'colorPick' || tool === 'palette' || tool === 'gradient' ? '保存到灵感' : '完成操作'))}}</text>
       </button>
     </view>
   </view>

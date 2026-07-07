@@ -55,10 +55,59 @@ const filterOptions = [
   { label: "黑白", value: "mono" }
 ];
 const pixelOptions = [
-  { label: "轻微", value: "soft" },
-  { label: "标准", value: "medium" },
-  { label: "强烈", value: "hard" }
+  { label: "32", value: 32 },
+  { label: "48", value: 48 },
+  { label: "64", value: 64 }
 ];
+const beadBrandOptions = [
+  { label: "通用", value: "generic" },
+  { label: "Perler", value: "perler" },
+  { label: "Hama", value: "hama" },
+  { label: "Artkal", value: "artkal" }
+];
+const beadColorOptions = [8, 16, 24, 32];
+const beadPalettes = {
+  generic: [
+    ["G01", "白", "#F8F7F0"], ["G02", "黑", "#151515"], ["G03", "灰", "#8B8B86"], ["G04", "米白", "#EADCC4"],
+    ["G05", "红", "#D93434"], ["G06", "橙", "#F47A25"], ["G07", "黄", "#F7D844"], ["G08", "柠檬绿", "#B7FF38"],
+    ["G09", "草绿", "#38A65A"], ["G10", "青绿", "#33B6A5"], ["G11", "天蓝", "#6CC7E8"], ["G12", "蓝", "#2D67C8"],
+    ["G13", "深蓝", "#1B2F6B"], ["G14", "紫", "#7B55C7"], ["G15", "粉", "#F5A3BC"], ["G16", "棕", "#8A5738"],
+    ["G17", "肤色", "#F1BE93"], ["G18", "酒红", "#8E2441"], ["G19", "薄荷", "#A7E3C1"], ["G20", "浅紫", "#C7B7F4"],
+    ["G21", "深绿", "#1E5D43"], ["G22", "沙色", "#C9A56A"], ["G23", "亮粉", "#FF5D9E"], ["G24", "湖蓝", "#2A9FD6"],
+    ["G25", "深棕", "#4D3027"], ["G26", "浅灰", "#CFCFC8"], ["G27", "珊瑚", "#FF826C"], ["G28", "金黄", "#F3B431"],
+    ["G29", "海军蓝", "#0F243B"], ["G30", "橄榄", "#768B3A"], ["G31", "薰衣草", "#A98ADB"], ["G32", "象牙", "#FFF3D8"]
+  ],
+  perler: [
+    ["P01", "White", "#F7F7F2"], ["P02", "Black", "#111111"], ["P03", "Grey", "#8E8F8A"], ["P04", "Light Grey", "#D7D8D2"],
+    ["P05", "Red", "#D82F36"], ["P06", "Orange", "#F47B28"], ["P07", "Yellow", "#F6D247"], ["P08", "Cheddar", "#F2A22C"],
+    ["P09", "Kiwi Lime", "#A7D94A"], ["P10", "Green", "#2D9B52"], ["P11", "Dark Green", "#1F5A3A"], ["P12", "Turquoise", "#31B7B7"],
+    ["P13", "Light Blue", "#79C9E8"], ["P14", "Blue", "#2D63B8"], ["P15", "Dark Blue", "#1C3675"], ["P16", "Purple", "#7A55B8"],
+    ["P17", "Lavender", "#BBA8DD"], ["P18", "Pink", "#F29AB7"], ["P19", "Hot Coral", "#FF6E68"], ["P20", "Cranapple", "#8C2847"],
+    ["P21", "Tan", "#D5A56F"], ["P22", "Light Brown", "#A66A3D"], ["P23", "Brown", "#6C442C"], ["P24", "Peach", "#F4BC91"],
+    ["P25", "Cream", "#F6E6C8"], ["P26", "Toothpaste", "#A9E3D0"], ["P27", "Plum", "#5D315F"], ["P28", "Rust", "#B85732"],
+    ["P29", "Pastel Yellow", "#F8E58A"], ["P30", "Pastel Green", "#BEE5A2"], ["P31", "Pastel Blue", "#A8D8F0"], ["P32", "Pastel Lavender", "#D1C4E8"]
+  ],
+  hama: [
+    ["H01", "White", "#F6F5EF"], ["H02", "Black", "#151515"], ["H03", "Grey", "#8C8E8B"], ["H04", "Clear Grey", "#C9CCC5"],
+    ["H05", "Red", "#D33535"], ["H06", "Orange", "#EF7624"], ["H07", "Yellow", "#F3D13E"], ["H08", "Beige", "#E3C89D"],
+    ["H09", "Light Green", "#9FD660"], ["H10", "Green", "#2D944E"], ["H11", "Dark Green", "#245A3F"], ["H12", "Turquoise", "#37ADAE"],
+    ["H13", "Light Blue", "#75C2DD"], ["H14", "Blue", "#2E64B4"], ["H15", "Dark Blue", "#23376D"], ["H16", "Purple", "#754AA6"],
+    ["H17", "Lilac", "#BEA5D6"], ["H18", "Pink", "#F2A1B8"], ["H19", "Cerise", "#D94478"], ["H20", "Burgundy", "#822A3E"],
+    ["H21", "Brown", "#744829"], ["H22", "Light Brown", "#AD7141"], ["H23", "Skin", "#F0BD92"], ["H24", "Cream", "#F5E8CD"],
+    ["H25", "Pastel Pink", "#F6C7D4"], ["H26", "Pastel Blue", "#B5DAE8"], ["H27", "Pastel Green", "#C9E4B0"], ["H28", "Olive", "#788945"],
+    ["H29", "Petrol", "#1F6E7B"], ["H30", "Gold", "#D9A441"], ["H31", "Silver", "#B5B7B2"], ["H32", "Claret", "#64344C"]
+  ],
+  artkal: [
+    ["A01", "White", "#F8F7F1"], ["A02", "Black", "#111111"], ["A03", "Cool Grey", "#90938E"], ["A04", "Warm Grey", "#BDB6AA"],
+    ["A05", "Bright Red", "#E13538"], ["A06", "Tomato", "#F35F43"], ["A07", "Orange", "#F38628"], ["A08", "Yellow", "#F7D94A"],
+    ["A09", "Lime", "#B8E145"], ["A10", "Green", "#34A95B"], ["A11", "Emerald", "#19805B"], ["A12", "Mint", "#91E0BC"],
+    ["A13", "Cyan", "#38BDE0"], ["A14", "Blue", "#2E6FD0"], ["A15", "Navy", "#183970"], ["A16", "Violet", "#6F50BD"],
+    ["A17", "Lavender", "#C2B4EA"], ["A18", "Rose", "#F39CBC"], ["A19", "Magenta", "#D93B8A"], ["A20", "Wine", "#84304F"],
+    ["A21", "Skin", "#F2C09A"], ["A22", "Tan", "#D1A16F"], ["A23", "Coffee", "#8A5735"], ["A24", "Chocolate", "#543329"],
+    ["A25", "Ivory", "#FFF0CE"], ["A26", "Aqua", "#7AD6D1"], ["A27", "Sky", "#A7D9F4"], ["A28", "Coral", "#FF836F"],
+    ["A29", "Olive", "#7C8B42"], ["A30", "Teal", "#176F78"], ["A31", "Pale Yellow", "#F7ECA0"], ["A32", "Pale Pink", "#F8C9DA"]
+  ]
+};
 const filmOptions = [
   { label: "暖调", value: "warm" },
   { label: "冷调", value: "cool" },
@@ -213,6 +262,48 @@ function colorDistance(a, b) {
   );
 }
 
+function paletteForBrand(brand) {
+  const palette = beadPalettes[brand] || beadPalettes.generic;
+  return palette.map(([code, name, hex]) => ({ code, name, hex }));
+}
+
+function nearestBeadColor(rgb, palette) {
+  let best = palette[0];
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const item of palette) {
+    const target = hexToRgb(item.hex);
+    if (!target) continue;
+    const distance = Math.pow(rgb.r - target.r, 2) + Math.pow(rgb.g - target.g, 2) + Math.pow(rgb.b - target.b, 2);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = item;
+    }
+  }
+  return best;
+}
+
+function materialListFromCells(cells, selectedPalette) {
+  const bucket = {};
+  for (const code of cells) {
+    bucket[code] = (bucket[code] || 0) + 1;
+  }
+
+  return selectedPalette
+    .map((item, index) => ({
+      ...item,
+      index: index + 1,
+      count: bucket[item.code] || 0
+    }))
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count);
+}
+
+function clampGridSize(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(8, Math.min(80, parsed));
+}
+
 function extractSwatchesFromPixels(data) {
   const buckets = {};
   for (let index = 0; index < data.length; index += 16) {
@@ -300,7 +391,14 @@ Page({
     correctionRulerWidth: 0,
     operationStatus: "",
     selectedFilter: "none",
-    selectedPixel: "medium",
+    selectedPixel: 48,
+    beadGridWidth: 48,
+    beadGridHeight: 48,
+    beadBrand: "generic",
+    beadColorCount: 16,
+    beadPatternPath: "",
+    beadMaterials: [],
+    beadPatternSummary: "",
     selectedFilm: "warm",
     watermarkText: "Inspiration Diary",
     watermarkPosition: "rb",
@@ -327,6 +425,8 @@ Page({
     correctTicks,
     filterOptions,
     pixelOptions,
+    beadBrandOptions,
+    beadColorOptions,
     filmOptions,
     watermarkPositions,
     aiOptions,
@@ -368,7 +468,7 @@ Page({
     const { tool, selectedFilter, selectedPixel, selectedFilm, selectedAi } = this.data;
     let previewClass = "";
     if (tool === "filter") previewClass = `filter-${selectedFilter}`;
-    if (tool === "pixel") previewClass = `pixel-${selectedPixel}`;
+    if (tool === "pixel" && !this.data.beadPatternPath) previewClass = "pixel-medium";
     if (tool === "film") previewClass = `film-${selectedFilm}`;
     if (tool === "ai") previewClass = `ai-${selectedAi}`;
     this.setData({ previewClass });
@@ -427,7 +527,10 @@ Page({
           filePath,
           resultPath: filePath,
           displayPath: filePath,
-          showImagePreview: true
+          showImagePreview: true,
+          beadPatternPath: "",
+          beadMaterials: [],
+          beadPatternSummary: ""
         });
         if (shouldExtractPalette(this.data.tool)) {
           this.extractPalette(filePath);
@@ -637,8 +740,265 @@ Page({
   },
 
   setPixel(event) {
-    this.setData({ selectedPixel: event.currentTarget.dataset.value || "medium" });
+    const size = clampGridSize(event.currentTarget.dataset.value, 48);
+    this.setData({
+      selectedPixel: size,
+      beadGridWidth: size,
+      beadGridHeight: size,
+      beadPatternPath: "",
+      beadMaterials: [],
+      beadPatternSummary: "",
+      resultPath: this.data.filePath,
+      displayPath: this.data.filePath
+    });
     this.updatePreviewClass();
+  },
+
+  onBeadGridInput(event) {
+    const axis = event.currentTarget.dataset.axis;
+    const key = axis === "height" ? "beadGridHeight" : "beadGridWidth";
+    const nextValue = clampGridSize(event.detail.value, this.data[key] || 48);
+    this.setData({
+      [key]: nextValue,
+      selectedPixel: "",
+      beadPatternPath: "",
+      beadMaterials: [],
+      beadPatternSummary: "",
+      resultPath: this.data.filePath,
+      displayPath: this.data.filePath
+    });
+    this.updatePreviewClass();
+  },
+
+  setBeadBrand(event) {
+    this.setData({
+      beadBrand: event.currentTarget.dataset.value || "generic",
+      beadPatternPath: "",
+      beadMaterials: [],
+      beadPatternSummary: "",
+      resultPath: this.data.filePath,
+      displayPath: this.data.filePath
+    });
+    this.updatePreviewClass();
+  },
+
+  setBeadColorCount(event) {
+    const count = Number(event.currentTarget.dataset.value || 16);
+    this.setData({
+      beadColorCount: count,
+      beadPatternPath: "",
+      beadMaterials: [],
+      beadPatternSummary: "",
+      resultPath: this.data.filePath,
+      displayPath: this.data.filePath
+    });
+    this.updatePreviewClass();
+  },
+
+  buildBeadPatternImage() {
+    const sourcePath = this.data.filePath;
+    if (!sourcePath) return Promise.reject(new Error("请先选择图片"));
+
+    const gridWidth = clampGridSize(this.data.beadGridWidth, 48);
+    const gridHeight = clampGridSize(this.data.beadGridHeight, 48);
+    const fullPalette = paletteForBrand(this.data.beadBrand);
+    const colorLimit = Math.min(Number(this.data.beadColorCount || 16), fullPalette.length);
+    const brandLabel = (beadBrandOptions.find((item) => item.value === this.data.beadBrand) || beadBrandOptions[0]).label;
+
+    return new Promise((resolve, reject) => {
+      wx.getImageInfo({
+        src: sourcePath,
+        success: (info) => {
+          const ctx = wx.createCanvasContext(EDIT_CANVAS_ID, this);
+          ctx.clearRect(0, 0, EDIT_CANVAS_SIZE, EDIT_CANVAS_SIZE);
+          ctx.drawImage(info.path, 0, 0, gridWidth, gridHeight);
+          ctx.draw(false, () => {
+            wx.canvasGetImageData({
+              canvasId: EDIT_CANVAS_ID,
+              x: 0,
+              y: 0,
+              width: gridWidth,
+              height: gridHeight,
+              success: (res) => {
+                const pixels = res.data || [];
+                const sampled = [];
+                const firstPassCounts = {};
+                for (let index = 0; index < pixels.length; index += 4) {
+                  const alpha = pixels[index + 3];
+                  const rgb = alpha < 30
+                    ? { r: 248, g: 247, b: 240 }
+                    : { r: pixels[index], g: pixels[index + 1], b: pixels[index + 2] };
+                  const nearest = nearestBeadColor(rgb, fullPalette);
+                  sampled.push(rgb);
+                  firstPassCounts[nearest.code] = (firstPassCounts[nearest.code] || 0) + 1;
+                }
+
+                const selectedCodes = Object.entries(firstPassCounts)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, colorLimit)
+                  .map(([code]) => code);
+                const selectedPalette = selectedCodes
+                  .map((code) => fullPalette.find((item) => item.code === code))
+                  .filter(Boolean);
+                const palette = selectedPalette.length ? selectedPalette : fullPalette.slice(0, colorLimit);
+                const cells = sampled.map((rgb) => nearestBeadColor(rgb, palette).code);
+                const materials = materialListFromCells(cells, palette);
+                const materialByCode = materials.reduce((map, item, index) => {
+                  map[item.code] = { ...item, index: index + 1 };
+                  return map;
+                }, {});
+                const totalCount = gridWidth * gridHeight;
+
+                ctx.clearRect(0, 0, EDIT_CANVAS_SIZE, EDIT_CANVAS_SIZE);
+                ctx.setFillStyle("#f8f5ee");
+                ctx.fillRect(0, 0, EDIT_CANVAS_SIZE, EDIT_CANVAS_SIZE);
+
+                ctx.setFillStyle("#111111");
+                ctx.setFontSize(34);
+                ctx.setTextAlign("left");
+                ctx.fillText("拼豆图纸", 32, 54);
+                ctx.setFontSize(20);
+                ctx.setFillStyle("#777b72");
+                ctx.fillText(`${gridWidth} x ${gridHeight} 格 · ${brandLabel} · ${materials.length} 色 · ${totalCount} 颗`, 32, 84);
+
+                const maxGridWidth = 896;
+                const maxGridHeight = 640;
+                const cellSize = Math.max(4, Math.floor(Math.min(maxGridWidth / gridWidth, maxGridHeight / gridHeight)));
+                const gridPixelWidth = cellSize * gridWidth;
+                const gridPixelHeight = cellSize * gridHeight;
+                const gridX = Math.round((EDIT_CANVAS_SIZE - gridPixelWidth) / 2);
+                const gridY = 108;
+
+                ctx.setFillStyle("#ffffff");
+                ctx.fillRect(gridX - 10, gridY - 10, gridPixelWidth + 20, gridPixelHeight + 20);
+                ctx.setStrokeStyle("#e2dccd");
+                ctx.setLineWidth(2);
+                ctx.strokeRect(gridX - 10, gridY - 10, gridPixelWidth + 20, gridPixelHeight + 20);
+
+                for (let row = 0; row < gridHeight; row += 1) {
+                  for (let col = 0; col < gridWidth; col += 1) {
+                    const code = cells[row * gridWidth + col];
+                    const material = materialByCode[code] || palette[0];
+                    const x = gridX + col * cellSize;
+                    const y = gridY + row * cellSize;
+                    ctx.setFillStyle(material.hex);
+                    if (cellSize >= 8) {
+                      ctx.beginPath();
+                      ctx.arc(x + cellSize / 2, y + cellSize / 2, Math.max(2, cellSize * 0.42), 0, Math.PI * 2);
+                      ctx.fill();
+                    } else {
+                      ctx.fillRect(x, y, cellSize, cellSize);
+                    }
+                    if (cellSize >= 15) {
+                      ctx.setFillStyle(luminance(material.hex) > 0.55 ? "#111111" : "#ffffff");
+                      ctx.setFontSize(Math.max(8, Math.floor(cellSize * 0.42)));
+                      ctx.setTextAlign("center");
+                      ctx.fillText(String(material.index || ""), x + cellSize / 2, y + cellSize * 0.66);
+                    }
+                  }
+                }
+
+                if (cellSize >= 10) {
+                  ctx.setStrokeStyle("rgba(17,17,17,0.12)");
+                  ctx.setLineWidth(1);
+                  for (let col = 0; col <= gridWidth; col += 1) {
+                    const x = gridX + col * cellSize;
+                    ctx.beginPath();
+                    ctx.moveTo(x, gridY);
+                    ctx.lineTo(x, gridY + gridPixelHeight);
+                    ctx.stroke();
+                  }
+                  for (let row = 0; row <= gridHeight; row += 1) {
+                    const y = gridY + row * cellSize;
+                    ctx.beginPath();
+                    ctx.moveTo(gridX, y);
+                    ctx.lineTo(gridX + gridPixelWidth, y);
+                    ctx.stroke();
+                  }
+                }
+
+                const legendY = Math.min(gridY + gridPixelHeight + 38, 790);
+                ctx.setTextAlign("left");
+                ctx.setFillStyle("#111111");
+                ctx.setFontSize(24);
+                ctx.fillText("材料清单", 32, legendY);
+                ctx.setFontSize(18);
+                const legendItems = materials.slice(0, 24);
+                const columnWidth = 224;
+                const rowHeight = 30;
+                legendItems.forEach((item, index) => {
+                  const col = index % 4;
+                  const row = Math.floor(index / 4);
+                  const x = 32 + col * columnWidth;
+                  const y = legendY + 30 + row * rowHeight;
+                  ctx.setFillStyle(item.hex);
+                  ctx.fillRect(x, y - 18, 20, 20);
+                  ctx.setStrokeStyle("rgba(17,17,17,0.18)");
+                  ctx.strokeRect(x, y - 18, 20, 20);
+                  ctx.setFillStyle("#111111");
+                  ctx.fillText(`${index + 1}. ${item.code} ${item.count}`, x + 28, y);
+                });
+                if (materials.length > legendItems.length) {
+                  ctx.setFillStyle("#777b72");
+                  ctx.fillText(`另有 ${materials.length - legendItems.length} 色请查看页面清单`, 32, 944);
+                }
+
+                ctx.draw(false, () => {
+                  wx.canvasToTempFilePath({
+                    canvasId: EDIT_CANVAS_ID,
+                    x: 0,
+                    y: 0,
+                    width: EDIT_CANVAS_SIZE,
+                    height: EDIT_CANVAS_SIZE,
+                    destWidth: EDIT_CANVAS_SIZE,
+                    destHeight: EDIT_CANVAS_SIZE,
+                    fileType: "png",
+                    quality: 1,
+                    success: (output) => resolve({
+                      path: output.tempFilePath,
+                      materials,
+                      summary: `${gridWidth}x${gridHeight} · ${brandLabel} · ${materials.length}色 · ${totalCount}颗`
+                    }),
+                    fail: (err) => reject(new Error(err.errMsg || "导出图纸失败"))
+                  }, this);
+                });
+              },
+              fail: (err) => reject(new Error(err.errMsg || "读取像素失败"))
+            });
+          });
+        },
+        fail: (err) => reject(new Error(err.errMsg || "读取图片失败"))
+      });
+    });
+  },
+
+  async generateBeadPattern() {
+    if (!this.data.filePath) {
+      wx.showToast({ title: "请先选择图片", icon: "none" });
+      return null;
+    }
+
+    wx.showLoading({ title: "正在生成" });
+    try {
+      const result = await this.buildBeadPatternImage();
+      this.setData({
+        beadPatternPath: result.path,
+        beadMaterials: result.materials,
+        beadPatternSummary: result.summary,
+        resultPath: result.path,
+        displayPath: result.path,
+        showImagePreview: true,
+        previewClass: ""
+      });
+      wx.hideLoading();
+      wx.showToast({ title: "图纸已生成", icon: "success" });
+      return result.path;
+    } catch (err) {
+      wx.hideLoading();
+      console.warn("Generate bead pattern failed:", err);
+      wx.showToast({ title: err.message || "生成失败", icon: "none" });
+      return null;
+    }
   },
 
   setFilm(event) {
@@ -729,8 +1089,8 @@ Page({
     this.applyTool(toolId);
   },
 
-  saveToAlbum() {
-    const path = this.data.resultPath || this.data.filePath;
+  async saveToAlbum() {
+    let path = this.data.resultPath || this.data.filePath;
     if (this.data.needsImage && !path) {
       wx.showToast({ title: "请先选择图片", icon: "none" });
       return;
@@ -739,6 +1099,11 @@ Page({
     if (!this.data.needsImage) {
       wx.showToast({ title: "结果已可复制使用", icon: "none" });
       return;
+    }
+
+    if (this.data.tool === "pixel") {
+      path = this.data.beadPatternPath || await this.generateBeadPattern();
+      if (!path) return;
     }
 
     wx.saveImageToPhotosAlbum({
@@ -891,6 +1256,11 @@ Page({
 
     if (isImageEditorTool(this.data.tool)) {
       await this.saveEditedImageToAlbum();
+      return;
+    }
+
+    if (this.data.tool === "pixel") {
+      await this.generateBeadPattern();
       return;
     }
 
