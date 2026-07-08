@@ -109,15 +109,16 @@ STAGING="/tmp/inspiration-diary-release-$TIMESTAMP"
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
 tar -xzf "/tmp/$ARCHIVE_NAME" -C "$STAGING"
-rsync -a --delete \
-  --exclude='.env' \
-  --exclude='.env.local' \
-  --exclude='.env.production' \
-  --exclude='.env.production.bak-*' \
-  --exclude='backups' \
-  --exclude='node_modules' \
-  --exclude='dist' \
-  "$STAGING/" "$PROD_DIR/"
+find "$PROD_DIR" -mindepth 1 -maxdepth 1 \
+  ! -name '.env' \
+  ! -name '.env.local' \
+  ! -name '.env.production' \
+  ! -name '.env.production.bak-*' \
+  ! -name 'backups' \
+  ! -name 'node_modules' \
+  ! -name 'dist' \
+  -exec rm -rf {} +
+cp -a "$STAGING"/. "$PROD_DIR"/
 rm -rf "$STAGING" "/tmp/$ARCHIVE_NAME"
 cd "$PROD_DIR"
 npm ci
