@@ -62,7 +62,7 @@ tar -czf "$DIST_ARCHIVE" dist
 
 echo "Checking remote service..."
 ssh -i "$SSH_KEY" -o BatchMode=yes "$REMOTE" \
-  "test -d '$PROD_DIR' && command -v pg_dump >/dev/null && command -v psql >/dev/null && systemctl is-active '$PROD_SERVICE'"
+  "test -d '$PROD_DIR' && command -v pg_dump >/dev/null && command -v psql >/dev/null && systemctl cat '$PROD_SERVICE' >/dev/null"
 
 echo "Creating remote source and database backups..."
 ssh -i "$SSH_KEY" -o BatchMode=yes "$REMOTE" bash -s -- "$PROD_DIR" "$TIMESTAMP" <<'REMOTE_BACKUP'
@@ -100,7 +100,7 @@ scp -i "$SSH_KEY" "$DIST_ARCHIVE" "$REMOTE:/tmp/$(basename "$DIST_ARCHIVE")"
 rm -f "$ARCHIVE"
 rm -f "$DIST_ARCHIVE"
 
-echo "Installing production dependencies and deploying local build on remote..."
+echo "Deploying local build on remote..."
 ssh -i "$SSH_KEY" -o BatchMode=yes "$REMOTE" bash -s -- "$PROD_DIR" "$PROD_SERVICE" "$VERSION" "$COMMIT" "$TIMESTAMP" "$(basename "$ARCHIVE")" "$(basename "$DIST_ARCHIVE")" <<'REMOTE_DEPLOY'
 set -euo pipefail
 PROD_DIR="$1"
@@ -128,7 +128,6 @@ rm -rf "$PROD_DIR/dist"
 tar -xzf "/tmp/$DIST_ARCHIVE_NAME" -C "$PROD_DIR"
 rm -rf "$STAGING" "/tmp/$ARCHIVE_NAME" "/tmp/$DIST_ARCHIVE_NAME"
 cd "$PROD_DIR"
-npm install --omit=dev --no-audit --no-fund
 cat > .release-info.json <<JSON
 {
   "version": "$VERSION",

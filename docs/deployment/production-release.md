@@ -44,10 +44,9 @@ PROD_HOST=223.6.255.128 PROD_USER=ecs-user npm run release:prod
 8. Uploads the source archive and the locally built `dist` archive to the server.
 9. Syncs source into the app directory, preserving env files, backups, and `node_modules`.
 10. Extracts the local `dist` build on the server.
-11. Runs `npm install --omit=dev --no-audit --no-fund` on the server for runtime dependencies.
-12. Writes `.release-info.json` on the server.
-13. Restarts `inspiration-diary.service`.
-14. Checks the public homepage returns HTTP 200.
+11. Writes `.release-info.json` on the server.
+12. Restarts `inspiration-diary.service`.
+13. Checks the public homepage returns HTTP 200.
 
 ## Rollback
 
