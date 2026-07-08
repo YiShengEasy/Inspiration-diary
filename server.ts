@@ -327,6 +327,27 @@ function absoluteUrl(value: string | null | undefined, req: express.Request): st
 }
 
 const IMAGE_URL_TTL_SECONDS = Math.max(60, Number.parseInt(process.env.IMAGE_URL_TTL_SECONDS || "900", 10) || 900);
+const signablePathPrefixes = ["/api/photos/", "/api/objects/", "/api/videos/", "/api/images/", "/api/combo-images/", "/api/combo-generations/"];
+
+function isSignableInternalPath(pathname: string): boolean {
+  return signablePathPrefixes.some((prefix) => pathname.startsWith(prefix));
+}
+
+function normalizeInternalProxyUrl(value: string | null | undefined): string {
+  if (!value) return "";
+  if (value.startsWith("/")) {
+    const [pathname] = value.split("?");
+    return isSignableInternalPath(pathname) ? pathname : value;
+  }
+  if (!/^https?:\/\//i.test(value)) return value;
+
+  try {
+    const url = new URL(value);
+    return isSignableInternalPath(url.pathname) ? url.pathname : value;
+  } catch {
+    return value;
+  }
+}
 
 function getImageSigningSecret(): string {
   return (
@@ -371,11 +392,12 @@ function signedImageUrl(value: string | null | undefined, req: express.Request):
   }
 
   const requestOrigin = new URL(origin);
-  const signablePathPrefixes = ["/api/photos/", "/api/objects/", "/api/videos/", "/api/images/", "/api/combo-images/", "/api/combo-generations/"];
-  if (url.origin !== requestOrigin.origin || !signablePathPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
+  if (!isSignableInternalPath(url.pathname)) {
     return resolved;
   }
 
+  url.protocol = requestOrigin.protocol;
+  url.host = requestOrigin.host;
   const expiresAt = Date.now() + IMAGE_URL_TTL_SECONDS * 1000;
   url.searchParams.delete("miniToken");
   url.searchParams.delete("mini_session");
@@ -791,6 +813,16 @@ if (dbType === "postgres") {
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS insight_note TEXT;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false;");
         await client.query("ALTER TABLE cards ADD COLUMN IF NOT EXISTS favorited_at BIGINT;");
+        await client.query(`
+          UPDATE cards
+          SET image_url = split_part(regexp_replace(image_url, '^https?://[^/]+', ''), '?', 1)
+          WHERE image_url ~ '^https?://[^/]+/api/(photos|objects|videos|images|combo-images|combo-generations)/';
+        `);
+        await client.query(`
+          UPDATE cards
+          SET thumbnail_url = split_part(regexp_replace(thumbnail_url, '^https?://[^/]+', ''), '?', 1)
+          WHERE thumbnail_url ~ '^https?://[^/]+/api/(photos|objects|videos|images|combo-images|combo-generations)/';
+        `);
         await client.query(`
           CREATE TABLE IF NOT EXISTS video_assets (
             id VARCHAR(80) PRIMARY KEY,
@@ -2858,6 +2890,8 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const authReq = req as AuthenticatedRequest;
     const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, photoHash, terms, decoType, angle, createdAt, type, mdContent, mdSummary, mdName, insightNote } = req.body;
     const safeTerms = Array.isArray(terms) ? terms : [];
+    const normalizedImageUrl = normalizeInternalProxyUrl(imageUrl || "");
+    const normalizedThumbnailUrl = normalizeInternalProxyUrl(thumbnailUrl || "");
     const termsText = [...safeTerms, mdName, mdSummary, insightNote]
       .filter((value) => typeof value === "string" && value.trim())
       .join(" ");
@@ -2876,8 +2910,8 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
         authReq.user!.id,
         weekId,
         dayIndex,
-        imageUrl || "",
-        thumbnailUrl || "",
+        normalizedImageUrl,
+        normalizedThumbnailUrl,
         photoUid || "",
         photoHash || "",
         safeTerms,
