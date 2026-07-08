@@ -49,6 +49,7 @@ fi
 
 COMMIT="$(git rev-parse --short HEAD)"
 ARCHIVE="/tmp/inspiration-diary-release-$VERSION-$COMMIT-$TIMESTAMP.tgz"
+DIST_ARCHIVE="/tmp/inspiration-diary-dist-$VERSION-$COMMIT-$TIMESTAMP.tgz"
 echo "Release version: $VERSION"
 echo "Local commit: $COMMIT"
 echo "Remote: $REMOTE:$PROD_DIR"
@@ -57,6 +58,7 @@ echo "Running local checks..."
 npm run lint
 npm run build
 git archive --format=tar.gz --output "$ARCHIVE" HEAD
+tar -czf "$DIST_ARCHIVE" dist
 
 echo "Checking remote service..."
 ssh -i "$SSH_KEY" -o BatchMode=yes "$REMOTE" \
@@ -94,10 +96,12 @@ REMOTE_BACKUP
 
 echo "Uploading release archive..."
 scp -i "$SSH_KEY" "$ARCHIVE" "$REMOTE:/tmp/$(basename "$ARCHIVE")"
+scp -i "$SSH_KEY" "$DIST_ARCHIVE" "$REMOTE:/tmp/$(basename "$DIST_ARCHIVE")"
 rm -f "$ARCHIVE"
+rm -f "$DIST_ARCHIVE"
 
-echo "Installing and building on remote..."
-ssh -i "$SSH_KEY" -o BatchMode=yes "$REMOTE" bash -s -- "$PROD_DIR" "$PROD_SERVICE" "$VERSION" "$COMMIT" "$TIMESTAMP" "$(basename "$ARCHIVE")" <<'REMOTE_DEPLOY'
+echo "Installing production dependencies and deploying local build on remote..."
+ssh -i "$SSH_KEY" -o BatchMode=yes "$REMOTE" bash -s -- "$PROD_DIR" "$PROD_SERVICE" "$VERSION" "$COMMIT" "$TIMESTAMP" "$(basename "$ARCHIVE")" "$(basename "$DIST_ARCHIVE")" <<'REMOTE_DEPLOY'
 set -euo pipefail
 PROD_DIR="$1"
 PROD_SERVICE="$2"
@@ -105,6 +109,7 @@ VERSION="$3"
 COMMIT="$4"
 TIMESTAMP="$5"
 ARCHIVE_NAME="$6"
+DIST_ARCHIVE_NAME="$7"
 STAGING="/tmp/inspiration-diary-release-$TIMESTAMP"
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
@@ -119,10 +124,11 @@ find "$PROD_DIR" -mindepth 1 -maxdepth 1 \
   ! -name 'dist' \
   -exec rm -rf {} +
 cp -a "$STAGING"/. "$PROD_DIR"/
-rm -rf "$STAGING" "/tmp/$ARCHIVE_NAME"
+rm -rf "$PROD_DIR/dist"
+tar -xzf "/tmp/$DIST_ARCHIVE_NAME" -C "$PROD_DIR"
+rm -rf "$STAGING" "/tmp/$ARCHIVE_NAME" "/tmp/$DIST_ARCHIVE_NAME"
 cd "$PROD_DIR"
-npm ci
-npm run build
+npm install --omit=dev --no-audit --no-fund
 cat > .release-info.json <<JSON
 {
   "version": "$VERSION",

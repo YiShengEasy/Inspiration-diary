@@ -41,11 +41,13 @@ PROD_HOST=223.6.255.128 PROD_USER=ecs-user npm run release:prod
 5. Creates a remote source backup.
 6. Creates a remote PostgreSQL backup.
 7. Creates a release archive from `git archive HEAD`, so only committed files are published.
-8. Uploads the archive to the server and syncs it into the app directory, preserving env files, backups, `node_modules`, and `dist`.
-9. Runs `npm ci` and `npm run build` on the server.
-10. Writes `.release-info.json` on the server.
-11. Restarts `inspiration-diary.service`.
-12. Checks the public homepage returns HTTP 200.
+8. Uploads the source archive and the locally built `dist` archive to the server.
+9. Syncs source into the app directory, preserving env files, backups, and `node_modules`.
+10. Extracts the local `dist` build on the server.
+11. Runs `npm install --omit=dev --no-audit --no-fund` on the server for runtime dependencies.
+12. Writes `.release-info.json` on the server.
+13. Restarts `inspiration-diary.service`.
+14. Checks the public homepage returns HTTP 200.
 
 ## Rollback
 
