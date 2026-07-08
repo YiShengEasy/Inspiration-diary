@@ -114,6 +114,7 @@ STAGING="/tmp/inspiration-diary-release-$TIMESTAMP"
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
 tar -xzf "/tmp/$ARCHIVE_NAME" -C "$STAGING"
+sudo -n systemctl stop "$PROD_SERVICE" || true
 find "$PROD_DIR" -mindepth 1 -maxdepth 1 \
   ! -name '.env' \
   ! -name '.env.local' \
@@ -136,7 +137,7 @@ cat > .release-info.json <<JSON
   "service": "$PROD_SERVICE"
 }
 JSON
-sudo -n systemctl restart "$PROD_SERVICE"
+sudo -n systemctl start "$PROD_SERVICE"
 systemctl is-active "$PROD_SERVICE"
 journalctl -u "$PROD_SERVICE" -n 40 --no-pager
 REMOTE_DEPLOY
