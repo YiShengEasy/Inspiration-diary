@@ -8,7 +8,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import pg from "pg";
 import multer from "multer";
-import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 import { createAuthRouter, requireAuth, type AuthenticatedRequest } from "./src/server/auth";
 import { fetchPhotoPrismImage } from "./src/server/photoprism";
@@ -257,6 +256,7 @@ async function extractDocumentText(file: Express.Multer.File, filenameOverride =
   if (kind === "markdown" || kind === "text") {
     rawText = file.buffer.toString("utf8");
   } else if (kind === "pdf") {
+    const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: new Uint8Array(file.buffer) });
     try {
       const parsed = await parser.getText();
