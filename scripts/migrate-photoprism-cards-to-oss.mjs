@@ -103,6 +103,10 @@ function sourceUrlFor(row, ctx, photoConfig) {
   if (row.photo_hash) {
     return `${ctx.internalUrl}/api/v1/dl/${encodeURIComponent(row.photo_hash)}?t=${encodeURIComponent(photoConfig.downloadToken)}`;
   }
+  const relativeHashMatch = String(row.image_url || "").match(/^\/api\/photos\/hash\/([^/]+)\//);
+  if (relativeHashMatch) {
+    return `${ctx.internalUrl}/api/v1/dl/${encodeURIComponent(relativeHashMatch[1])}?t=${encodeURIComponent(photoConfig.downloadToken)}`;
+  }
   if (/^https?:\/\//i.test(row.image_url || "")) {
     try {
       const url = new URL(row.image_url);
@@ -131,7 +135,11 @@ async function loadRows() {
   const sql = `
     SELECT id, user_id, week_id, day_index, photo_uid, photo_hash, image_url, thumbnail_url, created_at
     FROM cards
-    WHERE (COALESCE(photo_hash, '') <> '' OR image_url ~ '^https?://[^/]+/api/v1/')
+    WHERE (
+        COALESCE(photo_hash, '') <> ''
+        OR image_url ~ '^https?://[^/]+/api/v1/'
+        OR image_url ~ '^/api/photos/hash/'
+      )
       AND COALESCE(photo_uid, '') NOT LIKE 'primary-images/%'
       AND id NOT LIKE 'smoke_%'
       AND COALESCE(photo_uid, '') NOT LIKE 'photo_%'
