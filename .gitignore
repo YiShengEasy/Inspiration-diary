@@ -9,3 +9,5 @@ backups/
 !.env.example
 !.env.local.example
 !.env.production.example
+miniprogram/app/project.config.json
+miniprogram/app/project.private.config.json
