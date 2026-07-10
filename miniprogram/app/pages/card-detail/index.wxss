@@ -39,6 +39,24 @@ button::after {
   border-radius: 28rpx;
 }
 
+.hero-video,
+.hero-video-empty {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 28rpx;
+  background: #111111;
+}
+
+.hero-video-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d5d8cf;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
 .hero-md {
   display: flex;
   align-items: center;
@@ -299,6 +317,16 @@ button::after {
 .detail-icon-button.danger {
   background: #fff1f1;
   color: #c44545;
+}
+
+.detail-icon-button.favorite {
+  background: #f4f5ef;
+  color: #111111;
+}
+
+.detail-icon-button.favorite.active {
+  background: #111111;
+  color: #b7ff38;
 }
 
 .shell-card {

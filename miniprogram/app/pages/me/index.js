@@ -1,5 +1,6 @@
 const { refreshAccountStatus, wechatLogin } = require("../../utils/auth");
-const { request } = require("../../utils/api");
+const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
+const { readToolDrafts, removeToolDraft } = require("../../utils/toolDrafts");
 const {
   SMART_BOOK_SUGGEST_IMAGES_KEY,
   SMART_BOOK_SUGGEST_MARKDOWN_KEY,
@@ -18,12 +19,8 @@ const EMPTY_STATS = {
   toolUsageCount: 0
 };
 
-const WORK_IMAGES = [
-  "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1493612276216-ee3925520721?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=900&q=80"
-];
 const AVATAR_IMAGE = "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=320&q=80";
+const profileTabs = ["灵感册", "草稿", "收藏"];
 
 function buildProfile(accountState, user) {
   if (accountState === "guest") {
@@ -53,6 +50,70 @@ function buildProfile(accountState, user) {
   };
 }
 
+function formatTermsText(terms) {
+  const visibleTerms = terms.slice(0, 3);
+  return `${visibleTerms.join(" / ")}${terms.length > 3 ? " ..." : ""}`;
+}
+
+function normalizeBook(book) {
+  const cover = book.coverCard || null;
+  const coverIsCombo = cover && cover.type === "combo";
+  const coverImage = cover
+    ? resolveAssetUrl(coverIsCombo ? ((cover.comboSummary && cover.comboSummary.coverImageUrl) || "") : (cover.thumbnailUrl || cover.imageUrl || ""))
+    : "";
+  return {
+    ...book,
+    coverImage,
+    title: book.title || "未命名灵感册",
+    descriptionText: book.description || "暂无描述",
+    countText: `${Number(book.cardCount || 0)} 条灵感`
+  };
+}
+
+function normalizeCard(card) {
+  const terms = Array.isArray(card.terms) ? card.terms : [];
+  const isCombo = card.type === "combo";
+  return {
+    ...card,
+    image: isCombo ? resolveAssetUrl((card.comboSummary && card.comboSummary.coverImageUrl) || "") : resolveAssetUrl(card.thumbnailUrl || card.imageUrl || ""),
+    title: card.mdName || terms[0] || (isCombo ? "组合卡片" : "灵感图片"),
+    summary: isCombo
+      ? `${(card.comboSummary && card.comboSummary.imageCount) || 0} 张参考图 / ${(card.comboSummary && card.comboSummary.generationCount) || 0} 条视频记录`
+      : (card.mdSummary || card.mdContent || card.insightNote || ""),
+    typeLabel: isCombo ? "组合" : (card.type === "md" ? "DOC" : "IMG"),
+    isMd: card.type === "md",
+    isCombo,
+    createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleDateString("zh-CN") : "",
+    terms,
+    termsText: formatTermsText(terms)
+  };
+}
+
+function normalizeDraft(draft) {
+  return {
+    ...draft,
+    createdText: draft.createdAt ? new Date(Number(draft.createdAt)).toLocaleDateString("zh-CN") : "",
+    title: draft.title || "工具草稿",
+    note: draft.note || "保存在本机"
+  };
+}
+
+async function hydrateBookMedia(book) {
+  if (!book || !book.coverImage) return book;
+  return {
+    ...book,
+    coverImage: await downloadAsset(book.coverImage)
+  };
+}
+
+async function hydrateCardMedia(card) {
+  if (!card || card.isMd || !card.image) return card;
+  return {
+    ...card,
+    image: await downloadAsset(card.image)
+  };
+}
+
 Page({
   data: {
     accountState: "guest",
@@ -60,6 +121,7 @@ Page({
     profile: buildProfile("guest", null),
     stats: EMPTY_STATS,
     loading: false,
+    tabLoading: false,
     debugLoginOpen: false,
     debugIdentifier: "",
     debugPassword: "",
@@ -72,13 +134,12 @@ Page({
     customTagLibraryEnabled: true,
     customTagTotalCount: 0,
     customTagEnabledCount: 0,
-    meCards: [
-      { iconKey: "file", title: "我的草稿", desc: "工具处理未保存内容" },
-      { iconKey: "download", title: "本地缓存", desc: "清理预览和临时图" }
-    ],
-    profileTabs: ["灵感册", "工具作品", "收藏"],
+    profileTabs,
     activeTab: "灵感册",
-    workImages: WORK_IMAGES
+    books: [],
+    drafts: [],
+    favorites: [],
+    sectionError: ""
   },
 
   async onShow() {
@@ -89,7 +150,11 @@ Page({
   },
 
   async load() {
-    this.setData({ loading: true });
+    this.setData({
+      loading: true,
+      sectionError: "",
+      drafts: readToolDrafts().map(normalizeDraft)
+    });
 
     try {
       const status = await refreshAccountStatus();
@@ -99,25 +164,39 @@ Page({
         accountState,
         user,
         profile: buildProfile(accountState, user),
-        stats: EMPTY_STATS
+        stats: EMPTY_STATS,
+        books: [],
+        favorites: []
       };
 
       if (accountState === "registered") {
-        const [me, smartSettings, customTagLibrary] = await Promise.all([
+        const [me, smartSettings, customTagLibrary, books, favorites] = await Promise.all([
           request({ url: "/api/miniprogram/me" }),
           loadSmartSettings().catch(() => ({ images: false, markdown: false })),
-          loadCustomTagLibrary().catch(() => ({ enabled: true, groups: [] }))
+          loadCustomTagLibrary().catch(() => ({ enabled: true, groups: [] })),
+          this.loadBooks(),
+          this.loadFavorites()
         ]);
         const meUser = me.user || user;
         nextData.user = meUser;
         nextData.profile = buildProfile(accountState, meUser);
-        nextData.stats = me.stats || EMPTY_STATS;
+        nextData.stats = {
+          ...(me.stats || EMPTY_STATS),
+          toolUsageCount: readToolDrafts().length
+        };
         nextData.smartSuggestImages = smartSettings.images;
         nextData.smartSuggestMarkdown = smartSettings.markdown;
+        nextData.books = books;
+        nextData.favorites = favorites;
         const groups = customTagLibrary.groups || [];
         nextData.customTagLibraryEnabled = customTagLibrary.enabled !== false;
         nextData.customTagTotalCount = flattenCustomTagGroups(groups).length;
         nextData.customTagEnabledCount = customTagLibrary.enabled !== false ? flattenEnabledCustomTagGroups(groups).length : 0;
+      } else {
+        nextData.stats = {
+          ...EMPTY_STATS,
+          toolUsageCount: readToolDrafts().length
+        };
       }
 
       this.setData(nextData);
@@ -126,6 +205,20 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  async loadBooks() {
+    const body = await request({ url: "/api/db/books" });
+    const books = Array.isArray(body) ? body : [];
+    return Promise.all(books.map((book) => hydrateBookMedia(normalizeBook(book))));
+  },
+
+  async loadFavorites() {
+    const body = await request({ url: "/api/db/cards?weekId=all&page=1&pageSize=60&favorite=true" });
+    const rawCards = Array.isArray(body) ? body : body.cards || [];
+    const cards = await Promise.all(rawCards.map((card) => hydrateCardMedia(normalizeCard(card))));
+    cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
+    return cards;
   },
 
   async login() {
@@ -190,7 +283,53 @@ Page({
   },
 
   selectProfileTab(event) {
-    this.setData({ activeTab: event.currentTarget.dataset.tab || "灵感册" });
+    this.setData({
+      activeTab: event.currentTarget.dataset.tab || "灵感册",
+      drafts: readToolDrafts().map(normalizeDraft)
+    });
+  },
+
+  openBook(event) {
+    const id = event.currentTarget.dataset.id;
+    if (!id) return;
+    wx.navigateTo({ url: `/pages/books/index?bookId=${encodeURIComponent(id)}&from=me` });
+  },
+
+  openFavorite(event) {
+    const id = event.currentTarget.dataset.id;
+    const card = this.data.favorites.find((item) => item.id === id);
+    if (card) wx.setStorageSync(`miniCard:${id}`, card);
+    wx.navigateTo({ url: `/pages/card-detail/index?id=${encodeURIComponent(id)}` });
+  },
+
+  openDraft(event) {
+    const id = event.currentTarget.dataset.id;
+    const draft = this.data.drafts.find((item) => item.id === id);
+    if (!draft) return;
+
+    wx.showActionSheet({
+      itemList: ["预览", "保存到相册", "删除草稿"],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          wx.previewImage({ urls: [draft.filePath], current: draft.filePath });
+        } else if (res.tapIndex === 1) {
+          wx.saveImageToPhotosAlbum({
+            filePath: draft.filePath,
+            success: () => wx.showToast({ title: "已保存到相册", icon: "success" }),
+            fail: () => wx.showToast({ title: "保存失败，请检查权限", icon: "none" })
+          });
+        } else if (res.tapIndex === 2) {
+          removeToolDraft(id);
+          this.setData({
+            drafts: readToolDrafts().map(normalizeDraft),
+            stats: {
+              ...this.data.stats,
+              toolUsageCount: readToolDrafts().length
+            }
+          });
+        }
+      }
+    });
   },
 
   toggleSmartSettingsOpen() {

@@ -3,7 +3,9 @@
   <view wx:elif="{{error && hasCard}}" class="status-card">{{error}}</view>
 
   <view wx:if="{{hasCard}}" class="detail-card">
-    <image wx:if="{{!card.isMd && card.image}}" class="hero-image" src="{{card.image}}" mode="aspectFill"></image>
+    <video wx:if="{{card.isVideo && card.primaryVideo}}" class="hero-video" src="{{card.primaryVideo.videoUrl}}" poster="{{card.primaryVideo.posterUrl}}" controls object-fit="contain"></video>
+    <view wx:elif="{{card.isVideo}}" class="hero-video-empty">暂无可播放视频</view>
+    <image wx:elif="{{!card.isMd && card.image}}" class="hero-image" src="{{card.image}}" mode="aspectFill"></image>
     <view wx:else class="hero-md">
       <view class="hero-md-paper">
         <text class="hero-md-title">{{card.title}}</text>
@@ -52,6 +54,7 @@
     </view>
 
     <view class="detail-actions">
+      <button class="detail-icon-button favorite {{card.isFavorite ? 'active' : ''}}" loading="{{favoriteUpdating}}" bindtap="toggleFavorite">{{card.isFavorite ? '★' : '☆'}}</button>
       <button class="detail-icon-button" bindtap="downloadCardAsset">↓</button>
       <button class="detail-icon-button danger" bindtap="deleteCard">×</button>
     </view>

@@ -2,10 +2,18 @@ const { request } = require("../../utils/api");
 
 Page({
   data: {
+    mode: "link",
     identifier: "",
     password: "",
     phone: "",
     submitting: false
+  },
+
+  selectMode(event) {
+    this.setData({
+      mode: event.currentTarget.dataset.mode === "register" ? "register" : "link",
+      password: ""
+    });
   },
 
   async getPhoneNumber(event) {
@@ -56,17 +64,21 @@ Page({
     this.setData({ submitting: true });
 
     try {
-      await request({
-        url: "/api/auth/complete-registration",
+      const isLinkMode = this.data.mode === "link";
+      const result = await request({
+        url: isLinkMode ? "/api/auth/link-existing-account" : "/api/auth/complete-registration",
         method: "POST",
         data: { identifier, password }
       });
-      wx.showToast({ title: "注册完成", icon: "success" });
+      const app = getApp();
+      app.globalData.accountState = result.accountState || "registered";
+      app.globalData.user = result.user || null;
+      wx.showToast({ title: isLinkMode ? "关联成功" : "注册完成", icon: "success" });
       setTimeout(() => {
         wx.navigateBack();
       }, 500);
     } catch (err) {
-      wx.showToast({ title: err.message || "注册失败", icon: "none" });
+      wx.showToast({ title: err.message || (this.data.mode === "link" ? "关联失败" : "注册失败"), icon: "none" });
     } finally {
       this.setData({ submitting: false });
     }

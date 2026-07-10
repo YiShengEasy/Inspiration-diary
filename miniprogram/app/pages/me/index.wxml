@@ -115,14 +115,6 @@
     <text class="tag-entry-action">进入</text>
   </button>
 
-  <view class="me-cards">
-    <button wx:for="{{meCards}}" wx:key="title" class="me-card">
-      <text class="me-card-icon icon-{{item.iconKey}}"></text>
-      <text class="me-card-title">{{item.title}}</text>
-      <text class="me-card-desc">{{item.desc}}</text>
-    </button>
-  </view>
-
   <view class="profile-tabs">
     <button
       wx:for="{{profileTabs}}"
@@ -135,10 +127,56 @@
     </button>
   </view>
 
-  <view class="work-grid">
-    <view wx:for="{{workImages}}" wx:key="*this" class="work-item">
-      <image src="{{item}}" mode="aspectFill"></image>
-      <text wx:if="{{index === 1}}" class="work-badge">草稿</text>
+  <view wx:if="{{loading}}" class="section-state">正在加载...</view>
+
+  <view wx:elif="{{activeTab === '灵感册'}}" class="section-list book-section">
+    <button wx:for="{{books}}" wx:key="id" class="book-row" data-id="{{item.id}}" bindtap="openBook">
+      <image wx:if="{{item.coverImage}}" class="book-cover" src="{{item.coverImage}}" mode="aspectFill"></image>
+      <view wx:else class="book-cover empty-cover">BOOK</view>
+      <view class="book-copy">
+        <text class="book-title">{{item.title}}</text>
+        <text class="book-meta">{{item.countText}}</text>
+      </view>
+    </button>
+    <view wx:if="{{!books.length}}" class="section-state">
+      <text>还没有灵感册</text>
+      <text>可以在灵感书页面新建专题。</text>
+    </view>
+  </view>
+
+  <view wx:elif="{{activeTab === '草稿'}}" class="draft-grid">
+    <button wx:for="{{drafts}}" wx:key="id" class="draft-item" data-id="{{item.id}}" bindtap="openDraft">
+      <image wx:if="{{item.filePath}}" src="{{item.filePath}}" mode="aspectFill"></image>
+      <view wx:else class="draft-thumb-empty">DRAFT</view>
+      <view class="draft-copy">
+        <text class="draft-title">{{item.title}}</text>
+        <text class="draft-meta">{{item.createdText}}</text>
+      </view>
+    </button>
+    <view wx:if="{{!drafts.length}}" class="section-state">
+      <text>还没有本地草稿</text>
+      <text>在工具箱生成或保存后会出现在这里。</text>
+    </view>
+  </view>
+
+  <view wx:else class="section-list favorite-section">
+    <button wx:for="{{favorites}}" wx:key="id" class="favorite-row" data-id="{{item.id}}" bindtap="openFavorite">
+      <view class="favorite-thumb">
+        <image wx:if="{{!item.isMd && item.image}}" src="{{item.image}}" mode="aspectFill"></image>
+        <view wx:else class="md-mini">
+          <text>{{item.typeLabel}}</text>
+        </view>
+      </view>
+      <view class="row-copy">
+        <text class="row-title">{{item.title}}</text>
+        <text class="row-desc">{{item.summary}}</text>
+        <text class="row-meta">{{item.createdText}} · {{item.termsText}}</text>
+      </view>
+      <text class="favorite-mark">★</text>
+    </button>
+    <view wx:if="{{!favorites.length}}" class="section-state">
+      <text>还没有收藏</text>
+      <text>在卡片详情里点击星标后会显示在这里。</text>
     </view>
   </view>
 </view>

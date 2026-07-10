@@ -1,11 +1,16 @@
 <view class="page register-page">
   <view class="header">
     <text class="eyebrow">ACCOUNT</text>
-    <text class="title">完成账号注册</text>
-    <text class="desc">注册后，Web 端可用同一个手机号或邮箱和密码登录。</text>
+    <text class="title">关联账号</text>
+    <text class="desc">关联已有 Web 账号，或注册新账号同步两端灵感。</text>
   </view>
 
-  <view class="phone-card">
+  <view class="mode-switch">
+    <button class="mode-button {{mode === 'link' ? 'active' : ''}}" data-mode="link" bindtap="selectMode">关联已有账号</button>
+    <button class="mode-button {{mode === 'register' ? 'active' : ''}}" data-mode="register" bindtap="selectMode">注册新账号</button>
+  </view>
+
+  <view wx:if="{{mode === 'register'}}" class="phone-card">
     <view>
       <text class="card-title">微信手机号</text>
       <text class="card-desc">{{phone ? phone : '可授权微信手机号自动回填'}}</text>
@@ -14,14 +19,15 @@
   </view>
 
   <view class="form">
+    <text class="form-title">{{mode === 'link' ? '输入 Web 端登录信息' : '设置 Web 端登录信息'}}</text>
     <view class="field">
       <text class="label">手机号或邮箱</text>
-      <input value="{{identifier}}" placeholder="请输入手机号或邮箱" bindinput="onIdentifierInput" />
+      <input value="{{identifier}}" placeholder="{{mode === 'link' ? '请输入 Web 账号' : '请输入手机号或邮箱'}}" bindinput="onIdentifierInput" />
     </view>
     <view class="field">
       <text class="label">登录密码</text>
-      <input value="{{password}}" password placeholder="设置至少 8 位密码" bindinput="onPasswordInput" />
+      <input value="{{password}}" password placeholder="{{mode === 'link' ? '请输入 Web 登录密码' : '设置至少 8 位密码'}}" bindinput="onPasswordInput" />
     </view>
-    <button class="submit" loading="{{submitting}}" bindtap="submit">完成注册</button>
+    <button class="submit" loading="{{submitting}}" bindtap="submit">{{mode === 'link' ? '确认关联' : '完成注册'}}</button>
   </view>
 </view>

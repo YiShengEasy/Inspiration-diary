@@ -53,6 +53,20 @@ const completeBody = await json(complete);
 assert(complete.ok, `complete registration failed ${complete.status}: ${JSON.stringify(completeBody)}`);
 assert(completeBody.accountState === "registered", `expected registered, got ${completeBody.accountState}`);
 
+const registeredStatus = await request("/api/auth/account-status", {
+  headers: { Authorization: `Bearer ${token}` },
+});
+const registeredStatusBody = await json(registeredStatus);
+assert(
+  registeredStatus.ok,
+  `registered account status failed ${registeredStatus.status}: ${JSON.stringify(registeredStatusBody)}`,
+);
+assert(
+  registeredStatusBody.accountState === "registered",
+  `expected registered status after completion, got ${registeredStatusBody.accountState}`,
+);
+assert(registeredStatusBody.user?.id === completeBody.user?.id, "registered status returned a different user");
+
 const cards = await request("/api/db/cards?weekId=all&page=1&pageSize=1", {
   headers: { Authorization: `Bearer ${token}` },
 });
@@ -79,6 +93,45 @@ const webLogin = await request("/api/auth/login", {
   body: JSON.stringify({ identifier: phone, password }),
 });
 assert(webLogin.ok, `web phone login failed ${webLogin.status}: ${JSON.stringify(await json(webLogin))}`);
+
+const linkLogin = await request("/api/auth/wechat-login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ code: `link-${suffix}` }),
+});
+const linkLoginBody = await json(linkLogin);
+assert(linkLogin.ok, `link wechat login failed ${linkLogin.status}: ${JSON.stringify(linkLoginBody)}`);
+assert(linkLoginBody.accountState === "wechat_logged_in_unregistered", "link identity should start unregistered");
+
+const wrongLink = await request("/api/auth/link-existing-account", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${linkLoginBody.token}` },
+  body: JSON.stringify({ identifier: phone, password: `${password}-wrong` }),
+});
+assert(wrongLink.status === 401, `wrong link password should return 401, got ${wrongLink.status}`);
+
+const unlinkedStatus = await request("/api/auth/account-status", {
+  headers: { Authorization: `Bearer ${linkLoginBody.token}` },
+});
+const unlinkedStatusBody = await json(unlinkedStatus);
+assert(unlinkedStatusBody.accountState === "wechat_logged_in_unregistered", "failed link must not bind identity");
+
+const linked = await request("/api/auth/link-existing-account", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${linkLoginBody.token}` },
+  body: JSON.stringify({ identifier: phone, password }),
+});
+const linkedBody = await json(linked);
+assert(linked.ok, `existing account link failed ${linked.status}: ${JSON.stringify(linkedBody)}`);
+assert(linkedBody.accountState === "registered", `linked account should be registered, got ${linkedBody.accountState}`);
+assert(linkedBody.user?.id === completeBody.user?.id, "linked account user does not match Web user");
+
+const linkedStatus = await request("/api/auth/account-status", {
+  headers: { Authorization: `Bearer ${linkLoginBody.token}` },
+});
+const linkedStatusBody = await json(linkedStatus);
+assert(linkedStatusBody.accountState === "registered", "linked mini session should stay registered");
+assert(linkedStatusBody.user?.id === completeBody.user?.id, "linked status user does not match Web user");
 
 const logout = await request("/api/auth/miniprogram-logout", {
   method: "POST",

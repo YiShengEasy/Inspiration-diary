@@ -13,6 +13,9 @@ function wechatLogin() {
     wx.login({
       success: async (loginRes) => {
         try {
+          if (!loginRes.code) {
+            throw new Error("未获取到微信登录凭证，请重试");
+          }
           const result = await request({
             url: "/api/auth/wechat-login",
             method: "POST",
@@ -28,7 +31,7 @@ function wechatLogin() {
           reject(err);
         }
       },
-      fail: reject
+      fail: (err) => reject(new Error((err && err.errMsg) || "微信登录失败，请重试"))
     });
   });
 }

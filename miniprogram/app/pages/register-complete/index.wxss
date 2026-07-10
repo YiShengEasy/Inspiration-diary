@@ -52,6 +52,37 @@
   border: 1rpx solid #def4bd;
 }
 
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8rpx;
+  margin-bottom: 24rpx;
+  padding: 8rpx;
+  border-radius: 8rpx;
+  background: #f1f2ed;
+}
+
+.mode-button {
+  height: 72rpx;
+  margin: 0;
+  padding: 0 12rpx;
+  border-radius: 6rpx;
+  background: transparent;
+  color: #777c72;
+  font-size: 24rpx;
+  font-weight: 900;
+  line-height: 72rpx;
+}
+
+.mode-button.active {
+  background: #111111;
+  color: #b7ff38;
+}
+
+.mode-button::after {
+  border: 0;
+}
+
 .card-title {
   font-size: 29rpx;
   font-weight: 900;
@@ -90,6 +121,15 @@
   border-radius: 8rpx;
   background: #f7f8f4;
   border: 1rpx solid #eeeeea;
+}
+
+.form-title {
+  display: block;
+  margin-bottom: 24rpx;
+  color: #151712;
+  font-size: 28rpx;
+  font-weight: 900;
+  line-height: 1.3;
 }
 
 .field {

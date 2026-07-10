@@ -1,6 +1,6 @@
 function getBaseUrl() {
   const app = getApp();
-  return app.globalData.apiBaseUrl;
+  return String(app.globalData.apiBaseUrl || "").replace(/\/+$/, "");
 }
 
 function getToken() {

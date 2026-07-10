@@ -3,7 +3,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import bcrypt from "bcryptjs";
 import type pg from "pg";
 import { createMiniSession, getMiniToken, missingRegistrationFields, revokeMiniSession } from "./miniprogramAuth";
-import { exchangeWechatCode, resolveWechatPhone } from "./wechat";
+import { exchangeWechatCode, resolveWechatPhone, WechatApiError } from "./wechat";
 
 export interface AuthUser {
   id: string;
@@ -185,6 +185,9 @@ export function createAuthRouter(pool: pg.Pool): Router {
       });
     } catch (err: unknown) {
       console.error("WeChat login error:", err);
+      if (err instanceof WechatApiError) {
+        return res.status(err.statusCode).json({ error: err.publicMessage });
+      }
       return res.status(500).json({ error: "微信登录失败" });
     }
   });
@@ -210,6 +213,9 @@ export function createAuthRouter(pool: pg.Pool): Router {
       return res.json({ phone: phone.phoneNumber });
     } catch (err: unknown) {
       console.error("WeChat phone error:", err);
+      if (err instanceof WechatApiError) {
+        return res.status(err.statusCode).json({ error: err.publicMessage });
+      }
       return res.status(500).json({ error: "手机号授权失败" });
     }
   });
@@ -268,6 +274,72 @@ export function createAuthRouter(pool: pg.Pool): Router {
       await client.query("ROLLBACK").catch(() => undefined);
       console.error("Complete registration error:", err);
       return res.status(500).json({ error: "注册失败" });
+    } finally {
+      client.release();
+    }
+  });
+
+  router.post("/link-existing-account", async (req: Request, res: Response) => {
+    const client = await pool.connect();
+    try {
+      const token = getMiniToken(req);
+      if (!token) return res.status(401).json({ error: "未登录" });
+
+      const rawIdentifier = String(req.body.identifier || req.body.email || req.body.phone || "").trim();
+      const isEmailIdentifier = isEmail(rawIdentifier);
+      const identifier = isEmailIdentifier ? normalizeEmail(rawIdentifier) : rawIdentifier;
+      const password = String(req.body.password || "");
+      if (!identifier || !password) return res.status(400).json({ error: "请输入 Web 账号和密码" });
+
+      await client.query("BEGIN");
+      const sessionResult = await client.query(
+        `SELECT s.id AS session_id, s.identity_id, i.user_id
+         FROM mini_program_sessions s
+         INNER JOIN wechat_identities i ON i.id = s.identity_id
+         WHERE s.id = $1 AND s.expires_at > $2
+         FOR UPDATE`,
+        [token, nowMs()]
+      );
+      const miniSession = sessionResult.rows[0];
+      if (!miniSession) {
+        await client.query("ROLLBACK");
+        return res.status(401).json({ error: "登录已过期" });
+      }
+
+      const userResult = await client.query<UserRow>(
+        `SELECT id, email, phone, password_hash, display_name, role
+         FROM users
+         WHERE ${isEmailIdentifier ? "email" : "phone"} = $1`,
+        [identifier]
+      );
+      const row = userResult.rows[0];
+      if (!row?.password_hash || !(await verifyPassword(password, row.password_hash))) {
+        await client.query("ROLLBACK");
+        return res.status(401).json({ error: "邮箱/手机号或密码不正确" });
+      }
+
+      if (miniSession.user_id && miniSession.user_id !== row.id) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "当前微信已关联其他账号" });
+      }
+
+      const updatedAt = nowMs();
+      await client.query("UPDATE wechat_identities SET user_id = $1, updated_at = $2 WHERE id = $3", [
+        row.id,
+        updatedAt,
+        miniSession.identity_id,
+      ]);
+      await client.query("UPDATE mini_program_sessions SET user_id = $1 WHERE identity_id = $2", [
+        row.id,
+        miniSession.identity_id,
+      ]);
+      await client.query("COMMIT");
+
+      return res.json({ user: safeUser(row), accountState: "registered", missing: [] });
+    } catch (err: unknown) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      console.error("Link existing mini program account error:", err);
+      return res.status(500).json({ error: "关联账号失败" });
     } finally {
       client.release();
     }

@@ -2,6 +2,7 @@ const { request, uploadImage } = require("../../utils/api");
 const { requireRegistered } = require("../../utils/auth");
 const { currentWeekId } = require("../../utils/dates");
 const { tools } = require("../../utils/tools");
+const { saveToolDraft } = require("../../utils/toolDrafts");
 
 const IMAGE_TOOLS = new Set(["crop", "colorPick", "pixel", "filter", "palette", "gradient", "watermark", "film", "ai"]);
 const imageEditModes = [
@@ -1279,6 +1280,12 @@ Page({
     wx.showLoading({ title: "正在生成" });
     try {
       const result = await this.buildBeadPatternImage();
+      await saveToolDraft({
+        toolId: "pixel",
+        title: "拼豆图纸草稿",
+        filePath: result.path,
+        note: result.summary
+      });
       this.setData({
         beadStage: "pattern",
         beadPatternPath: result.path,
@@ -1414,6 +1421,15 @@ Page({
       if (!path) return;
     }
 
+    if (this.data.tool !== "pixel") {
+      await saveToolDraft({
+        toolId: this.data.tool,
+        title: `${this.data.toolName}草稿`,
+        filePath: path,
+        note: this.data.toolDesc
+      });
+    }
+
     wx.saveImageToPhotosAlbum({
       filePath: path,
       success: () => wx.showToast({ title: "已保存到相册", icon: "success" }),
@@ -1507,6 +1523,12 @@ Page({
         operationStatus: "已生成新图片"
       });
       this.updateImageEditorClass();
+      await saveToolDraft({
+        toolId: this.data.tool,
+        title: "图片编辑草稿",
+        filePath: outputPath,
+        note: this.data.operationStatus || "工具箱图片编辑结果"
+      });
       wx.hideLoading();
       wx.saveImageToPhotosAlbum({
         filePath: outputPath,

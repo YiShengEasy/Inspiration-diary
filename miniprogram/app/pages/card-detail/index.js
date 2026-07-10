@@ -4,16 +4,28 @@ function normalizeCard(card) {
   if (!card) return null;
   const terms = Array.isArray(card.terms) ? card.terms : [];
   const isCombo = card.type === "combo";
+  const isVideo = card.type === "video";
+  const videoAssets = Array.isArray(card.videoAssets)
+    ? card.videoAssets.map((video) => ({
+      ...video,
+      videoUrl: resolveAssetUrl(video.videoUrl || ""),
+      posterUrl: video.posterUrl ? resolveAssetUrl(video.posterUrl) : ""
+    }))
+    : [];
+  const primaryVideo = videoAssets[0] || null;
   return {
     ...card,
     image: isCombo ? resolveAssetUrl((card.comboSummary && card.comboSummary.coverImageUrl) || "") : resolveAssetUrl(card.image || card.imageUrl || card.thumbnailUrl || ""),
-    title: card.mdName || terms[0] || (isCombo ? "组合卡片" : "灵感卡片"),
+    title: card.mdName || (primaryVideo && primaryVideo.originalName) || terms[0] || (isCombo ? "组合卡片" : (isVideo ? "视频灵感" : "灵感卡片")),
     summary: isCombo
       ? `${(card.comboSummary && card.comboSummary.imageCount) || 0} 张参考图 / ${(card.comboSummary && card.comboSummary.generationCount) || 0} 条视频记录`
       : (card.mdSummary || card.mdContent || card.insightNote || ""),
-    typeLabel: isCombo ? "组合" : (card.type === "md" ? "DOC" : "IMG"),
+    typeLabel: isCombo ? "组合" : (card.type === "md" ? "DOC" : (isVideo ? "视频" : "IMG")),
     isMd: card.type === "md",
+    isVideo,
     isCombo,
+    videoAssets,
+    primaryVideo,
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleString("zh-CN") : "",
     terms,
     termsText: terms.join(" / ")
@@ -21,7 +33,20 @@ function normalizeCard(card) {
 }
 
 async function hydrateCardMedia(card) {
-  if (!card || card.isMd || !card.image) return card;
+  if (!card) return card;
+  if (card.isVideo && card.primaryVideo) {
+    const primaryVideo = {
+      ...card.primaryVideo,
+      videoUrl: await downloadAsset(card.primaryVideo.videoUrl),
+      posterUrl: card.primaryVideo.posterUrl ? await downloadAsset(card.primaryVideo.posterUrl) : ""
+    };
+    return {
+      ...card,
+      primaryVideo,
+      videoAssets: [primaryVideo, ...card.videoAssets.slice(1)]
+    };
+  }
+  if (card.isMd || !card.image) return card;
   return {
     ...card,
     image: await downloadAsset(card.image)
@@ -105,6 +130,7 @@ Page({
     comboDetail: null,
     hasCard: false,
     loading: false,
+    favoriteUpdating: false,
     error: ""
   },
 
@@ -154,9 +180,68 @@ Page({
     });
   },
 
+  async toggleFavorite() {
+    const card = this.data.card;
+    if (!card || this.data.favoriteUpdating) return;
+
+    const nextFavorite = !card.isFavorite;
+    const previousCard = card;
+    const nextCard = {
+      ...card,
+      isFavorite: nextFavorite,
+      favoritedAt: nextFavorite ? Date.now() : null
+    };
+    this.setData({ card: nextCard, favoriteUpdating: true });
+
+    try {
+      const result = await request({
+        url: `/api/db/cards/${encodeURIComponent(this.data.id)}/favorite`,
+        method: "PUT",
+        data: { favorite: nextFavorite }
+      });
+      const syncedCard = {
+        ...nextCard,
+        isFavorite: Boolean(result.isFavorite),
+        favoritedAt: result.favoritedAt == null ? null : Number(result.favoritedAt)
+      };
+      wx.setStorageSync(`miniCard:${this.data.id}`, syncedCard);
+      this.setData({ card: syncedCard });
+      wx.showToast({ title: syncedCard.isFavorite ? "已收藏" : "已取消收藏", icon: "success" });
+    } catch (err) {
+      this.setData({ card: previousCard });
+      wx.showToast({ title: err.message || "收藏失败", icon: "none" });
+    } finally {
+      this.setData({ favoriteUpdating: false });
+    }
+  },
+
   async downloadCardAsset() {
     const card = this.data.card;
-    if (!card || card.isMd || !card.image) {
+    if (!card) return;
+
+    if (card.isVideo) {
+      if (!card.primaryVideo || !card.primaryVideo.videoUrl) {
+        wx.showToast({ title: "暂无可下载视频", icon: "none" });
+        return;
+      }
+
+      try {
+        wx.showLoading({ title: "正在下载" });
+        const filePath = await downloadFileForSave(card.primaryVideo.videoUrl);
+        wx.hideLoading();
+        wx.saveVideoToPhotosAlbum({
+          filePath,
+          success: () => wx.showToast({ title: "已保存到相册", icon: "success" }),
+          fail: () => wx.showToast({ title: "保存失败，请检查权限", icon: "none" })
+        });
+      } catch (err) {
+        wx.hideLoading();
+        wx.showToast({ title: err.message || "下载失败", icon: "none" });
+      }
+      return;
+    }
+
+    if (card.isMd || !card.image) {
       wx.showToast({ title: "暂无可下载图片", icon: "none" });
       return;
     }
