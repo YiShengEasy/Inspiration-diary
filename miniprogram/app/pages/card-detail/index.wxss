@@ -218,12 +218,56 @@ button::after {
   background: #111111;
 }
 
+.reference-video-preview {
+  position: relative;
+  width: 100%;
+  height: 360rpx;
+  overflow: hidden;
+  border-radius: 14rpx;
+  background: #111111;
+}
+
+.reference-video-preview image {
+  width: 100%;
+  height: 100%;
+  opacity: 0.58;
+}
+
+.reference-video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  color: #ffffff;
+  font-size: 23rpx;
+  font-weight: 800;
+}
+
+.reference-play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #b7ff38;
+  color: #111111;
+  font-size: 27rpx;
+}
+
 .combo-generation-copy {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 56rpx;
   gap: 12rpx;
   align-items: flex-start;
   margin-top: 14rpx;
+}
+
+.combo-generation-copy.reference {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .combo-prompt {

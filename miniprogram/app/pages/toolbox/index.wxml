@@ -53,10 +53,29 @@
     </view>
     <scroll-view class="rec-scroll" scroll-x enhanced show-scrollbar="{{false}}">
       <view class="rec-strip">
-        <view wx:for="{{recommendCards}}" wx:key="title" class="rec-card">
-          <image class="rec-image" src="{{item.image}}" mode="aspectFill"></image>
+        <button wx:for="{{recommendCards}}" wx:key="type" class="rec-card" data-reference="{{item.type}}" bindtap="openReferenceCard">
+          <view class="rec-preview">
+            <image wx:if="{{item.type === 'image'}}" class="rec-image" src="{{item.image}}" mode="aspectFill"></image>
+            <view wx:elif="{{item.type === 'md'}}" class="rec-md-preview">
+              <view class="rec-paper">
+                <text class="paper-title">周末手记</text>
+                <text class="paper-line short"></text>
+                <text class="paper-line"></text>
+                <text class="paper-line"></text>
+                <text class="paper-line medium"></text>
+              </view>
+            </view>
+            <view wx:else class="rec-combo-preview">
+              <view class="rec-combo-images">
+                <image wx:for="{{item.images}}" wx:key="*this" src="{{item}}" mode="aspectFill"></image>
+              </view>
+              <view class="rec-combo-video"><text>▶</text></view>
+            </view>
+            <text class="rec-type-chip">{{item.typeLabel}}</text>
+          </view>
           <text class="rec-title">{{item.title}}</text>
-        </view>
+          <text class="rec-meta">{{item.meta}}</text>
+        </button>
       </view>
     </scroll-view>
   </view>

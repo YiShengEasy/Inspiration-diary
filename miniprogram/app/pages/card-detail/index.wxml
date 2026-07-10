@@ -33,10 +33,17 @@
       <text class="combo-title">生成记录</text>
       <view wx:if="{{comboDetail.generations.length}}" class="combo-generation-list">
         <view wx:for="{{comboDetail.generations}}" wx:key="id" class="combo-generation">
-          <video src="{{item.videoUrl}}" poster="{{item.posterUrl}}" controls object-fit="contain"></video>
-          <view class="combo-generation-copy">
+          <view wx:if="{{item.isReference}}" class="reference-video-preview">
+            <image src="{{item.posterUrl}}" mode="aspectFill"></image>
+            <view class="reference-video-overlay">
+              <text class="reference-play">▶</text>
+              <text>生成视频参考</text>
+            </view>
+          </view>
+          <video wx:else src="{{item.videoUrl}}" poster="{{item.posterUrl}}" controls object-fit="contain"></video>
+          <view class="combo-generation-copy {{item.isReference ? 'reference' : ''}}">
             <text class="combo-prompt">{{item.promptNote}}</text>
-            <button class="mini-icon-button" data-url="{{item.videoUrl}}" bindtap="downloadComboVideo">↓</button>
+            <button wx:if="{{!item.isReference}}" class="mini-icon-button" data-url="{{item.videoUrl}}" bindtap="downloadComboVideo">↓</button>
           </view>
         </view>
       </view>
@@ -48,12 +55,12 @@
       <text wx:if="{{!card.terms.length}}" class="empty-tags">暂无标签</text>
     </view>
 
-    <view class="field">
+    <view wx:if="{{!isReference}}" class="field">
       <text class="field-label">Card ID</text>
       <text class="field-value">{{id}}</text>
     </view>
 
-    <view class="detail-actions">
+    <view wx:if="{{!isReference}}" class="detail-actions">
       <button class="detail-icon-button favorite {{card.isFavorite ? 'active' : ''}}" loading="{{favoriteUpdating}}" bindtap="toggleFavorite">{{card.isFavorite ? '★' : '☆'}}</button>
       <button class="detail-icon-button" bindtap="downloadCardAsset">↓</button>
       <button class="detail-icon-button danger" bindtap="deleteCard">×</button>

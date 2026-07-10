@@ -6,16 +6,24 @@ const featuredToolIds = ["colorPick", "pixel", "filter"];
 const commonToolIds = ["crop", "watermark", "film", "more"];
 const recommendCards = [
   {
-    title: "像素头像",
-    image: "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=900&q=80"
+    type: "image",
+    typeLabel: "图片",
+    title: "自然光影",
+    meta: "图片参考",
+    image: "/assets/reference-image.jpg"
   },
   {
-    title: "周记封面",
-    image: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80"
+    type: "md",
+    typeLabel: "MD",
+    title: "周末手记",
+    meta: "文档参考"
   },
   {
-    title: "胶片水印",
-    image: "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=900&q=80"
+    type: "combo",
+    typeLabel: "组合",
+    title: "场景组合",
+    meta: "组合参考",
+    images: ["/assets/reference-combo-a.jpg", "/assets/reference-combo-b.jpg"]
   }
 ];
 const promoImages = [
@@ -76,6 +84,12 @@ Page({
 
   openDiary() {
     wx.switchTab({ url: "/pages/diary/index" });
+  },
+
+  openReferenceCard(event) {
+    const type = event.currentTarget.dataset.reference;
+    if (!["image", "md", "combo"].includes(type)) return;
+    wx.navigateTo({ url: `/pages/card-detail/index?reference=${encodeURIComponent(type)}` });
   },
 
   importImage(event) {

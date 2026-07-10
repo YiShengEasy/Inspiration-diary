@@ -41,7 +41,7 @@ import SettingsModal from "./components/SettingsModal";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
 import { loadBooks, loadBookSuggestionCandidates, loadCardBookMembership, recordBookSuggestionFeedback, setCardBookMembership } from "./lib/booksClient";
 import { CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY, CUSTOM_TAG_LIBRARY_SETTINGS_KEY, flattenEnabledCustomTagGroups, normalizeCustomTagGroups } from "./lib/customTagLibrary";
-import Markdown from "react-markdown";
+import MarkdownContent from "./components/MarkdownContent";
 
 const ALL_CARDS_PAGE_SIZE = 12;
 const SMART_BOOK_SUGGEST_IMAGES_KEY = "smart_book_suggest_images";
@@ -2541,7 +2541,7 @@ export default function App() {
                   />
                 ) : zoomedCard.type === "md" ? (
                   <div className="w-full h-full overflow-y-auto p-6 md:p-10 bg-white dark:bg-stone-900 custom-scrollbar text-left text-sm md:text-base text-stone-800 dark:text-stone-100 shadow-inner break-words leading-relaxed [&_h1]:font-serif [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-3 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-stone-600 [&_a]:text-amber-600 [&_a]:underline [&_code]:rounded [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-amber-700 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-stone-950 [&_pre]:p-4 [&_pre_code]:bg-transparent [&_pre_code]:text-stone-100 [&_img]:rounded-xl">
-                    <Markdown>{zoomedCard.mdContent || ""}</Markdown>
+                    <MarkdownContent>{zoomedCard.mdContent || ""}</MarkdownContent>
                   </div>
                 ) : zoomedCard.type === "video" ? (
                   <div className="flex h-full w-full items-center justify-center bg-stone-950">

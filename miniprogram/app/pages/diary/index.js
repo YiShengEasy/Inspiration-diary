@@ -1,5 +1,5 @@
 const { request, uploadImage, resolveAssetUrl, downloadAsset } = require("../../utils/api");
-const { requireRegistered, refreshAccountStatus } = require("../../utils/auth");
+const { requireRegistered, refreshAccountStatus, wechatLogin } = require("../../utils/auth");
 const { currentWeekId, shiftWeekId, days } = require("../../utils/dates");
 const { loadSmartSettings } = require("../../utils/smartSettings");
 const { loadEnabledCustomTagHints } = require("../../utils/customTagLibrary");
@@ -214,6 +214,7 @@ Page({
     mdCount: 0,
     totalTerms: 0,
     loading: false,
+    loginLoading: false,
     uploading: false,
     weekPickerOpen: false,
     weekPickerLoading: false,
@@ -501,6 +502,30 @@ Page({
 
   openRegister() {
     wx.navigateTo({ url: "/pages/register-complete/index" });
+  },
+
+  async loginWithWechat() {
+    if (this.data.loginLoading) return;
+    this.setData({ loginLoading: true, error: "" });
+
+    try {
+      const result = await wechatLogin();
+      const accountState = result.accountState || "wechat_logged_in_unregistered";
+      this.setData({ accountState });
+
+      if (accountState === "registered") {
+        await Promise.all([this.loadCards(), this.loadBooks()]);
+        return;
+      }
+
+      wx.navigateTo({ url: "/pages/register-complete/index" });
+    } catch (err) {
+      const message = err.message || "微信登录失败";
+      this.setData({ accountState: "guest", error: message });
+      wx.showToast({ title: message, icon: "none" });
+    } finally {
+      this.setData({ loginLoading: false });
+    }
   },
 
   chooseUpload(targetDayIndex) {

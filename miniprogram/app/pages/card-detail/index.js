@@ -123,18 +123,116 @@ async function hydrateComboDetail(detail) {
   };
 }
 
+function buildReferenceDetail(type) {
+  const base = {
+    createdText: "参考案例",
+    isFavorite: false,
+    isVideo: false,
+    videoAssets: [],
+    primaryVideo: null
+  };
+
+  if (type === "image") {
+    return {
+      id: "reference-image",
+      card: {
+        ...base,
+        id: "reference-image",
+        type: "image",
+        image: "/assets/reference-image.jpg",
+        title: "自然光影",
+        summary: "自然光穿过旷野，形成柔和的明暗层次与安静的画面节奏。",
+        typeLabel: "图片",
+        isMd: false,
+        isCombo: false,
+        terms: ["自然光", "旷野", "层次"],
+        termsText: "自然光 / 旷野 / 层次"
+      },
+      comboDetail: null
+    };
+  }
+
+  if (type === "md") {
+    return {
+      id: "reference-md",
+      card: {
+        ...base,
+        id: "reference-md",
+        type: "md",
+        image: "",
+        title: "周末手记",
+        summary: "记录一段缓慢的周末：整理照片、收集颜色，也把零散想法写成下一次创作的线索。",
+        typeLabel: "MD",
+        isMd: true,
+        isCombo: false,
+        terms: ["周末", "手记", "创作线索"],
+        termsText: "周末 / 手记 / 创作线索"
+      },
+      comboDetail: null
+    };
+  }
+
+  if (type === "combo") {
+    return {
+      id: "reference-combo",
+      card: {
+        ...base,
+        id: "reference-combo",
+        type: "combo",
+        image: "/assets/reference-combo-a.jpg",
+        title: "场景组合",
+        summary: "2 张参考图 / 1 条视频记录",
+        typeLabel: "组合",
+        isMd: false,
+        isCombo: true,
+        terms: ["人物", "空间", "镜头"],
+        termsText: "人物 / 空间 / 镜头"
+      },
+      comboDetail: {
+        images: [
+          { id: "reference-combo-a", imageUrl: "/assets/reference-combo-a.jpg", roleLabel: "人物图" },
+          { id: "reference-combo-b", imageUrl: "/assets/reference-combo-b.jpg", roleLabel: "场景图" }
+        ],
+        generations: [
+          {
+            id: "reference-generation",
+            isReference: true,
+            posterUrl: "/assets/reference-combo-b.jpg",
+            promptNote: "人物缓慢走入明亮空间，镜头平稳推进，保留自然光和安静的环境层次。"
+          }
+        ]
+      }
+    };
+  }
+
+  return null;
+}
+
 Page({
   data: {
     id: "",
     card: null,
     comboDetail: null,
     hasCard: false,
+    isReference: false,
     loading: false,
     favoriteUpdating: false,
     error: ""
   },
 
   onLoad(query) {
+    const reference = buildReferenceDetail(query.reference || "");
+    if (reference) {
+      this.setData({
+        id: reference.id,
+        card: reference.card,
+        comboDetail: reference.comboDetail,
+        hasCard: true,
+        isReference: true
+      });
+      return;
+    }
+
     const id = query.id || "";
     const cached = id ? wx.getStorageSync(`miniCard:${id}`) : null;
     const card = normalizeCard(cached);

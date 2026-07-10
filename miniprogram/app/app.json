@@ -1,7 +1,7 @@
 {
   "pages": [
-    "pages/toolbox/index",
     "pages/diary/index",
+    "pages/toolbox/index",
     "pages/me/index",
     "pages/custom-tags/index",
     "pages/register-complete/index",

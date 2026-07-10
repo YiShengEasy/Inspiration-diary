@@ -5,7 +5,8 @@
         <text class="eyebrow">Inspiration Diary</text>
         <text class="title">把每天的视觉灵感整理成册</text>
         <text class="desc">图片、文档、色卡和标签会按日期沉淀，也能收录进不同灵感册。</text>
-        <button class="primary-btn" bindtap="openRegister">完成注册</button>
+        <button wx:if="{{accountState === 'guest'}}" class="primary-btn" loading="{{loginLoading}}" bindtap="loginWithWechat">微信登录</button>
+        <button wx:else class="primary-btn" bindtap="openRegister">关联或注册</button>
       </view>
       <view class="preview-stack">
         <view class="stack-card first"></view>
