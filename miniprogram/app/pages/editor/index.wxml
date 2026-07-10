@@ -159,6 +159,7 @@
       <view class="chip-row">
         <button wx:for="{{beadRatioOptions}}" wx:key="value" class="chip {{beadCropRatio === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="setBeadCropRatio">{{item.label}}</button>
       </view>
+      <button class="copy-row" bindtap="cropCurrentBeadImage">自行裁剪当前图片</button>
 
       <text class="panel-label small">品牌色卡</text>
       <view class="chip-row">

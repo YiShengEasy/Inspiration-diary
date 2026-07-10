@@ -326,6 +326,30 @@ function beadCropClass(value) {
   return option ? option.className : "crop-free";
 }
 
+function beadCropScale(value, gridWidth, gridHeight) {
+  const ratio = beadRatioValue(value, gridWidth, gridHeight);
+  if (Math.abs(ratio - 1) < 0.01) return "1:1";
+  if (value === "landscape43") return "4:3";
+  if (value === "portrait34") return "3:4";
+  if (value === "wide") return "16:9";
+
+  const width = clampGridSize(gridWidth, 72);
+  const height = clampGridSize(gridHeight, 72);
+  const divisor = gcd(width, height);
+  return `${width / divisor}:${height / divisor}`;
+}
+
+function gcd(a, b) {
+  let left = Math.abs(Number.parseInt(a, 10) || 1);
+  let right = Math.abs(Number.parseInt(b, 10) || 1);
+  while (right) {
+    const next = left % right;
+    left = right;
+    right = next;
+  }
+  return left || 1;
+}
+
 function sourceCropRectForRatio(info, ratio, offsetX = 0, offsetY = 0) {
   const sourceRatio = info.width / info.height;
   if (Math.abs(sourceRatio - ratio) < 0.01) {
@@ -586,6 +610,11 @@ Page({
   },
 
   chooseImage() {
+    if (this.data.tool === "pixel") {
+      this.chooseBeadImageForCrop();
+      return;
+    }
+
     wx.chooseMedia({
       count: 1,
       mediaType: ["image"],
@@ -613,6 +642,71 @@ Page({
         if (shouldExtractPalette(this.data.tool)) {
           this.extractPalette(filePath);
         }
+      }
+    });
+  },
+
+  resetBeadCropState(filePath) {
+    this.setData({
+      filePath,
+      resultPath: filePath,
+      displayPath: filePath,
+      showImagePreview: true,
+      beadStage: "crop",
+      beadPatternPath: "",
+      beadMaterials: [],
+      beadPatternSummary: "",
+      beadGenerating: false,
+      beadCropOffsetX: 0,
+      beadCropOffsetY: 0,
+      beadCropImageStyle: "transform: scale(1.08);",
+      controlTitle: "裁剪图片",
+      controlDesc: "选择生成区域、画板边长和构图比例"
+    });
+  },
+
+  chooseBeadImageForCrop() {
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ["image"],
+      sourceType: ["album", "camera"],
+      success: (res) => {
+        const filePath = res.tempFiles && res.tempFiles[0] && res.tempFiles[0].tempFilePath;
+        if (!filePath) return;
+        this.cropBeadImage(filePath);
+      }
+    });
+  },
+
+  cropCurrentBeadImage() {
+    const sourcePath = this.data.filePath || this.data.displayPath;
+    if (!sourcePath) {
+      this.chooseBeadImageForCrop();
+      return;
+    }
+    this.cropBeadImage(sourcePath);
+  },
+
+  cropBeadImage(sourcePath) {
+    if (!sourcePath) return;
+    if (typeof wx.cropImage !== "function") {
+      this.resetBeadCropState(sourcePath);
+      wx.showToast({ title: "当前微信版本不支持系统裁剪", icon: "none" });
+      return;
+    }
+
+    wx.cropImage({
+      src: sourcePath,
+      cropScale: beadCropScale(this.data.beadCropRatio, this.data.beadGridWidth, this.data.beadGridHeight),
+      success: (res) => {
+        const filePath = res.tempFilePath || sourcePath;
+        this.resetBeadCropState(filePath);
+      },
+      fail: (err) => {
+        if (err && /cancel/i.test(err.errMsg || "")) return;
+        console.warn("Bead crop image failed:", err);
+        this.resetBeadCropState(sourcePath);
+        wx.showToast({ title: "裁剪失败，已保留原图", icon: "none" });
       }
     });
   },
