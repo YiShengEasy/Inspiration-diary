@@ -902,6 +902,9 @@ export default function App() {
         .trim()
         .slice(0, 160);
       let mdTerms = ["文档手稿", "资料整理"];
+      let mdInsightNote = mdSummary
+        ? `初步分析：这份文档主要围绕“${mdSummary}”展开，可结合实际目标进一步提炼重点和行动项。`
+        : "初步分析：文档已保存，可结合实际目标进一步提炼重点和行动项。";
 
       try {
         const bookHints = await loadSmartBookHints("md");
@@ -915,6 +918,9 @@ export default function App() {
           const data = await response.json();
           if (typeof data.summary === "string" && data.summary.trim()) {
             mdSummary = data.summary.trim();
+          }
+          if (typeof data.insightNote === "string" && data.insightNote.trim()) {
+            mdInsightNote = data.insightNote.trim();
           }
           if (Array.isArray(data.terms)) {
             const terms = data.terms
@@ -946,6 +952,7 @@ export default function App() {
         mdContent: text,
         mdSummary: mdSummary || "点击查看完整手稿。",
         mdName: filename,
+        insightNote: mdInsightNote,
       };
 
       await saveCard(newCard);
