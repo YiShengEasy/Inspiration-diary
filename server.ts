@@ -1614,9 +1614,18 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
       .replace(/\s+/g, " ")
       .slice(0, 220);
 
+    const fallbackInsightSource = fallbackSummary || markdown
+      .replace(/[#>*_`~\-[\]()]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 220);
+
     const fallback = {
       summary: fallbackSummary || "已保存 Markdown 手稿，点击卡片查看完整内容。",
       terms: ["文档手稿", "资料整理"],
+      insightNote: fallbackInsightSource
+        ? `初步分析：这份文档主要围绕“${fallbackInsightSource}”展开，可结合实际目标进一步提炼重点和行动项。`
+        : "初步分析：文档已保存，可结合实际目标进一步提炼重点和行动项。",
     };
 
     const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
@@ -1630,7 +1639,8 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
     const prompt = [
       "你是一个文档整理与知识标签助手，不要按图片视觉风格分析。",
       "请阅读下面的文档内容，提炼文档的核心主题、结论、行动方向、项目线索和知识领域。",
-      "输出必须是严格 JSON：{\"summary\":\"中文摘要，2到3句话\",\"terms\":[\"标签1\",\"标签2\",...]}。",
+      "输出必须是严格 JSON：{\"summary\":\"中文摘要，2到3句话\",\"terms\":[\"标签1\",\"标签2\",...],\"insightNote\":\"核心观点、启发和行动建议\"}。",
+      "summary 要客观概括内容；insightNote 要进一步提炼核心观点、可借鉴启发和可执行建议，不要简单重复摘要，也不要虚构文档没有的信息。",
       "terms 必须正好 5 个，优先使用中文短标签；标签应描述文档内容，不要使用“光影、色彩、构图、视觉风格”等图片分析词，除非文档本身明确讨论这些主题。",
       customTagHints.length > 0
         ? `用户维护了自定义标签库：${customTagHints.join("；")}。如果内容确实相关，请优先使用这些标签库中的原词或非常接近的变体。不要强行使用无关标签。`
@@ -1654,7 +1664,14 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
             .map((term: string) => term.trim())
             .slice(0, 5)
         : fallback.terms;
-      return { summary, terms: terms.length > 0 ? terms : fallback.terms };
+      const insightNote = typeof parsed.insightNote === "string" && parsed.insightNote.trim()
+        ? parsed.insightNote.trim()
+        : fallback.insightNote;
+      return {
+        summary,
+        terms: terms.length > 0 ? terms : fallback.terms,
+        insightNote,
+      };
     };
 
     try {
@@ -1744,8 +1761,9 @@ app.post("/api/summarize-md", requirePostgresAuth, async (req, res) => {
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
               },
+              insightNote: { type: Type.STRING },
             },
-            required: ["summary", "terms"],
+            required: ["summary", "terms", "insightNote"],
           },
         },
       });
