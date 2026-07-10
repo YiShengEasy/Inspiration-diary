@@ -3,7 +3,7 @@
   <view wx:elif="{{error && hasCard}}" class="status-card">{{error}}</view>
 
   <view wx:if="{{hasCard}}" class="detail-card">
-    <video wx:if="{{card.isVideo && card.primaryVideo}}" class="hero-video" src="{{card.primaryVideo.videoUrl}}" poster="{{card.primaryVideo.posterUrl}}" controls object-fit="contain"></video>
+    <video id="primary-video" wx:if="{{card.isVideo && card.primaryVideo}}" class="hero-video" src="{{card.primaryVideo.videoUrl}}" poster="{{card.primaryVideo.posterUrl}}" controls object-fit="contain"></video>
     <view wx:elif="{{card.isVideo}}" class="hero-video-empty">暂无可播放视频</view>
     <image wx:elif="{{!card.isMd && card.image}}" class="hero-image" src="{{card.image}}" mode="aspectFill"></image>
     <view wx:else class="hero-md">
@@ -24,7 +24,7 @@
       <text class="combo-title">参考图片</text>
       <view wx:if="{{comboDetail.images.length}}" class="combo-image-grid">
         <view wx:for="{{comboDetail.images}}" wx:key="id" class="combo-image-card">
-          <image src="{{item.imageUrl}}" mode="aspectFill"></image>
+          <image src="{{item.imageUrl}}" mode="aspectFill" lazy-load="true"></image>
           <text>{{item.roleLabel}}</text>
         </view>
       </view>
@@ -40,7 +40,7 @@
               <text>生成视频参考</text>
             </view>
           </view>
-          <video wx:else src="{{item.videoUrl}}" poster="{{item.posterUrl}}" controls object-fit="contain"></video>
+          <video wx:else id="combo-video-{{item.id}}" src="{{item.videoUrl}}" poster="{{item.posterUrl}}" controls object-fit="contain"></video>
           <view class="combo-generation-copy {{item.isReference ? 'reference' : ''}}">
             <text class="combo-prompt">{{item.promptNote}}</text>
             <button wx:if="{{!item.isReference}}" class="mini-icon-button" data-url="{{item.videoUrl}}" bindtap="downloadComboVideo">↓</button>

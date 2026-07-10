@@ -350,7 +350,7 @@ export function ComboCardDetailView({
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {images.map((image) => (
               <div key={image.id} className="overflow-hidden rounded-[8px] border border-stone-900/10 bg-white/75 shadow-sm dark:border-white/10 dark:bg-white/[0.055]">
-                <img src={image.imageUrl} alt={image.originalName} className="aspect-square w-full bg-stone-100 object-cover dark:bg-stone-900" loading="lazy" />
+                <img src={image.imageUrl} alt={image.originalName} className="aspect-square w-full bg-stone-100 object-cover dark:bg-stone-900" loading="lazy" decoding="async" />
                 <div className="space-y-2 p-2">
                   <RoleSelect
                     value={image.role}
@@ -364,7 +364,7 @@ export function ComboCardDetailView({
                   <div className="grid grid-cols-2 gap-1">
                     <button
                       type="button"
-                      onClick={() => void downloadAsset(image.imageUrl, image.originalName || `${image.id}.jpg`)}
+                      onClick={() => void downloadAsset(image.originalImageUrl || image.imageUrl, image.originalName || `${image.id}.jpg`)}
                       className="grid h-7 place-items-center rounded-[6px] bg-stone-900/[0.06] text-stone-600 hover:bg-stone-900/[0.10] dark:bg-white/[0.08] dark:text-stone-300"
                       title="下载参考图"
                     >

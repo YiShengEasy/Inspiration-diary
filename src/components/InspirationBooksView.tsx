@@ -703,6 +703,8 @@ export default function InspirationBooksView({
                         src={book.coverCard.thumbnailUrl || book.coverCard.imageUrl}
                         alt=""
                         referrerPolicy="no-referrer"
+                        loading="lazy"
+                        decoding="async"
                         className="h-full w-full object-cover opacity-90 grayscale-[20%] mix-blend-multiply dark:mix-blend-normal dark:grayscale-0"
                       />
                     ) : (

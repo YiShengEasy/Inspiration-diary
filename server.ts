@@ -15,6 +15,7 @@ import { normalizeImageUpload } from "./src/server/upload";
 import { getMiniToken, loadMiniSessionUser } from "./src/server/miniprogramAuth";
 import { getRuntimeConfig, validateRuntimeConfig } from "./src/server/runtimeConfig";
 import { createImageAssetStorage, createVideoStorage, storePrimaryImage } from "./src/server/storage";
+import { deliverOssObject, imageProcessFor, type ImageVariant, type MediaProcesses } from "./src/server/mediaDelivery";
 import { findBookSuggestionCandidates } from "./src/lib/bookSuggestion";
 import type { BookSuggestionFeedbackAction, ImageCard } from "./src/types";
 
@@ -42,7 +43,11 @@ const MAX_VIDEO_UPLOAD_BYTES = Number.parseInt(process.env.MAX_VIDEO_UPLOAD_BYTE
 const MAX_IMAGE_ASSET_UPLOAD_BYTES = Number.parseInt(process.env.MAX_IMAGE_ASSET_UPLOAD_BYTES || String(25 * 1024 * 1024), 10);
 const MAX_DOCUMENT_UPLOAD_BYTES = Number.parseInt(process.env.MAX_DOCUMENT_UPLOAD_BYTES || String(20 * 1024 * 1024), 10);
 const MAX_DOCUMENT_TEXT_CHARS = Number.parseInt(process.env.MAX_DOCUMENT_TEXT_CHARS || "300000", 10);
-const OSS_PRIMARY_THUMB_PROCESS = process.env.OSS_PRIMARY_THUMB_PROCESS || "image/resize,w_480/quality,q_80/format,webp";
+const OSS_IMAGE_PROCESSES: MediaProcesses = {
+  "thumb-240": process.env.OSS_THUMB_240_PROCESS || "image/resize,w_240/quality,Q_70/format,webp",
+  "thumb-480": process.env.OSS_THUMB_480_PROCESS || process.env.OSS_PRIMARY_THUMB_PROCESS || "image/resize,w_480/quality,Q_75/format,webp",
+  "detail-1280": process.env.OSS_DETAIL_1280_PROCESS || "image/resize,w_1280/quality,Q_82/format,webp",
+};
 const OSS_VIDEO_POSTER_PROCESS = process.env.OSS_VIDEO_POSTER_PROCESS || "video/snapshot,t_1000,f_jpg,w_720";
 const VIDEO_UPLOAD_ROOT = path.isAbsolute(runtimeConfig.localStorage.videoUploadRoot)
   ? runtimeConfig.localStorage.videoUploadRoot
@@ -453,12 +458,17 @@ function mapVideoAssetsValue(value: any, req: express.Request) {
 
 function mapImageAssetRow(row: any, req: express.Request) {
   if (!row) return null;
+  const originalUrl = signedImageUrl(`/api/images/${encodeURIComponent(row.id)}/original`, req);
+  const isOssImage = row.storage_provider === "oss" && Boolean(row.storage_key);
   return {
     id: row.id,
     cardId: row.card_id || "",
     storageProvider: row.storage_provider || "local",
     storageKey: row.storage_key || "",
-    imageUrl: signedImageUrl(`/api/images/${encodeURIComponent(row.id)}`, req),
+    thumbnail240Url: isOssImage ? signedImageUrl(`/api/images/${encodeURIComponent(row.id)}/thumb-240`, req) : originalUrl,
+    thumbnailUrl: isOssImage ? signedImageUrl(`/api/images/${encodeURIComponent(row.id)}/thumb-480`, req) : originalUrl,
+    imageUrl: isOssImage ? signedImageUrl(`/api/images/${encodeURIComponent(row.id)}/detail-1280`, req) : originalUrl,
+    originalImageUrl: originalUrl,
     originalName: row.original_name || "image",
     mimeType: row.mime_type || "image/jpeg",
     sizeBytes: Number(row.size_bytes || 0),
@@ -477,13 +487,18 @@ function normalizeComboImageRole(value: unknown): "character" | "scene" | "story
 
 function mapComboImageRow(row: any, req: express.Request) {
   if (!row) return null;
+  const originalUrl = signedImageUrl(`/api/combo-images/${encodeURIComponent(row.id)}/original`, req);
+  const isOssImage = row.storage_provider === "oss" && Boolean(row.storage_key);
   return {
     id: row.id,
     cardId: row.card_id || "",
     role: normalizeComboImageRole(row.role),
     storageProvider: row.storage_provider || "local",
     storageKey: row.storage_key || "",
-    imageUrl: signedImageUrl(`/api/combo-images/${encodeURIComponent(row.id)}`, req),
+    thumbnail240Url: isOssImage ? signedImageUrl(`/api/combo-images/${encodeURIComponent(row.id)}/thumb-240`, req) : originalUrl,
+    thumbnailUrl: isOssImage ? signedImageUrl(`/api/combo-images/${encodeURIComponent(row.id)}/thumb-480`, req) : originalUrl,
+    imageUrl: isOssImage ? signedImageUrl(`/api/combo-images/${encodeURIComponent(row.id)}/detail-1280`, req) : originalUrl,
+    originalImageUrl: originalUrl,
     originalName: row.original_name || "image",
     mimeType: row.mime_type || "image/jpeg",
     sizeBytes: Number(row.size_bytes || 0),
@@ -494,6 +509,7 @@ function mapComboImageRow(row: any, req: express.Request) {
 
 function mapComboGenerationRow(row: any, req: express.Request) {
   if (!row) return null;
+  const isOssVideo = row.storage_provider === "oss" && Boolean(row.storage_key);
   return {
     id: row.id,
     cardId: row.card_id || "",
@@ -505,7 +521,9 @@ function mapComboGenerationRow(row: any, req: express.Request) {
     mimeType: row.mime_type || "video/mp4",
     sizeBytes: Number(row.size_bytes || 0),
     durationMs: Number(row.duration_ms || 0),
-    posterUrl: row.poster_url ? signedImageUrl(row.poster_url, req) : "",
+    posterUrl: isOssVideo
+      ? signedImageUrl(`/api/combo-generations/${encodeURIComponent(row.id)}/poster`, req)
+      : row.poster_url ? signedImageUrl(row.poster_url, req) : "",
     sortOrder: Number(row.sort_order || 0),
     createdAt: Number(row.created_at || 0),
     updatedAt: Number(row.updated_at || 0),
@@ -569,8 +587,14 @@ async function refreshComboCardSearchText(client: Pick<pg.PoolClient, "query">, 
   await client.query("UPDATE cards SET terms_text = $1 WHERE id = $2 AND user_id = $3", [termsText, cardId, userId]);
 }
 
-function primaryObjectProxyUrl(storageKey: string, req: express.Request, variant: "primary" | "primary-thumb" = "primary") {
-  return signedImageUrl(`/api/objects/${variant}/${encodeURIComponent(storageKey)}`, req);
+function primaryObjectUrl(storageKey: string, req: express.Request, variant: ImageVariant) {
+  const routeByVariant: Record<ImageVariant, string> = {
+    "thumb-240": "primary-thumb-240",
+    "thumb-480": "primary-thumb",
+    "detail-1280": "primary-detail",
+    original: "primary",
+  };
+  return signedImageUrl(`/api/objects/${routeByVariant[variant]}/${encodeURIComponent(storageKey)}`, req);
 }
 
 function shouldUseOssPrimaryProxy(row: any) {
@@ -578,33 +602,42 @@ function shouldUseOssPrimaryProxy(row: any) {
 }
 
 function mapCardRows(rows: any[], req: express.Request) {
-  return rows.map((row) => ({
-    id: row.id,
-    weekId: row.week_id,
-    dayIndex: row.day_index,
-    imageUrl: shouldUseOssPrimaryProxy(row) ? primaryObjectProxyUrl(row.photo_uid, req) : signedImageUrl(row.image_url, req),
-    thumbnailUrl: shouldUseOssPrimaryProxy(row) ? primaryObjectProxyUrl(row.photo_uid, req, "primary-thumb") : signedImageUrl(row.thumbnail_url, req),
-    photoUid: row.photo_uid || "",
-    photoHash: row.photo_hash || "",
-    terms: row.terms || [],
-    decoType: row.deco_type,
-    angle: Number(row.angle),
-    createdAt: Number(row.created_at),
-    type: row.type || "image",
-    mdContent: row.md_content || "",
-    mdSummary: row.md_summary || "",
-    mdName: row.md_name || "",
-    insightNote: row.insight_note || "",
-    isFavorite: Boolean(row.is_favorite),
-    favoritedAt: row.favorited_at == null ? null : Number(row.favorited_at),
-    videoAssets: mapVideoAssetsValue(row.video_assets, req),
-    imageAssets: mapImageAssetsValue(row.image_assets, req),
-    comboSummary: (row.type || "image") === "combo" ? {
-      coverImageUrl: row.combo_cover_image_id ? signedImageUrl(`/api/combo-images/${encodeURIComponent(row.combo_cover_image_id)}`, req) : "",
-      imageCount: Number(row.combo_image_count || 0),
-      generationCount: Number(row.combo_generation_count || 0),
-    } : undefined,
-  }));
+  return rows.map((row) => {
+    const usesOssPrimary = shouldUseOssPrimaryProxy(row);
+    const fallbackImageUrl = signedImageUrl(row.image_url, req);
+    const fallbackThumbnailUrl = signedImageUrl(row.thumbnail_url, req) || fallbackImageUrl;
+    return {
+      id: row.id,
+      weekId: row.week_id,
+      dayIndex: row.day_index,
+      imageUrl: usesOssPrimary ? primaryObjectUrl(row.photo_uid, req, "detail-1280") : fallbackImageUrl,
+      thumbnail240Url: usesOssPrimary ? primaryObjectUrl(row.photo_uid, req, "thumb-240") : fallbackThumbnailUrl,
+      thumbnailUrl: usesOssPrimary ? primaryObjectUrl(row.photo_uid, req, "thumb-480") : fallbackThumbnailUrl,
+      originalImageUrl: usesOssPrimary ? primaryObjectUrl(row.photo_uid, req, "original") : fallbackImageUrl,
+      photoUid: row.photo_uid || "",
+      photoHash: row.photo_hash || "",
+      terms: row.terms || [],
+      decoType: row.deco_type,
+      angle: Number(row.angle),
+      createdAt: Number(row.created_at),
+      type: row.type || "image",
+      mdContent: row.md_content || "",
+      mdSummary: row.md_summary || "",
+      mdName: row.md_name || "",
+      insightNote: row.insight_note || "",
+      isFavorite: Boolean(row.is_favorite),
+      favoritedAt: row.favorited_at == null ? null : Number(row.favorited_at),
+      videoAssets: mapVideoAssetsValue(row.video_assets, req),
+      imageAssets: mapImageAssetsValue(row.image_assets, req),
+      comboSummary: (row.type || "image") === "combo" ? {
+        coverImageUrl: row.combo_cover_image_id ? signedImageUrl(`/api/combo-images/${encodeURIComponent(row.combo_cover_image_id)}/thumb-480`, req) : "",
+        coverDetailImageUrl: row.combo_cover_image_id ? signedImageUrl(`/api/combo-images/${encodeURIComponent(row.combo_cover_image_id)}/detail-1280`, req) : "",
+        coverOriginalImageUrl: row.combo_cover_image_id ? signedImageUrl(`/api/combo-images/${encodeURIComponent(row.combo_cover_image_id)}/original`, req) : "",
+        imageCount: Number(row.combo_image_count || 0),
+        generationCount: Number(row.combo_generation_count || 0),
+      } : undefined,
+    };
+  });
 }
 
 function mapBookRow(row: any, req: express.Request) {
@@ -1371,17 +1404,23 @@ app.post("/api/store-image", requirePostgresAuth, upload.single("image"), async 
         photoHash: "",
         storageProvider: stored.storageProvider,
         storageKey: stored.storageKey,
-        imageUrl: primaryObjectProxyUrl(stored.storageKey, req),
-        thumbnailUrl: primaryObjectProxyUrl(stored.storageKey, req, "primary-thumb"),
+        imageUrl: primaryObjectUrl(stored.storageKey, req, "detail-1280"),
+        thumbnail240Url: primaryObjectUrl(stored.storageKey, req, "thumb-240"),
+        thumbnailUrl: primaryObjectUrl(stored.storageKey, req, "thumb-480"),
+        originalImageUrl: primaryObjectUrl(stored.storageKey, req, "original"),
       });
     }
 
     const encodedHash = encodeURIComponent(stored.photoHash);
+    const imageUrl = signedImageUrl(`/api/photos/hash/${encodedHash}/full`, req);
+    const thumbnailUrl = signedImageUrl(`/api/photos/hash/${encodedHash}/thumb`, req);
     return res.json({
       photoUid: stored.photoUid,
       photoHash: stored.photoHash,
-      imageUrl: signedImageUrl(`/api/photos/hash/${encodedHash}/full`, req),
-      thumbnailUrl: signedImageUrl(`/api/photos/hash/${encodedHash}/thumb`, req),
+      imageUrl,
+      thumbnail240Url: thumbnailUrl,
+      thumbnailUrl,
+      originalImageUrl: imageUrl,
     });
   } catch (error: any) {
     console.error("Primary image storage error:", error);
@@ -3025,33 +3064,45 @@ app.get("/api/db/cards/:id/images", requirePostgresAuth, async (req: Authenticat
   }
 });
 
-app.get("/api/images/:imageId", requirePostgresAuthOrSignedPhoto, async (req, res) => {
+async function handleStoredImageDelivery(
+  req: express.Request,
+  res: express.Response,
+  table: "image_assets" | "combo_images",
+  variant: ImageVariant
+) {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   try {
+    const imageId = req.params.imageId;
     const signedRequest = hasValidSignedImageUrl(req);
     const authReq = req as AuthenticatedRequest;
     const result = signedRequest
       ? await pgPool.query(
           `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
-           FROM image_assets
+           FROM ${table}
            WHERE id = $1`,
-          [req.params.imageId]
+          [imageId]
         )
       : await pgPool.query(
           `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
-           FROM image_assets
+           FROM ${table}
            WHERE id = $1 AND user_id = $2`,
-          [req.params.imageId, authReq.user!.id]
+          [imageId, authReq.user!.id]
         );
     const asset = result.rows[0];
     if (!asset) {
       return res.status(404).json({ error: "Image not found" });
     }
     if (asset.storage_provider === "oss") {
-      const signedUrl = await imageAssetStorage.getSignedReadUrl(asset.storage_key);
-      return proxySignedObjectUrl(req, res, signedUrl);
+      return await deliverOssObject({
+        mode: runtimeConfig.mediaDeliveryMode,
+        storage: imageAssetStorage,
+        storageKey: asset.storage_key,
+        process: imageProcessFor(variant, OSS_IMAGE_PROCESSES),
+        response: res,
+        proxy: (signedUrl) => proxySignedObjectUrl(req, res, signedUrl),
+      });
     }
     if (asset.storage_provider !== "local") {
       return res.status(501).json({ error: "Unsupported image storage provider." });
@@ -3065,55 +3116,27 @@ app.get("/api/images/:imageId", requirePostgresAuthOrSignedPhoto, async (req, re
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(asset.original_name || asset.id)}"`);
     return fsSync.createReadStream(localPath).pipe(res);
   } catch (err: any) {
-    console.error("Image stream error:", err);
+    console.error(`${table} stream error:`, err);
     return res.status(500).json({ error: err.message || "Image stream failed." });
   }
-});
+}
 
-app.get("/api/combo-images/:imageId", requirePostgresAuthOrSignedPhoto, async (req, res) => {
-  if (!pgPool) {
-    return res.status(503).json({ error: "PostgreSQL is not configured." });
-  }
-  try {
-    const signedRequest = hasValidSignedImageUrl(req);
-    const authReq = req as AuthenticatedRequest;
-    const result = signedRequest
-      ? await pgPool.query(
-          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
-           FROM combo_images
-           WHERE id = $1`,
-          [req.params.imageId]
-        )
-      : await pgPool.query(
-          `SELECT id, storage_provider, storage_key, original_name, mime_type, size_bytes
-           FROM combo_images
-           WHERE id = $1 AND user_id = $2`,
-          [req.params.imageId, authReq.user!.id]
-        );
-    const asset = result.rows[0];
-    if (!asset) {
-      return res.status(404).json({ error: "Image not found" });
-    }
-    if (asset.storage_provider === "oss") {
-      const signedUrl = await imageAssetStorage.getSignedReadUrl(asset.storage_key);
-      return proxySignedObjectUrl(req, res, signedUrl);
-    }
-    if (asset.storage_provider !== "local") {
-      return res.status(501).json({ error: "Unsupported image storage provider." });
-    }
+for (const variant of ["thumb-240", "thumb-480", "detail-1280", "original"] as const) {
+  app.get(`/api/images/:imageId/${variant}`, requirePostgresAuthOrSignedPhoto, (req, res) =>
+    handleStoredImageDelivery(req, res, "image_assets", variant)
+  );
+  app.get(`/api/combo-images/:imageId/${variant}`, requirePostgresAuthOrSignedPhoto, (req, res) =>
+    handleStoredImageDelivery(req, res, "combo_images", variant)
+  );
+}
 
-    const localPath = imageStorageKeyToLocalPath(asset.storage_key);
-    const stat = await fs.stat(localPath);
-    res.setHeader("Content-Type", asset.mime_type || "image/jpeg");
-    res.setHeader("Content-Length", String(stat.size));
-    res.setHeader("Cache-Control", "private, max-age=300");
-    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(asset.original_name || asset.id)}"`);
-    return fsSync.createReadStream(localPath).pipe(res);
-  } catch (err: any) {
-    console.error("Combo image stream error:", err);
-    return res.status(500).json({ error: err.message || "Image stream failed." });
-  }
-});
+app.get("/api/images/:imageId", requirePostgresAuthOrSignedPhoto, (req, res) =>
+  handleStoredImageDelivery(req, res, "image_assets", "original")
+);
+
+app.get("/api/combo-images/:imageId", requirePostgresAuthOrSignedPhoto, (req, res) =>
+  handleStoredImageDelivery(req, res, "combo_images", "original")
+);
 
 app.delete("/api/images/:imageId", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
   if (!pgPool) {
@@ -3163,8 +3186,14 @@ app.get("/api/videos/:videoId/poster", requirePostgresAuthOrSignedPhoto, async (
       return res.status(404).json({ error: "Video not found" });
     }
     if (asset.storage_provider === "oss") {
-      const signedUrl = await videoStorage.getSignedReadUrl(asset.storage_key, { process: OSS_VIDEO_POSTER_PROCESS });
-      return proxySignedObjectUrl(req, res, signedUrl);
+      return await deliverOssObject({
+        mode: runtimeConfig.mediaDeliveryMode,
+        storage: videoStorage,
+        storageKey: asset.storage_key,
+        process: OSS_VIDEO_POSTER_PROCESS,
+        response: res,
+        proxy: (signedUrl) => proxySignedObjectUrl(req, res, signedUrl),
+      });
     }
     if (asset.poster_url) {
       return res.redirect(302, asset.poster_url);
@@ -3173,6 +3202,50 @@ app.get("/api/videos/:videoId/poster", requirePostgresAuthOrSignedPhoto, async (
   } catch (err: any) {
     console.error("Video poster proxy error:", err);
     return res.status(502).json({ error: err.message || "Video poster proxy failed." });
+  }
+});
+
+app.get("/api/combo-generations/:generationId/poster", requirePostgresAuthOrSignedPhoto, async (req, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const signedRequest = hasValidSignedImageUrl(req);
+    const authReq = req as AuthenticatedRequest;
+    const result = signedRequest
+      ? await pgPool.query(
+          `SELECT id, storage_provider, storage_key, poster_url
+           FROM combo_generations
+           WHERE id = $1`,
+          [req.params.generationId]
+        )
+      : await pgPool.query(
+          `SELECT id, storage_provider, storage_key, poster_url
+           FROM combo_generations
+           WHERE id = $1 AND user_id = $2`,
+          [req.params.generationId, authReq.user!.id]
+        );
+    const asset = result.rows[0];
+    if (!asset) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+    if (asset.storage_provider === "oss") {
+      return await deliverOssObject({
+        mode: runtimeConfig.mediaDeliveryMode,
+        storage: videoStorage,
+        storageKey: asset.storage_key,
+        process: OSS_VIDEO_POSTER_PROCESS,
+        response: res,
+        proxy: (signedUrl) => proxySignedObjectUrl(req, res, signedUrl),
+      });
+    }
+    if (asset.poster_url) {
+      return res.redirect(302, asset.poster_url);
+    }
+    return res.status(404).json({ error: "Video poster not found." });
+  } catch (err: any) {
+    console.error("Combo generation poster error:", err);
+    return res.status(502).json({ error: err.message || "Video poster failed." });
   }
 });
 
@@ -3201,8 +3274,13 @@ app.get("/api/videos/:videoId", requirePostgresAuthOrSignedPhoto, async (req, re
       return res.status(404).json({ error: "Video not found" });
     }
     if (asset.storage_provider === "oss") {
-      const signedUrl = await videoStorage.getSignedReadUrl(asset.storage_key);
-      return proxySignedObjectUrl(req, res, signedUrl);
+      return await deliverOssObject({
+        mode: runtimeConfig.mediaDeliveryMode,
+        storage: videoStorage,
+        storageKey: asset.storage_key,
+        response: res,
+        proxy: (signedUrl) => proxySignedObjectUrl(req, res, signedUrl),
+      });
     }
     if (asset.storage_provider !== "local") {
       return res.status(501).json({ error: "Unsupported video storage provider." });
@@ -3264,8 +3342,13 @@ app.get("/api/combo-generations/:generationId/video", requirePostgresAuthOrSigne
       return res.status(404).json({ error: "Video not found" });
     }
     if (asset.storage_provider === "oss") {
-      const signedUrl = await videoStorage.getSignedReadUrl(asset.storage_key);
-      return proxySignedObjectUrl(req, res, signedUrl);
+      return await deliverOssObject({
+        mode: runtimeConfig.mediaDeliveryMode,
+        storage: videoStorage,
+        storageKey: asset.storage_key,
+        response: res,
+        proxy: (signedUrl) => proxySignedObjectUrl(req, res, signedUrl),
+      });
     }
     if (asset.storage_provider !== "local") {
       return res.status(501).json({ error: "Unsupported video storage provider." });
@@ -3392,7 +3475,7 @@ app.get("/api/photos/hash/:photoHash/:variant(thumb|full)", requirePostgresAuthO
   }
 });
 
-async function handlePrimaryObjectProxy(req: express.Request, res: express.Response, variant: "full" | "thumb") {
+async function handlePrimaryObjectDelivery(req: express.Request, res: express.Response, variant: ImageVariant) {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
@@ -3424,11 +3507,18 @@ async function handlePrimaryObjectProxy(req: express.Request, res: express.Respo
       return res.status(404).json({ error: "Object not found." });
     }
 
-    const signedUrl = await createVideoStorage({
+    const primaryStorage = createVideoStorage({
       ...runtimeConfig,
       videoStorageProvider: "oss",
-    }).getSignedReadUrl(storageKey, variant === "thumb" ? { process: OSS_PRIMARY_THUMB_PROCESS } : undefined);
-    return proxySignedObjectUrl(req, res, signedUrl);
+    });
+    return await deliverOssObject({
+      mode: runtimeConfig.mediaDeliveryMode,
+      storage: primaryStorage,
+      storageKey,
+      process: imageProcessFor(variant, OSS_IMAGE_PROCESSES),
+      response: res,
+      proxy: (signedUrl) => proxySignedObjectUrl(req, res, signedUrl),
+    });
   } catch (err: any) {
     console.error(`Primary object ${variant} proxy error:`, err);
     return res.status(502).json({ error: err.message || "Primary object proxy failed." });
@@ -3436,11 +3526,19 @@ async function handlePrimaryObjectProxy(req: express.Request, res: express.Respo
 }
 
 app.get("/api/objects/primary/:storageKey", requirePostgresAuthOrSignedPhoto, async (req, res) => {
-  return handlePrimaryObjectProxy(req, res, "full");
+  return handlePrimaryObjectDelivery(req, res, "original");
 });
 
 app.get("/api/objects/primary-thumb/:storageKey", requirePostgresAuthOrSignedPhoto, async (req, res) => {
-  return handlePrimaryObjectProxy(req, res, "thumb");
+  return handlePrimaryObjectDelivery(req, res, "thumb-480");
+});
+
+app.get("/api/objects/primary-thumb-240/:storageKey", requirePostgresAuthOrSignedPhoto, async (req, res) => {
+  return handlePrimaryObjectDelivery(req, res, "thumb-240");
+});
+
+app.get("/api/objects/primary-detail/:storageKey", requirePostgresAuthOrSignedPhoto, async (req, res) => {
+  return handlePrimaryObjectDelivery(req, res, "detail-1280");
 });
 
 app.get("/api/db/cards/:cardId/books", requirePostgresAuth, async (req, res) => {

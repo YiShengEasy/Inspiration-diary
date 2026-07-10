@@ -33,6 +33,7 @@ console.log(
       primaryImageStorageProvider: config.primaryImageStorageProvider,
       videoStorageProvider: config.videoStorageProvider,
       imageAssetStorageProvider: config.imageAssetStorageProvider,
+      mediaDeliveryMode: config.mediaDeliveryMode,
       authCookieSecure: config.authCookieSecure,
     },
     null,

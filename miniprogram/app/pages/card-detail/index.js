@@ -16,6 +16,11 @@ function normalizeCard(card) {
   return {
     ...card,
     image: isCombo ? resolveAssetUrl((card.comboSummary && card.comboSummary.coverImageUrl) || "") : resolveAssetUrl(card.image || card.imageUrl || card.thumbnailUrl || ""),
+    originalImageUrl: resolveAssetUrl(
+      isCombo
+        ? ((card.comboSummary && card.comboSummary.coverOriginalImageUrl) || (card.comboSummary && card.comboSummary.coverImageUrl) || "")
+        : (card.originalImageUrl || card.imageUrl || card.image || "")
+    ),
     title: card.mdName || (primaryVideo && primaryVideo.originalName) || terms[0] || (isCombo ? "组合卡片" : (isVideo ? "视频灵感" : "灵感卡片")),
     summary: isCombo
       ? `${(card.comboSummary && card.comboSummary.imageCount) || 0} 张参考图 / ${(card.comboSummary && card.comboSummary.generationCount) || 0} 条视频记录`
@@ -29,27 +34,6 @@ function normalizeCard(card) {
     createdText: card.createdAt ? new Date(Number(card.createdAt)).toLocaleString("zh-CN") : "",
     terms,
     termsText: terms.join(" / ")
-  };
-}
-
-async function hydrateCardMedia(card) {
-  if (!card) return card;
-  if (card.isVideo && card.primaryVideo) {
-    const primaryVideo = {
-      ...card.primaryVideo,
-      videoUrl: await downloadAsset(card.primaryVideo.videoUrl),
-      posterUrl: card.primaryVideo.posterUrl ? await downloadAsset(card.primaryVideo.posterUrl) : ""
-    };
-    return {
-      ...card,
-      primaryVideo,
-      videoAssets: [primaryVideo, ...card.videoAssets.slice(1)]
-    };
-  }
-  if (card.isMd || !card.image) return card;
-  return {
-    ...card,
-    image: await downloadAsset(card.image)
   };
 }
 
@@ -91,6 +75,7 @@ function normalizeComboDetail(detail) {
       ? detail.images.map((image) => ({
         ...image,
         imageUrl: resolveAssetUrl(image.imageUrl || ""),
+        originalImageUrl: resolveAssetUrl(image.originalImageUrl || image.imageUrl || ""),
         roleLabel: roleLabel(image.role)
       }))
       : [],
@@ -102,24 +87,6 @@ function normalizeComboDetail(detail) {
         promptNote: generation.promptNote || "暂无提示词"
       }))
       : []
-  };
-}
-
-async function hydrateComboDetail(detail) {
-  if (!detail) return null;
-  const images = await Promise.all((detail.images || []).map(async (image) => ({
-    ...image,
-    imageUrl: await downloadAsset(image.imageUrl)
-  })));
-  const generations = await Promise.all((detail.generations || []).map(async (generation) => ({
-    ...generation,
-    videoUrl: await downloadAsset(generation.videoUrl),
-    posterUrl: generation.posterUrl ? await downloadAsset(generation.posterUrl) : ""
-  })));
-  return {
-    ...detail,
-    images,
-    generations
   };
 }
 
@@ -244,10 +211,10 @@ Page({
     if (!this.data.id) return;
     this.setData({ loading: true, error: "" });
     try {
-      const card = await hydrateCardMedia(normalizeCard(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}` })));
+      const card = normalizeCard(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}` }));
       let comboDetail = null;
       if (card && card.type === "combo") {
-        comboDetail = await hydrateComboDetail(normalizeComboDetail(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}/combo` })));
+        comboDetail = normalizeComboDetail(await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}/combo` }));
       }
       wx.setStorageSync(`miniCard:${this.data.id}`, card);
       this.setData({ card, comboDetail, hasCard: !!card, loading: false });
@@ -257,6 +224,22 @@ Page({
         error: err.message || "卡片详情加载失败"
       });
     }
+  },
+
+  stopVideoPlayback() {
+    if (this.data.card && this.data.card.primaryVideo) {
+      wx.createVideoContext("primary-video", this).stop();
+    }
+    const generations = (this.data.comboDetail && this.data.comboDetail.generations) || [];
+    generations.forEach((generation) => {
+      if (!generation.isReference) {
+        wx.createVideoContext(`combo-video-${generation.id}`, this).stop();
+      }
+    });
+  },
+
+  onUnload() {
+    this.stopVideoPlayback();
   },
 
   async deleteCard() {
@@ -346,7 +329,7 @@ Page({
 
     try {
       wx.showLoading({ title: "正在下载" });
-      const filePath = await downloadFileForSave(card.image);
+      const filePath = await downloadFileForSave(card.originalImageUrl || card.image);
       wx.hideLoading();
       wx.saveImageToPhotosAlbum({
         filePath,

@@ -23,7 +23,7 @@
           data-id="{{item.id}}"
           bindtap="openBook"
         >
-          <image wx:if="{{item.coverImage}}" class="book-list-cover" src="{{item.coverImage}}" mode="aspectFill"></image>
+          <image wx:if="{{item.coverImage}}" class="book-list-cover" src="{{item.coverImage}}" mode="aspectFill" lazy-load="true"></image>
           <view wx:else class="book-list-cover empty-cover">BOOK</view>
           <view class="book-list-copy">
             <text class="book-list-title">{{item.title}}</text>
@@ -67,7 +67,7 @@
         <view class="book-items">
           <button wx:for="{{cards}}" wx:key="id" class="book-item {{index === 0 ? 'cover' : ''}}" data-id="{{item.id}}" bindtap="openCard">
             <view class="book-item-thumb">
-              <image wx:if="{{!item.isMd && item.image}}" src="{{item.image}}" mode="aspectFill"></image>
+              <image wx:if="{{!item.isMd && item.image}}" src="{{item.image}}" mode="aspectFill" lazy-load="true"></image>
               <view wx:else class="md-thumb">
                 <text class="md-thumb-title">{{item.title}}</text>
                 <text class="md-thumb-summary">{{item.summary}}</text>

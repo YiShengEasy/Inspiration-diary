@@ -136,6 +136,7 @@ export default function PolaroidCard({
                 alt={card.mdName || "组合卡片"}
                 className="h-full w-full object-cover select-none pointer-events-none"
                 loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
               />
             ) : (
@@ -164,6 +165,8 @@ export default function PolaroidCard({
                 alt={primaryVideo.originalName || "视频封面"}
                 className="h-full w-full object-cover select-none pointer-events-none opacity-85"
                 referrerPolicy="no-referrer"
+                loading="lazy"
+                decoding="async"
               />
             ) : primaryVideo ? (
               <div className="h-full w-full bg-stone-900" />
@@ -189,6 +192,8 @@ export default function PolaroidCard({
               alt="Snippet Inspiration"
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover select-none pointer-events-none"
+              loading="lazy"
+              decoding="async"
             />
             <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 pointer-events-none" />
           </div>

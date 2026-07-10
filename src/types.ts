@@ -3,7 +3,9 @@ export interface ImageCard {
   weekId: string;
   dayIndex: number; // 0: Mon, 1: Tue, 2: Wed, 3: Thu, 4: Fri, 5: Weekend
   imageUrl: string; // Large PhotoPrism image URL
+  thumbnail240Url?: string;
   thumbnailUrl?: string; // PhotoPrism thumbnail URL for board cards
+  originalImageUrl?: string;
   photoUid?: string; // PhotoPrism photo/file identifier used for traceability
   photoHash?: string; // PhotoPrism content hash used by authenticated proxy routes
   terms: string[];
@@ -26,6 +28,8 @@ export type ComboImageRole = "character" | "scene" | "story" | "other";
 
 export interface ComboSummary {
   coverImageUrl: string;
+  coverDetailImageUrl?: string;
+  coverOriginalImageUrl?: string;
   imageCount: number;
   generationCount: number;
 }
@@ -50,6 +54,9 @@ export interface ImageAsset {
   storageProvider: "local" | "oss" | string;
   storageKey: string;
   imageUrl: string;
+  thumbnail240Url?: string;
+  thumbnailUrl?: string;
+  originalImageUrl?: string;
   originalName: string;
   mimeType: string;
   sizeBytes: number;
@@ -63,6 +70,9 @@ export interface ComboImage {
   storageProvider: "local" | "oss" | string;
   storageKey: string;
   imageUrl: string;
+  thumbnail240Url?: string;
+  thumbnailUrl?: string;
+  originalImageUrl?: string;
   originalName: string;
   mimeType: string;
   sizeBytes: number;

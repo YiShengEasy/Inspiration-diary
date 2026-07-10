@@ -777,7 +777,9 @@ export default function App() {
 
 	      const storedImage = await storeResponse.json();
       const imageUrl = storedImage.imageUrl || "";
+      const thumbnail240Url = storedImage.thumbnail240Url || storedImage.thumbnailUrl || imageUrl;
       const thumbnailUrl = storedImage.thumbnailUrl || "";
+      const originalImageUrl = storedImage.originalImageUrl || imageUrl;
 
 	      // Generate a new doc in the cards collection
 	      const cardId = createNewCardId();
@@ -786,7 +788,9 @@ export default function App() {
 	        weekId: targetWeekId,
 	        dayIndex,
 	        imageUrl,
+	        thumbnail240Url,
 	        thumbnailUrl,
+	        originalImageUrl,
 	        photoUid: storedImage.photoUid || "",
           photoHash: storedImage.photoHash || "",
 	        terms: selectedFallback,
@@ -1482,9 +1486,15 @@ export default function App() {
       return;
     }
 
-    const response = card.imageUrl.startsWith("data:")
-      ? await fetch(card.imageUrl)
-      : await authFetch(card.imageUrl);
+    const downloadUrl = card.type === "combo"
+      ? card.comboSummary?.coverOriginalImageUrl || card.comboSummary?.coverDetailImageUrl || card.comboSummary?.coverImageUrl || ""
+      : card.originalImageUrl || card.imageUrl;
+    if (!downloadUrl) {
+      throw new Error("当前卡片没有可下载的图片。");
+    }
+    const response = downloadUrl.startsWith("data:")
+      ? await fetch(downloadUrl)
+      : await authFetch(downloadUrl);
     if (!response.ok) {
       throw new Error("图片下载失败，请稍后重试。");
     }
@@ -2449,6 +2459,8 @@ export default function App() {
                     src={cardToDelete.thumbnailUrl || cardToDelete.imageUrl}
                     className="w-full h-16 object-cover bg-stone-200 dark:bg-stone-800"
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                   />
                   <div className="flex-1 mt-1 bg-stone-50 dark:bg-stone-800 flex items-end p-1">
                     <div className="h-1 flex-1 bg-stone-200 dark:bg-stone-700 rounded-full w-1/2 opacity-50" />
@@ -2576,6 +2588,7 @@ export default function App() {
                         src={zoomedCard.imageUrl}
                         alt="Original Snippet View"
                         referrerPolicy="no-referrer"
+                        decoding="async"
                         onLoad={(e) => {
                           const img = e.currentTarget;
                           setImageNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
@@ -2839,6 +2852,7 @@ export default function App() {
                                 alt={image.originalName}
                                 className="aspect-square w-full bg-stone-100 object-cover dark:bg-stone-900"
                                 loading="lazy"
+                                decoding="async"
                               />
                               <div className="p-2">
                                 <div className="truncate text-[11px] font-bold text-stone-800 dark:text-stone-100">{image.originalName}</div>
@@ -2847,7 +2861,7 @@ export default function App() {
                                   <button
                                     type="button"
                                     onClick={async () => {
-                                      const response = await authFetch(image.imageUrl);
+                                      const response = await authFetch(image.originalImageUrl || image.imageUrl);
                                       if (!response.ok) return;
                                       downloadBlob(await response.blob(), sanitizeDownloadName(image.originalName || `${image.id}.jpg`));
                                     }}

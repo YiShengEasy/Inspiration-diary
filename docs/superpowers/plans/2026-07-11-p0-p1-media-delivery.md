@@ -19,7 +19,7 @@
 - Modify: `.env.production.example`
 - Modify: `scripts/validate-runtime-config.ts`
 
-- [ ] **Step 1: Add the delivery mode type and parser**
+- [x] **Step 1: Add the delivery mode type and parser**
 
 ```ts
 export type MediaDeliveryMode = "proxy" | "oss";
@@ -29,11 +29,11 @@ function parseMediaDeliveryMode(value: string): MediaDeliveryMode {
 }
 ```
 
-- [ ] **Step 2: Preserve the raw value for validation**
+- [x] **Step 2: Preserve the raw value for validation**
 
 Add `mediaDeliveryMode` to `RuntimeConfig`, populate it from `MEDIA_DELIVERY_MODE`, and return `MEDIA_DELIVERY_MODE must be proxy or oss.` when a non-empty unsupported value is configured.
 
-- [ ] **Step 3: Add example values**
+- [x] **Step 3: Add example values**
 
 ```dotenv
 MEDIA_DELIVERY_MODE=proxy
@@ -43,7 +43,7 @@ OSS_DETAIL_1280_PROCESS=image/resize,w_1280/quality,Q_82/format,webp
 OSS_VIDEO_POSTER_PROCESS=video/snapshot,t_1000,f_jpg,w_720
 ```
 
-- [ ] **Step 4: Verify configuration**
+- [x] **Step 4: Verify configuration**
 
 Run: `npm run config:validate`
 
@@ -55,7 +55,7 @@ Expected: the repository's local and production example checks pass; an explicit
 - Create: `src/server/mediaDelivery.ts`
 - Modify: `server.ts`
 
-- [ ] **Step 1: Add image variant definitions**
+- [x] **Step 1: Add image variant definitions**
 
 ```ts
 export type ImageVariant = "thumb-240" | "thumb-480" | "detail-1280" | "original";
@@ -66,7 +66,7 @@ export function imageProcessFor(variant: ImageVariant, processes: MediaProcesses
 }
 ```
 
-- [ ] **Step 2: Add proxy-or-redirect delivery**
+- [x] **Step 2: Add proxy-or-redirect delivery**
 
 ```ts
 export async function deliverOssObject(input: DeliverOssObjectInput) {
@@ -78,11 +78,11 @@ export async function deliverOssObject(input: DeliverOssObjectInput) {
 
 The helper must never redirect local storage and must convert signing failures into the caller's existing 502 path.
 
-- [ ] **Step 3: Wire existing OSS routes through the helper**
+- [x] **Step 3: Wire existing OSS routes through the helper**
 
 Replace direct `proxySignedObjectUrl()` calls for primary images, image assets, combo images, video posters, videos, and combo generation videos.
 
-- [ ] **Step 4: Verify TypeScript**
+- [x] **Step 4: Verify TypeScript**
 
 Run: `npm run lint`
 
@@ -94,7 +94,7 @@ Expected: `tsc --noEmit` exits 0.
 - Modify: `server.ts`
 - Modify: `src/types.ts`
 
-- [ ] **Step 1: Add primary image paths**
+- [x] **Step 1: Add primary image paths**
 
 ```ts
 primaryObjectUrl(key, req, "thumb-240")
@@ -105,11 +105,11 @@ primaryObjectUrl(key, req, "original")
 
 Each value maps to a distinct signed pathname and the corresponding OSS process.
 
-- [ ] **Step 2: Add image asset and combo image variant routes**
+- [x] **Step 2: Add image asset and combo image variant routes**
 
 Expose `/thumb-240`, `/thumb-480`, `/detail-1280`, and `/original` routes. Route handlers must repeat the existing owner/signed-request database check before delivery.
 
-- [ ] **Step 3: Extend mapped values**
+- [x] **Step 3: Extend mapped values**
 
 ```ts
 interface ImageCard {
@@ -125,7 +125,7 @@ interface ImageAsset {
 
 For OSS-backed rows, `thumbnailUrl` is `thumb-480`, `imageUrl` is `detail-1280`, and `originalImageUrl` is `original`. Local and PhotoPrism values retain compatible fallbacks.
 
-- [ ] **Step 4: Verify route signatures**
+- [x] **Step 4: Verify route signatures**
 
 Run: `npm run lint`
 
@@ -143,7 +143,7 @@ Expected: all mapper callers compile without becoming asynchronous.
 - Modify: `miniprogram/app/pages/me/index.js`
 - Modify: corresponding page WXML files containing remote `<image>` elements
 
-- [ ] **Step 1: Remove browse-time downloads**
+- [x] **Step 1: Remove browse-time downloads**
 
 ```js
 function hydrateCardMedia(card) {
@@ -153,22 +153,22 @@ function hydrateCardMedia(card) {
 
 Then remove the helper entirely and use `resolveAssetUrl()` in normalizers. Keep `downloadFileForSave()` for explicit save actions.
 
-- [ ] **Step 2: Use original URLs for save**
+- [x] **Step 2: Use original URLs for save**
 
 ```js
 const imageUrl = card.originalImageUrl || card.image;
 const filePath = await downloadFileForSave(imageUrl);
 ```
 
-- [ ] **Step 3: Stop video contexts on unload**
+- [x] **Step 3: Stop video contexts on unload**
 
 Give video nodes stable IDs, create their contexts after data load, and call `stop()` from `onUnload`.
 
-- [ ] **Step 4: Enable lazy images**
+- [x] **Step 4: Enable lazy images**
 
 Add `lazy-load="true"` to non-critical remote image nodes while retaining fixed-size containers.
 
-- [ ] **Step 5: Run syntax checks**
+- [x] **Step 5: Run syntax checks**
 
 Run: `find miniprogram/app/pages -name '*.js' -print0 | xargs -0 -n1 node --check`
 
@@ -182,22 +182,22 @@ Expected: every file exits 0.
 - Modify: `src/components/PolaroidCard.tsx`
 - Modify: `src/components/InspirationBooksView.tsx`
 
-- [ ] **Step 1: Use detail URLs for viewing and original URLs for downloads**
+- [x] **Step 1: Use detail URLs for viewing and original URLs for downloads**
 
 ```tsx
 const downloadUrl = image.originalImageUrl || image.imageUrl;
 <img src={image.imageUrl} loading="lazy" decoding="async" />
 ```
 
-- [ ] **Step 2: Complete lazy decoding coverage**
+- [x] **Step 2: Complete lazy decoding coverage**
 
 Add `loading="lazy" decoding="async"` to non-critical card, book cover, combo, and bound image elements. Preserve already lazy elements.
 
-- [ ] **Step 3: Ensure video nodes unmount with detail state**
+- [x] **Step 3: Ensure video nodes unmount with detail state**
 
 Keep video rendering conditional on the active detail/card. No persistent hidden player may remain after the modal or combo detail closes.
 
-- [ ] **Step 4: Verify Web build**
+- [x] **Step 4: Verify Web build**
 
 Run: `npm run lint && npm run build`
 
@@ -209,23 +209,23 @@ Expected: both commands exit 0; only existing bundle-size warnings may remain.
 - Create: `scripts/media-delivery-smoke.ts`
 - Modify: `package.json`
 
-- [ ] **Step 1: Add deterministic helper assertions**
+- [x] **Step 1: Add deterministic helper assertions**
 
 The smoke script asserts every image variant maps to the expected process, proxy mode invokes the proxy callback, OSS mode returns a 302 Location, and invalid runtime mode validation fails.
 
-- [ ] **Step 2: Add the script command**
+- [x] **Step 2: Add the script command**
 
 ```json
 "media:smoke": "tsx scripts/media-delivery-smoke.ts"
 ```
 
-- [ ] **Step 3: Run all checks**
+- [x] **Step 3: Run all checks**
 
 Run: `npm run media:smoke && npm run config:validate && npm run lint && npm run build`
 
 Expected: smoke, config, typecheck, and production build pass.
 
-- [ ] **Step 4: Inspect final diff**
+- [x] **Step 4: Inspect final diff**
 
 Run: `git diff --check && git status --short`
 

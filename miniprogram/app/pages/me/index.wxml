@@ -131,7 +131,7 @@
 
   <view wx:elif="{{activeTab === '灵感册'}}" class="section-list book-section">
     <button wx:for="{{books}}" wx:key="id" class="book-row" data-id="{{item.id}}" bindtap="openBook">
-      <image wx:if="{{item.coverImage}}" class="book-cover" src="{{item.coverImage}}" mode="aspectFill"></image>
+      <image wx:if="{{item.coverImage}}" class="book-cover" src="{{item.coverImage}}" mode="aspectFill" lazy-load="true"></image>
       <view wx:else class="book-cover empty-cover">BOOK</view>
       <view class="book-copy">
         <text class="book-title">{{item.title}}</text>
@@ -162,7 +162,7 @@
   <view wx:else class="section-list favorite-section">
     <button wx:for="{{favorites}}" wx:key="id" class="favorite-row" data-id="{{item.id}}" bindtap="openFavorite">
       <view class="favorite-thumb">
-        <image wx:if="{{!item.isMd && item.image}}" src="{{item.image}}" mode="aspectFill"></image>
+        <image wx:if="{{!item.isMd && item.image}}" src="{{item.image}}" mode="aspectFill" lazy-load="true"></image>
         <view wx:else class="md-mini">
           <text>{{item.typeLabel}}</text>
         </view>

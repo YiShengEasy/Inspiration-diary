@@ -1,5 +1,5 @@
 const { refreshAccountStatus, wechatLogin } = require("../../utils/auth");
-const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
+const { request, resolveAssetUrl } = require("../../utils/api");
 const { readToolDrafts, removeToolDraft } = require("../../utils/toolDrafts");
 const {
   SMART_BOOK_SUGGEST_IMAGES_KEY,
@@ -59,7 +59,7 @@ function normalizeBook(book) {
   const cover = book.coverCard || null;
   const coverIsCombo = cover && cover.type === "combo";
   const coverImage = cover
-    ? resolveAssetUrl(coverIsCombo ? ((cover.comboSummary && cover.comboSummary.coverImageUrl) || "") : (cover.thumbnailUrl || cover.imageUrl || ""))
+    ? resolveAssetUrl(coverIsCombo ? ((cover.comboSummary && cover.comboSummary.coverImageUrl) || "") : (cover.thumbnail240Url || cover.thumbnailUrl || cover.imageUrl || ""))
     : "";
   return {
     ...book,
@@ -75,7 +75,7 @@ function normalizeCard(card) {
   const isCombo = card.type === "combo";
   return {
     ...card,
-    image: isCombo ? resolveAssetUrl((card.comboSummary && card.comboSummary.coverImageUrl) || "") : resolveAssetUrl(card.thumbnailUrl || card.imageUrl || ""),
+    image: isCombo ? resolveAssetUrl((card.comboSummary && card.comboSummary.coverImageUrl) || "") : resolveAssetUrl(card.thumbnail240Url || card.thumbnailUrl || card.imageUrl || ""),
     title: card.mdName || terms[0] || (isCombo ? "组合卡片" : "灵感图片"),
     summary: isCombo
       ? `${(card.comboSummary && card.comboSummary.imageCount) || 0} 张参考图 / ${(card.comboSummary && card.comboSummary.generationCount) || 0} 条视频记录`
@@ -95,22 +95,6 @@ function normalizeDraft(draft) {
     createdText: draft.createdAt ? new Date(Number(draft.createdAt)).toLocaleDateString("zh-CN") : "",
     title: draft.title || "工具草稿",
     note: draft.note || "保存在本机"
-  };
-}
-
-async function hydrateBookMedia(book) {
-  if (!book || !book.coverImage) return book;
-  return {
-    ...book,
-    coverImage: await downloadAsset(book.coverImage)
-  };
-}
-
-async function hydrateCardMedia(card) {
-  if (!card || card.isMd || !card.image) return card;
-  return {
-    ...card,
-    image: await downloadAsset(card.image)
   };
 }
 
@@ -210,13 +194,13 @@ Page({
   async loadBooks() {
     const body = await request({ url: "/api/db/books" });
     const books = Array.isArray(body) ? body : [];
-    return Promise.all(books.map((book) => hydrateBookMedia(normalizeBook(book))));
+    return books.map(normalizeBook);
   },
 
   async loadFavorites() {
     const body = await request({ url: "/api/db/cards?weekId=all&page=1&pageSize=60&favorite=true" });
     const rawCards = Array.isArray(body) ? body : body.cards || [];
-    const cards = await Promise.all(rawCards.map((card) => hydrateCardMedia(normalizeCard(card))));
+    const cards = rawCards.map(normalizeCard);
     cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
     return cards;
   },

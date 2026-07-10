@@ -20,7 +20,7 @@
 
   <view class="result-list">
     <button wx:for="{{cards}}" wx:key="id" class="result-card" data-id="{{item.id}}" bindtap="openCard">
-      <image wx:if="{{!item.isMd && item.image}}" class="thumb" src="{{item.image}}" mode="aspectFill"></image>
+      <image wx:if="{{!item.isMd && item.image}}" class="thumb" src="{{item.image}}" mode="aspectFill" lazy-load="true"></image>
       <view wx:else class="thumb md-thumb">
         <text class="md-thumb-title">{{item.title}}</text>
         <text class="md-thumb-summary">{{item.summary}}</text>

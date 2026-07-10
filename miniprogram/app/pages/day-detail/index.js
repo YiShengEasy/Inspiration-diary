@@ -1,4 +1,4 @@
-const { request, resolveAssetUrl, downloadAsset } = require("../../utils/api");
+const { request, resolveAssetUrl } = require("../../utils/api");
 const { days } = require("../../utils/dates");
 
 function normalizeCard(card) {
@@ -22,14 +22,6 @@ function normalizeCard(card) {
 
 function sortNewestFirst(cards) {
   return cards.slice().sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-}
-
-async function hydrateCardMedia(card) {
-  if (!card || card.isMd || !card.image) return card;
-  return {
-    ...card,
-    image: await downloadAsset(card.image)
-  };
 }
 
 Page({
@@ -59,9 +51,9 @@ Page({
         url: `/api/db/cards?weekId=${encodeURIComponent(this.data.weekId)}&page=1&pageSize=200`
       });
       const rawCards = Array.isArray(body) ? body : body.cards || [];
-      const cards = sortNewestFirst(await Promise.all(rawCards
+      const cards = sortNewestFirst(rawCards
         .filter((card) => Number(card.dayIndex) === this.data.dayIndex)
-        .map((card) => hydrateCardMedia(normalizeCard(card)))));
+        .map(normalizeCard));
       cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
       this.setData({ cards });
     } catch (err) {

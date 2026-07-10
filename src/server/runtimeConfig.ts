@@ -3,6 +3,7 @@ export type DeploymentProfile = "local-docker" | "production";
 export type DatabaseType = "firestore" | "postgres";
 export type PrimaryImageStorageProvider = "photoprism" | "oss";
 export type AssetStorageProvider = "local" | "oss";
+export type MediaDeliveryMode = "proxy" | "oss";
 
 export interface RuntimeConfig {
   appEnv: AppEnv;
@@ -15,6 +16,7 @@ export interface RuntimeConfig {
   primaryImageStorageProvider: PrimaryImageStorageProvider;
   videoStorageProvider: AssetStorageProvider;
   imageAssetStorageProvider: AssetStorageProvider;
+  mediaDeliveryMode: MediaDeliveryMode;
   photoPrism: {
     internalUrl: string;
     publicUrl: string;
@@ -79,6 +81,10 @@ function parseAssetStorageProvider(value: string): AssetStorageProvider {
   return value === "oss" ? "oss" : "local";
 }
 
+function parseMediaDeliveryMode(value: string): MediaDeliveryMode {
+  return value === "oss" ? "oss" : "proxy";
+}
+
 export function getRuntimeConfig(): RuntimeConfig {
   const appEnv = parseAppEnv(readEnv("APP_ENV"));
   const deploymentProfile = parseDeploymentProfile(readEnv("DEPLOYMENT_PROFILE"), appEnv);
@@ -97,6 +103,7 @@ export function getRuntimeConfig(): RuntimeConfig {
     primaryImageStorageProvider,
     videoStorageProvider,
     imageAssetStorageProvider,
+    mediaDeliveryMode: parseMediaDeliveryMode(readEnv("MEDIA_DELIVERY_MODE")),
     photoPrism: {
       internalUrl: readEnv("PHOTOPRISM_INTERNAL_URL"),
       publicUrl: readEnv("PHOTOPRISM_PUBLIC_URL") || readEnv("PHOTOPRISM_INTERNAL_URL"),
@@ -126,6 +133,11 @@ export function getRuntimeConfig(): RuntimeConfig {
 
 export function validateRuntimeConfig(config = getRuntimeConfig()): string[] {
   const errors: string[] = [];
+  const mediaDeliveryMode = readEnv("MEDIA_DELIVERY_MODE");
+
+  if (mediaDeliveryMode && mediaDeliveryMode !== "proxy" && mediaDeliveryMode !== "oss") {
+    errors.push("MEDIA_DELIVERY_MODE must be proxy or oss.");
+  }
 
   if (config.databaseType === "postgres" && !config.databaseUrl) {
     errors.push("DATABASE_URL is required when DATABASE_TYPE=postgres.");
