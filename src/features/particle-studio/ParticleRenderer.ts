@@ -59,7 +59,9 @@ export class ParticleRenderer {
       transparent: true,
       depthWrite: false,
       vertexColors: true,
-      blending: THREE.AdditiveBlending,
+      // Preserve the sampled image colors. Additive blending makes thousands
+      // of nearby particles accumulate to white before Bloom is applied.
+      blending: THREE.NormalBlending,
       uniforms: {
         uDepthStrength: { value: 2.4 }, uScatter: { value: 0.18 }, uDrift: { value: 0.12 },
         uTime: { value: 0 }, uProgress: { value: 0 }, uPointSize: { value: 1.4 },

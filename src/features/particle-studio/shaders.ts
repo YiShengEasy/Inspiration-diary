@@ -27,7 +27,7 @@ export const particleVertexShader = /* glsl */ `
     // Keep particles crisp at the default camera distance. The old 260 factor
     // made each point tens of pixels wide, so additive blending and Bloom
     // merged the whole image into one large light blob.
-    gl_PointSize = uPointSize * (14.0 / max(1.0, -mvPosition.z));
+    gl_PointSize = uPointSize * (5.0 / max(1.0, -mvPosition.z));
     vColor = color;
     vAlpha = smoothstep(0.0, 0.18, uProgress);
   }
@@ -41,7 +41,7 @@ export const particleFragmentShader = /* glsl */ `
     vec2 centered = gl_PointCoord - 0.5;
     float distanceFromCenter = length(centered) * 2.0;
     if (distanceFromCenter > 1.0) discard;
-    float alpha = (1.0 - smoothstep(0.55, 1.0, distanceFromCenter)) * vAlpha;
+    float alpha = (1.0 - smoothstep(0.45, 1.0, distanceFromCenter)) * vAlpha * 0.86;
     gl_FragColor = vec4(vColor, alpha);
   }
 `;
