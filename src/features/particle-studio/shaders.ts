@@ -57,10 +57,9 @@ export const particleGlowFragmentShader = /* glsl */ `
     float distanceFromCenter = length(centered) * 2.0;
     if (distanceFromCenter > 1.0) discard;
     float luminance = dot(vColor, vec3(0.2126, 0.7152, 0.0722));
-    float highlight = smoothstep(0.42, 0.92, luminance);
-    if (highlight < 0.015) discard;
+    float highlight = 0.28 + smoothstep(0.18, 0.9, luminance) * 0.72;
     float halo = 1.0 - smoothstep(0.05, 1.0, distanceFromCenter);
-    gl_FragColor = vec4(vColor * 1.28, halo * highlight * vAlpha * 0.22);
+    gl_FragColor = vec4(max(vColor, vec3(0.16)) * 1.22, halo * highlight * vAlpha * 0.28);
   }
 `;
 
@@ -79,7 +78,7 @@ export const imagePlaneFragmentShader = /* glsl */ `
   void main() {
     vec4 sampled = texture2D(uImage, vUv);
     float edgeDistance = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
-    float edgeFade = smoothstep(0.0, 0.075, edgeDistance);
+    float edgeFade = smoothstep(0.0, 0.028, edgeDistance);
     float centerLight = 1.0 + (1.0 - smoothstep(0.0, 0.72, distance(vUv, vec2(0.5)))) * 0.18;
     vec3 color = sampled.rgb * centerLight;
     gl_FragColor = vec4(color, sampled.a * edgeFade);

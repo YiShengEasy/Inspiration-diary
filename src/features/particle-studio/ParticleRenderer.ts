@@ -14,6 +14,42 @@ import {
 
 const EXPORT_SCALE_LIMIT = 3;
 
+function createEdgeParticleGeometry(source: ParticleSource): THREE.BufferGeometry {
+  const aspect = source.width / source.height;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const depth: number[] = [];
+  const random: number[] = [];
+
+  for (let index = 0; index < source.particleCount; index += 1) {
+    const offset = index * 3;
+    const normalizedX = Math.abs(source.positions[offset]) / Math.max(aspect, 0.0001);
+    const normalizedY = Math.abs(source.positions[offset + 1]);
+    const edgeDistance = Math.max(normalizedX, normalizedY);
+    const seed = source.random[index];
+    if (edgeDistance < 0.68 || (edgeDistance < 0.82 && seed < 0.42)) continue;
+
+    const outward = Math.max(0, edgeDistance - 0.68) * (0.55 + seed * 0.9);
+    const length = Math.hypot(source.positions[offset] / Math.max(aspect, 0.0001), source.positions[offset + 1]) || 1;
+    positions.push(
+      source.positions[offset] + (source.positions[offset] / Math.max(aspect, 0.0001) / length) * outward * aspect,
+      source.positions[offset + 1] + (source.positions[offset + 1] / length) * outward,
+      source.positions[offset + 2],
+    );
+    colors.push(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2]);
+    depth.push(source.depth[index]);
+    random.push(seed);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute("aDepth", new THREE.Float32BufferAttribute(depth, 1));
+  geometry.setAttribute("aRandom", new THREE.Float32BufferAttribute(random, 1));
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
 export class ParticleRenderer {
   private readonly container: HTMLElement;
   private readonly profile: QualityProfile;
@@ -26,7 +62,7 @@ export class ParticleRenderer {
   private readonly bloomPass: UnrealBloomPass;
   private readonly material: THREE.ShaderMaterial;
   private readonly glowMaterial: THREE.ShaderMaterial;
-  private imagePlane: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> | null = null;
+  private imagePlane: THREE.Mesh<THREE.BoxGeometry, THREE.Material[]> | null = null;
   private imageTexture: THREE.Texture | null = null;
   private points: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
   private glowPoints: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
@@ -105,12 +141,7 @@ export class ParticleRenderer {
 
   setSource(source: ParticleSource): void {
     this.removePoints();
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(source.positions, 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(source.colors, 3));
-    geometry.setAttribute("aDepth", new THREE.BufferAttribute(source.depth, 1));
-    geometry.setAttribute("aRandom", new THREE.BufferAttribute(source.random, 1));
-    geometry.computeBoundingSphere();
+    const geometry = createEdgeParticleGeometry(source);
     this.points = new THREE.Points(geometry, this.material);
     this.points.frustumCulled = false;
     this.scene.add(this.points);
@@ -133,16 +164,19 @@ export class ParticleRenderer {
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
     this.imageTexture = texture;
-    const geometry = new THREE.PlaneGeometry(aspect * 2, 2);
-    const material = new THREE.ShaderMaterial({
+    const geometry = new THREE.BoxGeometry(aspect * 2, 2, 0.14);
+    const frontMaterial = new THREE.ShaderMaterial({
       vertexShader: imagePlaneVertexShader,
       fragmentShader: imagePlaneFragmentShader,
       transparent: true,
-      depthWrite: false,
       uniforms: { uImage: { value: texture } },
     });
-    this.imagePlane = new THREE.Mesh(geometry, material);
-    this.imagePlane.position.z = -0.08;
+    const sideMaterial = new THREE.MeshBasicMaterial({ color: 0x071116 });
+    const backMaterial = new THREE.MeshBasicMaterial({ color: 0x020405 });
+    this.imagePlane = new THREE.Mesh(geometry, [
+      sideMaterial, sideMaterial, sideMaterial, sideMaterial, frontMaterial, backMaterial,
+    ]);
+    this.imagePlane.position.z = -0.02;
     this.imagePlane.renderOrder = -1;
     this.scene.add(this.imagePlane);
   }
@@ -244,7 +278,7 @@ export class ParticleRenderer {
     if (this.imagePlane) {
       this.scene.remove(this.imagePlane);
       this.imagePlane.geometry.dispose();
-      this.imagePlane.material.dispose();
+      new Set(this.imagePlane.material).forEach((material) => material.dispose());
       this.imagePlane = null;
     }
     this.imageTexture?.dispose();
