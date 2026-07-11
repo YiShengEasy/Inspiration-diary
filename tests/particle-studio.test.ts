@@ -5,9 +5,11 @@ import {
   PARTICLE_PRESETS,
   getQualityProfile,
   normalizeParams,
+  requiresParticleRebuild,
 } from "../src/features/particle-studio/presets";
 import { computeContentMask, computeFastDepth, sampleParticleSource } from "../src/features/particle-studio/fastDepth";
 import { normalizeDepthOutput } from "../src/features/particle-studio/aiDepth";
+import { dispersionForCoherence, loopPhase, retainParticleColor } from "../src/features/particle-studio/motionField";
 
 test("ships the five approved presets", () => {
   assert.deepEqual(Object.keys(PARTICLE_PRESETS), ["portrait", "landscape", "neon", "mono", "reference"]);
@@ -27,6 +29,37 @@ test("normalizes unsafe parameter input", () => {
   assert.equal(next.density, 1);
   assert.equal(next.particleSize, 0.4);
   assert.equal(next.bloomStrength, 3);
+});
+
+test("ships live water, invasion, dispersion, and source-color controls", () => {
+  assert.deepEqual(
+    [
+      "waveStrength", "waveScale", "waveSpeed", "invasionRange", "edgeSoftness",
+      "irregularity", "noiseScale", "outerDispersion", "colorRetention",
+    ].every((key) => key in DEFAULT_PARTICLE_PARAMS),
+    true,
+  );
+});
+
+test("only structural parameters require particle preprocessing", () => {
+  assert.equal(requiresParticleRebuild(DEFAULT_PARTICLE_PARAMS, { ...DEFAULT_PARTICLE_PARAMS, waveStrength: 0.08 }), false);
+  assert.equal(requiresParticleRebuild(DEFAULT_PARTICLE_PARAMS, { ...DEFAULT_PARTICLE_PARAMS, invasionRange: 0.7 }), false);
+  assert.equal(requiresParticleRebuild(DEFAULT_PARTICLE_PARAMS, { ...DEFAULT_PARTICLE_PARAMS, density: 0.4 }), true);
+  assert.equal(requiresParticleRebuild(DEFAULT_PARTICLE_PARAMS, { ...DEFAULT_PARTICLE_PARAMS, depthLayers: 12 }), true);
+});
+
+test("loops the live motion field exactly every five seconds", () => {
+  assert.equal(loopPhase(0), loopPhase(5));
+  assert.equal(loopPhase(1.25), 0.25);
+});
+
+test("increases dispersion as coherence falls", () => {
+  assert.ok(dispersionForCoherence(0.1, 1) > dispersionForCoherence(0.5, 1));
+  assert.ok(dispersionForCoherence(0.5, 1) > dispersionForCoherence(0.9, 1));
+});
+
+test("preserves source RGB when color retention is full", () => {
+  assert.deepEqual(retainParticleColor([0.15, 0.4, 0.85], 1, 1), [0.15, 0.4, 0.85]);
 });
 
 test("computes normalized depth from RGBA brightness", () => {

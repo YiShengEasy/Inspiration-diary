@@ -21,6 +21,15 @@ export interface ParticleParams {
   backgroundColor: string;
   cameraDistance: number;
   saturation: number;
+  waveStrength: number;
+  waveScale: number;
+  waveSpeed: number;
+  invasionRange: number;
+  edgeSoftness: number;
+  irregularity: number;
+  noiseScale: number;
+  outerDispersion: number;
+  colorRetention: number;
 }
 
 export interface ParticleSource {

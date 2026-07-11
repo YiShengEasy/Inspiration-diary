@@ -90,10 +90,17 @@ function createImageSurface(source: ParticleSource): ImageSurface {
       uDepthStrength: { value: 1.6 },
       uBrightnessThreshold: { value: 0.04 },
       uAlphaThreshold: { value: 0.05 },
-      uEdgeStrength: { value: 0.35 },
       uTime: { value: 0 },
+      uLoopDuration: { value: 5 },
       uProgress: { value: 0 },
       uExit: { value: 0 },
+      uWaveStrength: { value: 0.035 },
+      uWaveScale: { value: 2.6 },
+      uWaveSpeed: { value: 0.35 },
+      uInvasionRange: { value: 0.48 },
+      uEdgeSoftness: { value: 0.22 },
+      uIrregularity: { value: 0.36 },
+      uNoiseScale: { value: 3.4 },
     },
   });
   const surface = new THREE.Mesh(geometry, material);
@@ -111,7 +118,6 @@ function disposeImageSurface(surface: ImageSurface): void {
 }
 
 function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeometry {
-  const aspect = source.width / source.height;
   const positions: number[] = [];
   const colors: number[] = [];
   const depth: number[] = [];
@@ -120,57 +126,42 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   const opacity: number[] = [];
   const dissolve: number[] = [];
   const edge: number[] = [];
+  const content: number[] = [];
+  const boundary: number[] = [];
   const candidateStep = Math.max(1, Math.floor(source.particleCount / 60_000));
 
   for (let index = 0; index < source.particleCount; index += candidateStep) {
     const offset = index * 3;
-    const normalizedX = source.positions[offset] / Math.max(aspect, 0.0001);
-    const normalizedY = source.positions[offset + 1];
     const seed = source.random[index];
     const luminance = source.colors[offset] * 0.2126
       + source.colors[offset + 1] * 0.7152
       + source.colors[offset + 2] * 0.0722;
-    const saturation = Math.max(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2])
-      - Math.min(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2]);
     const contentWeight = source.content[index] ?? 0;
     const boundaryWeight = source.boundary[index] ?? 0;
     const edgeWeight = source.edge[index] ?? 0;
-    const coarseNoise = valueNoise(normalizedX * 3.8 + 19.3, normalizedY * 3.8 - 7.1);
-    const fineNoise = valueNoise(normalizedX * 18.0 - 2.7, normalizedY * 18.0 + 11.6);
-    const dissolveNoise = coarseNoise * 0.64 + fineNoise * 0.36;
-    const dissolveWeight = clamp01(
-      (0.76 - contentWeight) * 1.28
-      + (dissolveNoise - 0.5) * 0.42
-      + (0.38 - luminance) * 0.12
-      - edgeWeight * 0.16,
-    );
-    const highlightWeight = clamp01((luminance - 0.7) / 0.3)
-      * clamp01(edgeWeight * 1.8 + saturation * 0.75);
-    const detailWeight = Math.max(edgeWeight, highlightWeight);
+    const dissolveWeight = clamp01(1 - contentWeight);
     const selectionNoise = hash2d(index * 0.73 + 5.1, index * 1.37 - 9.4);
     const keepChance = clamp01(
-      boundaryWeight * 1.25
-      + detailWeight * 0.52
-      + dissolveWeight * 0.24,
+      0.18
+      + boundaryWeight * 0.52
+      + edgeWeight * 0.38
+      + contentWeight * 0.22,
     );
-    if (boundaryWeight < 0.025 && detailWeight < 0.26) continue;
+    if (contentWeight < 0.012 && edgeWeight < 0.04 && boundaryWeight < 0.03) continue;
     if (selectionNoise > keepChance) continue;
 
-    const outward = dissolveWeight * (1 - edgeWeight * 0.42) * (0.025 + seed * 0.135);
-    const length = Math.hypot(normalizedX, normalizedY) || 1;
-    const jitterAmount = 0.002 + dissolveWeight * 0.052;
+    const jitterAmount = 0.002 + dissolveWeight * 0.018;
     const jitterX = (Math.sin(seed * 928.31) - 0.5) * jitterAmount;
     const jitterY = (Math.sin(seed * 417.17 + 1.7) - 0.5) * jitterAmount;
     positions.push(
-      source.positions[offset] + (normalizedX / length) * outward * aspect + jitterX,
-      source.positions[offset + 1] + (normalizedY / length) * outward + jitterY,
+      source.positions[offset] + jitterX,
+      source.positions[offset + 1] + jitterY,
       source.positions[offset + 2],
     );
-    const whitening = clamp01(edgeWeight * 0.38 + highlightWeight * 0.55 + boundaryWeight * 0.52);
     colors.push(
-      THREE.MathUtils.lerp(source.colors[offset], 1, whitening),
-      THREE.MathUtils.lerp(source.colors[offset + 1], 1, whitening),
-      THREE.MathUtils.lerp(source.colors[offset + 2], 1, whitening),
+      source.colors[offset],
+      source.colors[offset + 1],
+      source.colors[offset + 2],
     );
     depth.push(source.depth[index]);
     random.push(seed);
@@ -182,6 +173,8 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     opacity.push(Math.min(1, 0.48 + boundaryWeight * 0.42 + luminance * 0.1 + edgeWeight * 0.28));
     dissolve.push(dissolveWeight);
     edge.push(edgeWeight);
+    content.push(contentWeight);
+    boundary.push(boundaryWeight);
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -193,6 +186,8 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   geometry.setAttribute("aOpacity", new THREE.Float32BufferAttribute(opacity, 1));
   geometry.setAttribute("aDissolve", new THREE.Float32BufferAttribute(dissolve, 1));
   geometry.setAttribute("aEdge", new THREE.Float32BufferAttribute(edge, 1));
+  geometry.setAttribute("aContent", new THREE.Float32BufferAttribute(content, 1));
+  geometry.setAttribute("aBoundary", new THREE.Float32BufferAttribute(boundary, 1));
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -255,7 +250,10 @@ export class ParticleRenderer {
       blending: THREE.AdditiveBlending,
       uniforms: {
         uDepthStrength: { value: 2.4 }, uScatter: { value: 0.18 }, uDrift: { value: 0.12 },
-        uTime: { value: 0 }, uProgress: { value: 0 }, uExit: { value: 0 }, uPointSize: { value: 2.1 },
+        uTime: { value: 0 }, uLoopDuration: { value: 5 }, uProgress: { value: 0 }, uExit: { value: 0 }, uPointSize: { value: 2.1 },
+        uWaveStrength: { value: 0.035 }, uWaveScale: { value: 2.6 }, uWaveSpeed: { value: 0.35 },
+        uInvasionRange: { value: 0.48 }, uEdgeSoftness: { value: 0.22 }, uIrregularity: { value: 0.36 },
+        uNoiseScale: { value: 3.4 }, uOuterDispersion: { value: 0.6 }, uColorRetention: { value: 0.82 },
       },
     });
 
@@ -293,6 +291,15 @@ export class ParticleRenderer {
     this.particleMaterial.uniforms.uScatter.value = params.scatter;
     this.particleMaterial.uniforms.uDrift.value = params.driftSpeed;
     this.particleMaterial.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio * 1.15;
+    this.particleMaterial.uniforms.uWaveStrength.value = params.waveStrength;
+    this.particleMaterial.uniforms.uWaveScale.value = params.waveScale;
+    this.particleMaterial.uniforms.uWaveSpeed.value = params.waveSpeed;
+    this.particleMaterial.uniforms.uInvasionRange.value = params.invasionRange;
+    this.particleMaterial.uniforms.uEdgeSoftness.value = params.edgeSoftness;
+    this.particleMaterial.uniforms.uIrregularity.value = params.irregularity;
+    this.particleMaterial.uniforms.uNoiseScale.value = params.noiseScale;
+    this.particleMaterial.uniforms.uOuterDispersion.value = params.outerDispersion;
+    this.particleMaterial.uniforms.uColorRetention.value = params.colorRetention;
     if (this.imageSurface) this.applySurfaceParams(this.imageSurface, params);
     this.bloomPass.strength = params.bloomStrength * (this.reduced ? 0.55 : 1);
     this.bloomPass.radius = params.bloomRadius;
@@ -417,7 +424,13 @@ export class ParticleRenderer {
     surface.material.uniforms.uDepthStrength.value = params.depthStrength;
     surface.material.uniforms.uBrightnessThreshold.value = params.brightnessThreshold;
     surface.material.uniforms.uAlphaThreshold.value = params.alphaThreshold;
-    surface.material.uniforms.uEdgeStrength.value = params.edgeStrength;
+    surface.material.uniforms.uWaveStrength.value = params.waveStrength;
+    surface.material.uniforms.uWaveScale.value = params.waveScale;
+    surface.material.uniforms.uWaveSpeed.value = params.waveSpeed;
+    surface.material.uniforms.uInvasionRange.value = params.invasionRange;
+    surface.material.uniforms.uEdgeSoftness.value = params.edgeSoftness;
+    surface.material.uniforms.uIrregularity.value = params.irregularity;
+    surface.material.uniforms.uNoiseScale.value = params.noiseScale;
   }
 
   private animate = (): void => {

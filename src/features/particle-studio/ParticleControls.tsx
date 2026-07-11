@@ -26,6 +26,19 @@ const groups: Array<{ title: string; controls: Control[] }> = [
     { key: "scatter", label: "随机散射", min: 0, max: 2, step: 0.01 },
     { key: "driftSpeed", label: "漂浮速度", min: 0, max: 1, step: 0.01 },
   ] },
+  { title: "水波", controls: [
+    { key: "waveStrength", label: "水波强度", min: 0, max: 0.2, step: 0.005 },
+    { key: "waveScale", label: "水波尺度", min: 0.5, max: 10, step: 0.1 },
+    { key: "waveSpeed", label: "水波速度", min: 0, max: 2, step: 0.01 },
+  ] },
+  { title: "侵蚀", controls: [
+    { key: "invasionRange", label: "侵入范围", min: 0, max: 1, step: 0.01 },
+    { key: "edgeSoftness", label: "边界柔化", min: 0.02, max: 0.6, step: 0.01 },
+    { key: "irregularity", label: "不规则度", min: 0, max: 1, step: 0.01 },
+    { key: "noiseScale", label: "噪声尺度", min: 0.5, max: 12, step: 0.1 },
+    { key: "outerDispersion", label: "外层离散度", min: 0, max: 2, step: 0.01 },
+    { key: "colorRetention", label: "原色保留度", min: 0, max: 1, step: 0.01 },
+  ] },
   { title: "立体", controls: [
     { key: "depthStrength", label: "深度强度", min: 0, max: 8, step: 0.1 },
     { key: "depthSmoothing", label: "深度平滑", min: 0, max: 1, step: 0.01 },

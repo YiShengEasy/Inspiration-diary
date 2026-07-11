@@ -20,6 +20,15 @@ export const DEFAULT_PARTICLE_PARAMS: ParticleParams = {
   backgroundColor: "#000000",
   cameraDistance: 4.3,
   saturation: 1,
+  waveStrength: 0.035,
+  waveScale: 2.6,
+  waveSpeed: 0.35,
+  invasionRange: 0.48,
+  edgeSoftness: 0.22,
+  irregularity: 0.36,
+  noiseScale: 3.4,
+  outerDispersion: 0.6,
+  colorRetention: 0.82,
 };
 
 export const PARTICLE_PRESETS: Record<PresetId, ParticleParams> = {
@@ -48,4 +57,22 @@ export const normalizeParams = (params: ParticleParams): ParticleParams => ({
   depthStrength: clamp(params.depthStrength, 0, 8),
   scatter: clamp(params.scatter, 0, 2),
   cameraDistance: clamp(params.cameraDistance, 2.5, 10),
+  waveStrength: clamp(params.waveStrength, 0, 0.2),
+  waveScale: clamp(params.waveScale, 0.5, 10),
+  waveSpeed: clamp(params.waveSpeed, 0, 2),
+  invasionRange: clamp(params.invasionRange, 0, 1),
+  edgeSoftness: clamp(params.edgeSoftness, 0.02, 0.6),
+  irregularity: clamp(params.irregularity, 0, 1),
+  noiseScale: clamp(params.noiseScale, 0.5, 12),
+  outerDispersion: clamp(params.outerDispersion, 0, 2),
+  colorRetention: clamp(params.colorRetention, 0, 1),
 });
+
+export const STRUCTURAL_PARAM_KEYS = new Set<keyof ParticleParams>([
+  "density",
+  "depthSmoothing",
+  "depthLayers",
+]);
+
+export const requiresParticleRebuild = (before: ParticleParams, after: ParticleParams): boolean =>
+  [...STRUCTURAL_PARAM_KEYS].some((key) => before[key] !== after[key]);
