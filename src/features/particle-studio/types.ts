@@ -29,10 +29,14 @@ export interface ParticleSource {
   background: [number, number, number, number];
   imageRgba: Uint8Array;
   depthMap: Float32Array;
+  contentMap: Float32Array;
+  boundaryMap: Float32Array;
   colors: Float32Array;
   positions: Float32Array;
   depth: Float32Array;
   edge: Float32Array;
+  content: Float32Array;
+  boundary: Float32Array;
   random: Float32Array;
   particleCount: number;
 }

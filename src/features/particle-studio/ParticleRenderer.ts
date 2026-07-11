@@ -63,6 +63,20 @@ function createImageSurface(source: ParticleSource): ImageSurface {
   depthTexture.flipY = true;
   depthTexture.needsUpdate = true;
 
+  const contentBytes = new Uint8Array(source.contentMap.length);
+  for (let index = 0; index < source.contentMap.length; index += 1) {
+    contentBytes[index] = Math.round(clamp01(source.contentMap[index]) * 255);
+  }
+  const contentTexture = new THREE.DataTexture(
+    contentBytes,
+    source.width,
+    source.height,
+    THREE.RedFormat,
+    THREE.UnsignedByteType,
+  );
+  contentTexture.flipY = true;
+  contentTexture.needsUpdate = true;
+
   const material = new THREE.ShaderMaterial({
     vertexShader: imageSurfaceVertexShader,
     fragmentShader: imageSurfaceFragmentShader,
@@ -72,10 +86,11 @@ function createImageSurface(source: ParticleSource): ImageSurface {
     uniforms: {
       uImage: { value: imageTexture },
       uDepthMap: { value: depthTexture },
+      uContentMask: { value: contentTexture },
       uDepthStrength: { value: 1.6 },
       uBrightnessThreshold: { value: 0.04 },
-      uBackgroundColor: { value: new THREE.Vector3(source.background[0], source.background[1], source.background[2]) },
-      uBackgroundConfidence: { value: source.background[3] },
+      uAlphaThreshold: { value: 0.05 },
+      uEdgeStrength: { value: 0.35 },
       uTime: { value: 0 },
       uProgress: { value: 0 },
       uExit: { value: 0 },
@@ -90,6 +105,7 @@ function createImageSurface(source: ParticleSource): ImageSurface {
 function disposeImageSurface(surface: ImageSurface): void {
   (surface.material.uniforms.uImage.value as THREE.Texture).dispose();
   (surface.material.uniforms.uDepthMap.value as THREE.Texture).dispose();
+  (surface.material.uniforms.uContentMask.value as THREE.Texture).dispose();
   surface.geometry.dispose();
   surface.material.dispose();
 }
@@ -110,47 +126,37 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     const offset = index * 3;
     const normalizedX = source.positions[offset] / Math.max(aspect, 0.0001);
     const normalizedY = source.positions[offset + 1];
-    const superellipseDistance = Math.pow(
-      Math.pow(Math.abs(normalizedX), 4) + Math.pow(Math.abs(normalizedY), 4),
-      0.25,
-    );
     const seed = source.random[index];
     const luminance = source.colors[offset] * 0.2126
       + source.colors[offset + 1] * 0.7152
       + source.colors[offset + 2] * 0.0722;
     const saturation = Math.max(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2])
       - Math.min(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2]);
-    const backgroundDistance = Math.hypot(
-      source.colors[offset] - source.background[0],
-      source.colors[offset + 1] - source.background[1],
-      source.colors[offset + 2] - source.background[2],
-    ) / Math.sqrt(3);
-    const backgroundPresence = THREE.MathUtils.smoothstep(backgroundDistance, 0.025, 0.14);
-    const contentWeight = THREE.MathUtils.lerp(1, backgroundPresence, source.background[3]);
+    const contentWeight = source.content[index] ?? 0;
+    const boundaryWeight = source.boundary[index] ?? 0;
     const edgeWeight = source.edge[index] ?? 0;
     const coarseNoise = valueNoise(normalizedX * 3.8 + 19.3, normalizedY * 3.8 - 7.1);
     const fineNoise = valueNoise(normalizedX * 18.0 - 2.7, normalizedY * 18.0 + 11.6);
     const dissolveNoise = coarseNoise * 0.64 + fineNoise * 0.36;
-    const organicDistance = superellipseDistance + (dissolveNoise - 0.5) * 0.16;
-    // Two noise scales break up the perimeter, while real Sobel contours are
-    // retained closer to their source pixels so image and particles read as one.
     const dissolveWeight = clamp01(
-      (organicDistance - 0.48) / 0.52
-      + (0.42 - luminance) * 0.18
-      - edgeWeight * 0.3,
+      (0.76 - contentWeight) * 1.28
+      + (dissolveNoise - 0.5) * 0.42
+      + (0.38 - luminance) * 0.12
+      - edgeWeight * 0.16,
     );
     const highlightWeight = clamp01((luminance - 0.7) / 0.3)
       * clamp01(edgeWeight * 1.8 + saturation * 0.75);
     const detailWeight = Math.max(edgeWeight, highlightWeight);
     const selectionNoise = hash2d(index * 0.73 + 5.1, index * 1.37 - 9.4);
-    const keepChance = clamp01(0.035 + dissolveWeight * 0.84 + detailWeight * 0.42) * contentWeight;
-    // The textured surface owns the coherent core. Points live in the same
-    // dissolve band and on a sparse set of real image highlights/contours.
-    if (dissolveWeight < 0.045 && detailWeight < 0.28) continue;
-    if (contentWeight < 0.08) continue;
+    const keepChance = clamp01(
+      boundaryWeight * 1.25
+      + detailWeight * 0.52
+      + dissolveWeight * 0.24,
+    );
+    if (boundaryWeight < 0.025 && detailWeight < 0.26) continue;
     if (selectionNoise > keepChance) continue;
 
-    const outward = dissolveWeight * (1 - edgeWeight * 0.48) * (0.035 + seed * 0.18);
+    const outward = dissolveWeight * (1 - edgeWeight * 0.42) * (0.016 + seed * 0.095);
     const length = Math.hypot(normalizedX, normalizedY) || 1;
     const jitterAmount = 0.002 + dissolveWeight * 0.044;
     const jitterX = (Math.sin(seed * 928.31) - 0.5) * jitterAmount;
@@ -160,15 +166,20 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
       source.positions[offset + 1] + (normalizedY / length) * outward + jitterY,
       source.positions[offset + 2],
     );
-    colors.push(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2]);
+    const whitening = clamp01(edgeWeight * 0.38 + highlightWeight * 0.55 + boundaryWeight * 0.46);
+    colors.push(
+      THREE.MathUtils.lerp(source.colors[offset], 1, whitening),
+      THREE.MathUtils.lerp(source.colors[offset + 1], 1, whitening),
+      THREE.MathUtils.lerp(source.colors[offset + 2], 1, whitening),
+    );
     depth.push(source.depth[index]);
     random.push(seed);
     scale.push(
-      ((0.86 + seed * 0.2) * (1 - dissolveWeight)
-        + (seed > 0.96 ? 1.35 + seed * 0.8 : 0.58 + seed * 0.42) * dissolveWeight)
+      ((0.7 + seed * 0.18) * (1 - dissolveWeight)
+        + (seed > 0.982 ? 1.2 + seed * 0.62 : 0.48 + seed * 0.36) * dissolveWeight)
       * (1 + edgeWeight * 0.42),
     );
-    opacity.push(Math.min(1, 0.4 + dissolveWeight * 0.32 + luminance * 0.12 + edgeWeight * 0.34));
+    opacity.push(Math.min(1, 0.48 + boundaryWeight * 0.42 + luminance * 0.1 + edgeWeight * 0.28));
     dissolve.push(dissolveWeight);
     edge.push(edgeWeight);
   }
@@ -241,7 +252,7 @@ export class ParticleRenderer {
       transparent: true,
       depthWrite: false,
       vertexColors: true,
-      blending: THREE.NormalBlending,
+      blending: THREE.AdditiveBlending,
       uniforms: {
         uDepthStrength: { value: 2.4 }, uScatter: { value: 0.18 }, uDrift: { value: 0.12 },
         uTime: { value: 0 }, uProgress: { value: 0 }, uExit: { value: 0 }, uPointSize: { value: 2.1 },
@@ -405,6 +416,8 @@ export class ParticleRenderer {
   private applySurfaceParams(surface: ImageSurface, params: ParticleParams): void {
     surface.material.uniforms.uDepthStrength.value = params.depthStrength;
     surface.material.uniforms.uBrightnessThreshold.value = params.brightnessThreshold;
+    surface.material.uniforms.uAlphaThreshold.value = params.alphaThreshold;
+    surface.material.uniforms.uEdgeStrength.value = params.edgeStrength;
   }
 
   private animate = (): void => {

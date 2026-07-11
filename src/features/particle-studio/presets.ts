@@ -1,33 +1,33 @@
 import type { ParticleParams, PresetId, QualityProfile } from "./types";
 
 export const DEFAULT_PARTICLE_PARAMS: ParticleParams = {
-  brightnessThreshold: 0.04,
+  brightnessThreshold: 0.03,
   contrast: 1.1,
-  edgeStrength: 0.35,
+  edgeStrength: 0.5,
   alphaThreshold: 0.05,
-  density: 0.72,
-  particleSize: 1.4,
-  scatter: 0.045,
+  density: 0.84,
+  particleSize: 1.25,
+  scatter: 0.09,
   driftSpeed: 0.035,
   depthStrength: 1.6,
   depthSmoothing: 0.45,
   depthLayers: 48,
   autoRotate: false,
   rotationSpeed: 0.25,
-  bloomStrength: 0.48,
-  bloomRadius: 0.36,
+  bloomStrength: 0.64,
+  bloomRadius: 0.42,
   bloomThreshold: 0.72,
   backgroundColor: "#000000",
-  cameraDistance: 5.2,
+  cameraDistance: 4.3,
   saturation: 1,
 };
 
 export const PARTICLE_PRESETS: Record<PresetId, ParticleParams> = {
-  portrait: { ...DEFAULT_PARTICLE_PARAMS, edgeStrength: 0.5, depthStrength: 1.4, scatter: 0.035 },
+  portrait: { ...DEFAULT_PARTICLE_PARAMS, density: 0.88, edgeStrength: 0.58, depthStrength: 1.4, scatter: 0.075 },
   landscape: { ...DEFAULT_PARTICLE_PARAMS, density: 0.85, particleSize: 1, depthStrength: 2 },
   neon: { ...DEFAULT_PARTICLE_PARAMS, contrast: 1.35, scatter: 0.09, bloomStrength: 0.85, bloomThreshold: 0.58, saturation: 1.25 },
   mono: { ...DEFAULT_PARTICLE_PARAMS, contrast: 1.3, edgeStrength: 0.7, saturation: 0, bloomStrength: 1.35 },
-  reference: { ...DEFAULT_PARTICLE_PARAMS, contrast: 1.22, edgeStrength: 0.58, scatter: 0.055, depthStrength: 1.7, bloomStrength: 0.58, bloomThreshold: 0.68 },
+  reference: { ...DEFAULT_PARTICLE_PARAMS, density: 0.94, particleSize: 1.15, contrast: 1.22, edgeStrength: 0.68, scatter: 0.11, depthStrength: 1.7, bloomStrength: 0.88, bloomThreshold: 0.62 },
 };
 
 export const getQualityProfile = (mobile: boolean, devicePixelRatio: number): QualityProfile => mobile

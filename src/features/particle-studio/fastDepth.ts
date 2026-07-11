@@ -1,6 +1,11 @@
 import type { ParticleParams, ParticleSource } from "./types";
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+const smoothstep = (value: number, min: number, max: number) => {
+  if (max <= min) return value >= max ? 1 : 0;
+  const normalized = clamp01((value - min) / (max - min));
+  return normalized * normalized * (3 - 2 * normalized);
+};
 
 function hash01(value: number): number {
   let hash = value >>> 0;
@@ -58,7 +63,7 @@ function estimateBackground(
   return [mean[0], mean[1], mean[2], confidence];
 }
 
-function computeLuminance(rgba: Uint8ClampedArray, pixelCount: number): Float32Array {
+function computeLuminance(rgba: Uint8Array | Uint8ClampedArray, pixelCount: number): Float32Array {
   const luminance = new Float32Array(pixelCount);
   for (let index = 0; index < pixelCount; index += 1) {
     const offset = index * 4;
@@ -121,6 +126,122 @@ function boxBlur(values: Float32Array, width: number, height: number, radius: nu
   return output;
 }
 
+function retainSubstantialComponents(
+  values: Float32Array,
+  width: number,
+  height: number,
+  threshold: number,
+): Float32Array {
+  const labels = new Int32Array(values.length);
+  labels.fill(-1);
+  const queue = new Int32Array(values.length);
+  const sizes: number[] = [];
+  let component = 0;
+  let largest = 0;
+  for (let start = 0; start < values.length; start += 1) {
+    if (labels[start] !== -1 || values[start] < threshold) continue;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = start;
+    labels[start] = component;
+    while (head < tail) {
+      const index = queue[head++];
+      const x = index % width;
+      const y = Math.floor(index / width);
+      for (let oy = -1; oy <= 1; oy += 1) {
+        for (let ox = -1; ox <= 1; ox += 1) {
+          if (ox === 0 && oy === 0) continue;
+          const nx = x + ox;
+          const ny = y + oy;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const neighbor = ny * width + nx;
+          if (labels[neighbor] !== -1 || values[neighbor] < threshold) continue;
+          labels[neighbor] = component;
+          queue[tail++] = neighbor;
+        }
+      }
+    }
+    sizes[component] = tail;
+    largest = Math.max(largest, tail);
+    component += 1;
+  }
+  const absoluteFloor = Math.min(24, Math.max(1, Math.floor(values.length * 0.0005)));
+  const minimumSize = Math.max(absoluteFloor, Math.floor(largest * 0.055));
+  const gate = new Float32Array(values.length);
+  for (let index = 0; index < values.length; index += 1) {
+    const label = labels[index];
+    if (label >= 0 && sizes[label] >= minimumSize) gate[index] = 1;
+  }
+  return gate;
+}
+
+export function computeContentMask(
+  rgba: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  background: [number, number, number, number],
+  params: ParticleParams,
+): Float32Array {
+  const pixelCount = width * height;
+  if (rgba.length < pixelCount * 4 || width <= 0 || height <= 0) {
+    throw new Error("Invalid content-mask source data");
+  }
+  const luminance = computeLuminance(rgba, pixelCount);
+  const edges = computeEdges(luminance, width, height);
+  const raw = new Float32Array(pixelCount);
+  for (let index = 0; index < pixelCount; index += 1) {
+    const offset = index * 4;
+    const alpha = rgba[offset + 3] / 255;
+    const alphaPresence = smoothstep(alpha, params.alphaThreshold, Math.min(1, params.alphaThreshold + 0.08));
+    const backgroundDistance = Math.hypot(
+      rgba[offset] / 255 - background[0],
+      rgba[offset + 1] / 255 - background[1],
+      rgba[offset + 2] / 255 - background[2],
+    ) / Math.sqrt(3);
+    const separatedFromBackground = smoothstep(backgroundDistance, 0.035, 0.18);
+    const x = index % width;
+    const y = Math.floor(index / width);
+    const normalizedX = ((x + 0.5) / width - 0.5) * 2;
+    const normalizedY = ((y + 0.5) / height - 0.5) * 2;
+    const centerAttention = 1 - smoothstep(Math.hypot(normalizedX, normalizedY), 0.48, 1.22);
+    const brightnessPresence = smoothstep(
+      luminance[index],
+      params.brightnessThreshold * 0.5,
+      Math.max(0.14, params.brightnessThreshold + 0.1),
+    );
+    const backgroundAware = (
+      separatedFromBackground * background[3]
+      + centerAttention * (1 - background[3])
+    ) * (0.1 + centerAttention * 0.9);
+    const brightnessWeight = 0.06 + (1 - background[3]) * 0.24;
+    raw[index] = alphaPresence * clamp01(
+      backgroundAware * 0.86
+      + brightnessPresence * brightnessWeight
+      + edges[index] * params.edgeStrength * 0.2,
+    );
+  }
+
+  const minDimension = Math.min(width, height);
+  const innerRadius = Math.min(12, Math.max(1, Math.round(minDimension * 0.006)));
+  const outerRadius = Math.min(30, Math.max(2, Math.round(minDimension * 0.022)));
+  const initialInner = boxBlur(raw, width, height, innerRadius);
+  const componentGate = retainSubstantialComponents(initialInner, width, height, 0.18);
+  const filteredRaw = new Float32Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) filteredRaw[index] = raw[index] * componentGate[index];
+  const inner = boxBlur(filteredRaw, width, height, innerRadius);
+  const outer = boxBlur(filteredRaw, width, height, outerRadius);
+  const content = new Float32Array(pixelCount);
+  for (let index = 0; index < pixelCount; index += 1) {
+    const denseNeighborhood = smoothstep(inner[index], 0.055, 0.26);
+    content[index] = clamp01(Math.max(
+      filteredRaw[index] * denseNeighborhood,
+      inner[index] * 0.94,
+      Math.sqrt(outer[index]) * 0.52,
+    ));
+  }
+  return content;
+}
+
 export function computeFastDepth(
   rgba: Uint8ClampedArray,
   width: number,
@@ -169,7 +290,25 @@ export function sampleParticleSource(
 ): ParticleSource {
   const pixelCount = width * height;
   if (rgba.length < pixelCount * 4 || depth.length < pixelCount) throw new Error("Invalid particle source data");
-  const luminance = computeLuminance(rgba, pixelCount);
+  const imageRgba = new Uint8Array(pixelCount * 4);
+  for (let index = 0; index < pixelCount; index += 1) {
+    const input = index * 4;
+    const r = rgba[input] / 255;
+    const g = rgba[input + 1] / 255;
+    const b = rgba[input + 2] / 255;
+    const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    imageRgba[input] = Math.round(clamp01((gray + (r - gray) * params.saturation - 0.5) * params.contrast + 0.5) * 255);
+    imageRgba[input + 1] = Math.round(clamp01((gray + (g - gray) * params.saturation - 0.5) * params.contrast + 0.5) * 255);
+    imageRgba[input + 2] = Math.round(clamp01((gray + (b - gray) * params.saturation - 0.5) * params.contrast + 0.5) * 255);
+    imageRgba[input + 3] = rgba[input + 3];
+  }
+  const background = estimateBackground(imageRgba, width, height);
+  const contentMap = computeContentMask(imageRgba, width, height, background, params);
+  const boundaryMap = computeEdges(contentMap, width, height);
+  for (let index = 0; index < boundaryMap.length; index += 1) {
+    boundaryMap[index] = clamp01(boundaryMap[index] * 8);
+  }
+  const luminance = computeLuminance(imageRgba, pixelCount);
   const edges = computeEdges(luminance, width, height);
   const target = Math.max(1, Math.min(maxParticles, Math.floor(pixelCount * clamp01(params.density))));
   const selected: number[] = [];
@@ -209,19 +348,9 @@ export function sampleParticleSource(
   const colors = new Float32Array(selected.length * 3);
   const sampledDepth = new Float32Array(selected.length);
   const sampledEdge = new Float32Array(selected.length);
+  const sampledContent = new Float32Array(selected.length);
+  const sampledBoundary = new Float32Array(selected.length);
   const random = new Float32Array(selected.length);
-  const imageRgba = new Uint8Array(pixelCount * 4);
-  for (let index = 0; index < pixelCount; index += 1) {
-    const input = index * 4;
-    const r = rgba[input] / 255;
-    const g = rgba[input + 1] / 255;
-    const b = rgba[input + 2] / 255;
-    const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    imageRgba[input] = Math.round(clamp01((gray + (r - gray) * params.saturation - 0.5) * params.contrast + 0.5) * 255);
-    imageRgba[input + 1] = Math.round(clamp01((gray + (g - gray) * params.saturation - 0.5) * params.contrast + 0.5) * 255);
-    imageRgba[input + 2] = Math.round(clamp01((gray + (b - gray) * params.saturation - 0.5) * params.contrast + 0.5) * 255);
-    imageRgba[input + 3] = rgba[input + 3];
-  }
   const aspect = width / height;
   selected.forEach((index, particleIndex) => {
     const x = index % width;
@@ -235,28 +364,30 @@ export function sampleParticleSource(
     positions[output + 1] = (0.5 - (y + 0.5 + jitterY) / height) * 2;
     positions[output + 2] = 0;
     const input = index * 4;
-    const r = rgba[input] / 255;
-    const g = rgba[input + 1] / 255;
-    const b = rgba[input + 2] / 255;
-    const gray = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    colors[output] = clamp01((gray + (r - gray) * params.saturation - 0.5) * params.contrast + 0.5);
-    colors[output + 1] = clamp01((gray + (g - gray) * params.saturation - 0.5) * params.contrast + 0.5);
-    colors[output + 2] = clamp01((gray + (b - gray) * params.saturation - 0.5) * params.contrast + 0.5);
+    colors[output] = imageRgba[input] / 255;
+    colors[output + 1] = imageRgba[input + 1] / 255;
+    colors[output + 2] = imageRgba[input + 2] / 255;
     sampledDepth[particleIndex] = depth[index];
     sampledEdge[particleIndex] = edges[index];
+    sampledContent[particleIndex] = contentMap[index];
+    sampledBoundary[particleIndex] = boundaryMap[index];
     random[particleIndex] = ((index * 16807) % 2147483647) / 2147483647;
   });
 
   return {
     width,
     height,
-    background: estimateBackground(imageRgba, width, height),
+    background,
     imageRgba,
     depthMap: depth,
+    contentMap,
+    boundaryMap,
     colors,
     positions,
     depth: sampledDepth,
     edge: sampledEdge,
+    content: sampledContent,
+    boundary: sampledBoundary,
     random,
     particleCount: selected.length,
   };

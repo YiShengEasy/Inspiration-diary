@@ -56,7 +56,7 @@ export function ParticleControls({ params, collapsed, onChange, onReset, onToggl
             {group.controls.map((control) => (
               <label key={control.key} className="particle-range">
                 <span>{control.label}<output>{Number(params[control.key]).toFixed(control.step >= 1 ? 0 : 2)}</output></span>
-                <input type="range" min={control.min} max={control.max} step={control.step} value={params[control.key]}
+                <input aria-label={control.label} type="range" min={control.min} max={control.max} step={control.step} value={params[control.key]}
                   onChange={(event) => update(control.key, Number(event.target.value))} />
               </label>
             ))}

@@ -6,7 +6,7 @@ import {
   getQualityProfile,
   normalizeParams,
 } from "../src/features/particle-studio/presets";
-import { computeFastDepth, sampleParticleSource } from "../src/features/particle-studio/fastDepth";
+import { computeContentMask, computeFastDepth, sampleParticleSource } from "../src/features/particle-studio/fastDepth";
 import { normalizeDepthOutput } from "../src/features/particle-studio/aiDepth";
 
 test("ships the five approved presets", () => {
@@ -47,6 +47,25 @@ test("samples no more than the device particle cap", () => {
   assert.equal(source.particleCount <= 50, true);
 });
 
+test("builds a content-shaped mask instead of a rectangular frame", () => {
+  const width = 9;
+  const height = 9;
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  for (let index = 0; index < width * height; index += 1) rgba[index * 4 + 3] = 255;
+  for (let y = 3; y <= 5; y += 1) {
+    for (let x = 3; x <= 5; x += 1) {
+      const offset = (y * width + x) * 4;
+      rgba[offset] = 255;
+      rgba[offset + 1] = 255;
+      rgba[offset + 2] = 255;
+    }
+  }
+  const mask = computeContentMask(rgba, width, height, [0, 0, 0, 1], DEFAULT_PARTICLE_PARAMS);
+  assert.ok(mask[4 * width + 4] > 0.9);
+  assert.ok(mask[0] < 0.1);
+  assert.ok(mask[4 * width + 4] - mask[0] > 0.8);
+});
+
 test("samples low edge values from a solid-color image", () => {
   const width = 5;
   const height = 5;
@@ -60,6 +79,10 @@ test("samples low edge values from a solid-color image", () => {
     width * height,
   );
   assert.equal(source.edge.length, source.particleCount);
+  assert.equal(source.content.length, source.particleCount);
+  assert.equal(source.contentMap.length, width * height);
+  assert.equal(source.boundary.length, source.particleCount);
+  assert.equal(source.boundaryMap.length, width * height);
   assert.equal(Math.max(...source.edge), 0);
   assert.deepEqual(source.background, [1, 1, 1, 1]);
 });
