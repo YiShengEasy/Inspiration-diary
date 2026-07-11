@@ -24,7 +24,10 @@ export const particleVertexShader = /* glsl */ `
 
     vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
     gl_Position = projectionMatrix * mvPosition;
-    gl_PointSize = uPointSize * (260.0 / max(1.0, -mvPosition.z));
+    // Keep particles crisp at the default camera distance. The old 260 factor
+    // made each point tens of pixels wide, so additive blending and Bloom
+    // merged the whole image into one large light blob.
+    gl_PointSize = uPointSize * (14.0 / max(1.0, -mvPosition.z));
     vColor = color;
     vAlpha = smoothstep(0.0, 0.18, uProgress);
   }
