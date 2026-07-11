@@ -421,3 +421,10 @@ button::after {
 .empty-desc {
   font-size: 25rpx;
 }
+
+.page-state {
+  padding: 30rpx 0;
+  color: #8b8175;
+  font-size: 23rpx;
+  text-align: center;
+}

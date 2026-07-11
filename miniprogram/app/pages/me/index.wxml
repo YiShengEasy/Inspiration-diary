@@ -178,5 +178,7 @@
       <text>还没有收藏</text>
       <text>在卡片详情里点击星标后会显示在这里。</text>
     </view>
+    <view wx:if="{{favoriteLoadingMore}}" class="page-state">正在加载更多...</view>
+    <view wx:elif="{{favorites.length && !favoriteHasMore}}" class="page-state">已经到底了</view>
   </view>
 </view>

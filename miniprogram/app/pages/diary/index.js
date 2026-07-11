@@ -212,50 +212,57 @@ Page({
   async onShow() {
     const tabBar = this.getTabBar && this.getTabBar();
     if (tabBar) tabBar.setData({ selected: 0 });
+    const silent = this._hasLoaded === true;
 
     try {
       const status = await refreshAccountStatus();
       this.setData({ accountState: status.accountState || "guest", error: "" });
       if (status.accountState === "registered") {
-        await Promise.all([this.loadCards(), this.loadBooks()]);
+        await Promise.all([this.loadCards({ silent }), this.loadBooks()]);
       } else {
         this.setData({ cardsByDay: [], books: [] });
       }
+      this._hasLoaded = true;
     } catch (err) {
-      this.setData({ accountState: "guest", error: err.message || "账号状态加载失败" });
+      if (silent) {
+        wx.showToast({ title: err.message || "刷新失败", icon: "none" });
+      } else {
+        this.setData({ accountState: "guest", error: err.message || "账号状态加载失败" });
+      }
     }
   },
 
-  async loadCards() {
-    this.setData({ loading: true, error: "" });
+  async loadCards({ silent = false } = {}) {
+    if (!silent) this.setData({ loading: true, error: "" });
     try {
-      const body = await request({
-        url: `/api/db/cards?weekId=${encodeURIComponent(this.data.weekId)}&page=1&pageSize=200`
-      });
-      const rawCards = Array.isArray(body) ? body : body.cards || [];
-      const cards = sortNewestFirst(rawCards.map(normalizeCard));
-      cacheCards(cards);
-
+      const body = await request({ url: `/api/db/weeks/${encodeURIComponent(this.data.weekId)}/summary` });
+      const summaries = Array.isArray(body.days) ? body.days : [];
       const cardsByDay = days.map((day, index) => {
-        const dayCards = cards.filter((card) => Number(card.dayIndex) === index);
-        const count = dayCards.length;
-        const coverPreviews = dayCards.slice(0, 3).map(previewFor);
+        const summary = summaries.find((item) => Number(item.dayIndex) === index) || {};
+        const previewCards = (summary.previews || []).map(normalizeCard);
+        cacheCards(previewCards);
+        const count = Number(summary.count || 0);
         return {
           day,
-          cards: dayCards,
+          cards: previewCards,
           count,
           countText: count ? `${count} 条灵感` : "等待记录",
-          cover: dayCards[0] || null,
-          coverPreviews
+          cover: previewCards[0] || null,
+          coverPreviews: previewCards.map(previewFor)
         };
       });
-      const allTerms = cards.reduce((sum, card) => sum + card.terms.length, 0);
-      const mdCount = cards.filter((card) => card.type === "md").length;
-      this.setData({ cardsByDay, totalCards: cards.length, mdCount, totalTerms: allTerms });
+      this.setData({
+        cardsByDay,
+        totalCards: Number(body.totalCards || 0),
+        mdCount: Number(body.mdCount || 0),
+        totalTerms: Number(body.totalTerms || 0),
+        error: ""
+      });
     } catch (err) {
-      this.setData({ error: err.message || "灵感加载失败" });
+      if (silent) wx.showToast({ title: err.message || "刷新失败", icon: "none" });
+      else this.setData({ error: err.message || "灵感加载失败" });
     } finally {
-      this.setData({ loading: false });
+      if (!silent) this.setData({ loading: false });
     }
   },
 

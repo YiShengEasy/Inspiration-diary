@@ -2188,6 +2188,66 @@ app.post("/api/db/notes", requirePostgresAuth, async (req, res) => {
 });
 
 // 3. Fetch image cards for week ID
+app.get("/api/db/weeks/:weekId/summary", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
+  if (!pgPool) {
+    return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  try {
+    const userId = req.user!.id;
+    const weekId = String(req.params.weekId || "").trim();
+    const statsResult = await pgPool.query(
+      `SELECT day_index,
+              COUNT(*)::int AS card_count,
+              COUNT(*) FILTER (WHERE type = 'md')::int AS md_count,
+              COALESCE(SUM(cardinality(terms)), 0)::int AS term_count
+       FROM cards
+       WHERE user_id = $1 AND week_id = $2
+       GROUP BY day_index
+       ORDER BY day_index ASC`,
+      [userId, weekId]
+    );
+    const previewsResult = await pgPool.query(
+      `WITH ranked AS (
+         SELECT cards.*,
+                ROW_NUMBER() OVER (PARTITION BY day_index ORDER BY created_at DESC) AS preview_rank
+         FROM cards
+         WHERE user_id = $1 AND week_id = $2
+       )
+       SELECT c.id, c.week_id, c.day_index, c.image_url, c.thumbnail_url, c.photo_uid, c.photo_hash,
+              c.terms, c.deco_type, c.angle, c.created_at, c.type, c.md_content, c.md_summary, c.md_name, c.insight_note, c.is_favorite, c.favorited_at,
+              ${comboSummarySelectSqlForC},
+              (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
+               FROM video_assets va
+               WHERE va.user_id = c.user_id AND va.card_id = c.id) AS video_assets,
+              '[]'::json AS image_assets
+       FROM ranked c
+       WHERE c.preview_rank <= 3
+       ORDER BY c.day_index ASC, c.created_at DESC`,
+      [userId, weekId]
+    );
+    const previews = mapCardRows(previewsResult.rows, req);
+    const statsByDay = new Map(statsResult.rows.map((row) => [Number(row.day_index), row]));
+    const days = Array.from({ length: 6 }, (_, dayIndex) => {
+      const stats = statsByDay.get(dayIndex);
+      return {
+        dayIndex,
+        count: Number(stats?.card_count || 0),
+        previews: previews.filter((card) => Number(card.dayIndex) === dayIndex),
+      };
+    });
+    return res.json({
+      weekId,
+      totalCards: statsResult.rows.reduce((sum, row) => sum + Number(row.card_count || 0), 0),
+      mdCount: statsResult.rows.reduce((sum, row) => sum + Number(row.md_count || 0), 0),
+      totalTerms: statsResult.rows.reduce((sum, row) => sum + Number(row.term_count || 0), 0),
+      days,
+    });
+  } catch (err: any) {
+    console.error("Error fetching week summary:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch week summary." });
+  }
+});
+
 app.get("/api/db/books", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
@@ -2519,45 +2579,35 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const weekId = req.query.weekId as string;
     const favoriteOnly = String(req.query.favorite || "").toLowerCase() === "true";
     const q = String(req.query.q || "").trim();
-
-    if (weekId && weekId !== "all") {
-      const whereClauses: string[] = ["user_id = $1", "week_id = $2"];
-      const values: Array<string | number> = [userId, weekId];
-      if (q) {
-        values.push(`%${q}%`);
-        whereClauses.push(`terms_text ILIKE $${values.length}`);
-      }
-      if (favoriteOnly) {
-        whereClauses.push("is_favorite = true");
-      }
-
-      const result = await pgPool.query(
-        `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
-                ${comboSummarySelectSql},
-                (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
-                 FROM video_assets va
-                 WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets,
-                (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
-                 FROM image_assets ia
-                 WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
-         FROM cards
-         WHERE ${whereClauses.join(" AND ")}
-         ORDER BY day_index ASC, created_at DESC`,
-        values
-      );
-      return res.json(mapCardRows(result.rows, req));
-    }
-
+    const contentType = String(req.query.contentType || "all");
     const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
     const rawPageSize = Number.parseInt(String(req.query.pageSize || "12"), 10) || 12;
     const pageSize = Math.min(60, Math.max(1, rawPageSize));
     const offset = (page - 1) * pageSize;
     const whereClauses: string[] = ["user_id = $1"];
     const values: Array<string | number> = [userId];
-    if (q) {
+    if (weekId && weekId !== "all") {
+      values.push(weekId);
+      whereClauses.push(`week_id = $${values.length}`);
+    }
+    const dayIndexValue = String(req.query.dayIndex ?? "").trim();
+    if (dayIndexValue) {
+      const dayIndex = Number.parseInt(dayIndexValue, 10);
+      if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex > 5) {
+        return res.status(400).json({ error: "dayIndex must be between 0 and 5." });
+      }
+      values.push(dayIndex);
+      whereClauses.push(`day_index = $${values.length}`);
+    }
+    if (q && contentType === "tags") {
+      values.push(`%${q}%`);
+      whereClauses.push(`EXISTS (SELECT 1 FROM unnest(terms) AS term WHERE term ILIKE $${values.length})`);
+    } else if (q) {
       values.push(`%${q}%`);
       whereClauses.push(`terms_text ILIKE $${values.length}`);
     }
+    if (contentType === "image") whereClauses.push("COALESCE(type, 'image') <> 'md'");
+    if (contentType === "md") whereClauses.push("type = 'md'");
     if (favoriteOnly) {
       whereClauses.push("is_favorite = true");
     }
@@ -2585,7 +2635,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
                WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
        FROM cards
        ${whereSql}
-       ORDER BY created_at DESC
+       ORDER BY ${weekId && weekId !== "all" && !dayIndexValue ? "day_index ASC, created_at DESC" : "created_at DESC"}
        LIMIT $${limitParam} OFFSET $${offsetParam}`,
       values
     );

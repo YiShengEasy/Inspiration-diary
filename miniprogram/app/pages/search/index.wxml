@@ -32,6 +32,8 @@
       </view>
     </button>
   </view>
+  <view wx:if="{{loadingMore}}" class="page-state">正在加载更多...</view>
+  <view wx:elif="{{cards.length && !hasMore}}" class="page-state">已经到底了</view>
 
   <view wx:if="{{searched && !loading && !cards.length && !error}}" class="empty-state">
     <text class="empty-title">没有找到相关灵感</text>

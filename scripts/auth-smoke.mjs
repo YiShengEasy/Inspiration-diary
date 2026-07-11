@@ -177,9 +177,9 @@ const favoriteCurrentWeekA = await request(`/api/db/cards?weekId=2026-W25&favori
 });
 const favoriteCurrentWeekBodyA = await json(favoriteCurrentWeekA);
 assert(favoriteCurrentWeekA.ok, `A current week favorite search failed ${favoriteCurrentWeekA.status}: ${JSON.stringify(favoriteCurrentWeekBodyA)}`);
-assert(Array.isArray(favoriteCurrentWeekBodyA), "expected current week favorite response array");
-assert(favoriteCurrentWeekBodyA.length === 1, `expected current week favorite length 1, got ${favoriteCurrentWeekBodyA.length}`);
-assert(favoriteCurrentWeekBodyA[0]?.id === cardId, `expected current week favorite card ${cardId}, got ${favoriteCurrentWeekBodyA[0]?.id}`);
+assert(favoriteCurrentWeekBodyA.total === 1, `expected current week favorite total 1, got ${favoriteCurrentWeekBodyA.total}`);
+assert(favoriteCurrentWeekBodyA.cards?.length === 1, `expected current week favorite length 1, got ${favoriteCurrentWeekBodyA.cards?.length}`);
+assert(favoriteCurrentWeekBodyA.cards?.[0]?.id === cardId, `expected current week favorite card ${cardId}, got ${favoriteCurrentWeekBodyA.cards?.[0]?.id}`);
 
 const favoriteSearchMissA = await request(`/api/db/cards?weekId=all&page=1&pageSize=10&favorite=true&q=${encodeURIComponent(`smoke-cover-only-${suffix}`)}`, {
   headers: { Cookie: cookieA },

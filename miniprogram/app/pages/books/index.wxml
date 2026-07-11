@@ -39,7 +39,7 @@
       </view>
     </view>
 
-    <scroll-view class="book-content" scroll-y enhanced show-scrollbar="{{false}}">
+    <scroll-view class="book-content" scroll-y enhanced show-scrollbar="{{false}}" lower-threshold="240" bindscrolltolower="loadMoreCards">
       <view class="book-content-inner">
         <view class="book-title-row">
           <view>
@@ -78,6 +78,8 @@
             <text class="item-tags">{{item.termsText}}</text>
           </button>
         </view>
+        <view wx:if="{{cardsLoadingMore}}" class="page-state">正在加载更多...</view>
+        <view wx:elif="{{cards.length && !cardsHasMore}}" class="page-state">已经到底了</view>
       </view>
     </scroll-view>
   </view>

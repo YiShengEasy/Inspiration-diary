@@ -4,7 +4,7 @@
       <text class="caption">{{weekId}}</text>
       <text class="title">{{dayName}}</text>
     </view>
-    <text class="count">{{cards.length}} 条</text>
+    <text class="count">{{total}} 条</text>
   </view>
 
   <view wx:if="{{loading}}" class="state">正在加载...</view>
@@ -30,4 +30,6 @@
       <text class="time">{{item.createdText}}</text>
     </button>
   </view>
+  <view wx:if="{{loadingMore}}" class="page-state">正在加载更多...</view>
+  <view wx:elif="{{cards.length && !hasMore}}" class="page-state">已经到底了</view>
 </view>

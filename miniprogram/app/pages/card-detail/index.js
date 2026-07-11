@@ -253,6 +253,8 @@ Page({
         try {
           await request({ url: `/api/db/cards/${encodeURIComponent(this.data.id)}`, method: "DELETE" });
           wx.removeStorageSync(`miniCard:${this.data.id}`);
+          const eventChannel = this.getOpenerEventChannel && this.getOpenerEventChannel();
+          if (eventChannel) eventChannel.emit("cardDeleted", { id: this.data.id });
           wx.navigateBack();
         } catch (err) {
           wx.showToast({ title: err.message || "删除失败", icon: "none" });
@@ -287,6 +289,14 @@ Page({
       };
       wx.setStorageSync(`miniCard:${this.data.id}`, syncedCard);
       this.setData({ card: syncedCard });
+      const eventChannel = this.getOpenerEventChannel && this.getOpenerEventChannel();
+      if (eventChannel) {
+        eventChannel.emit("favoriteChanged", {
+          id: this.data.id,
+          isFavorite: syncedCard.isFavorite,
+          favoritedAt: syncedCard.favoritedAt
+        });
+      }
       wx.showToast({ title: syncedCard.isFavorite ? "已收藏" : "已取消收藏", icon: "success" });
     } catch (err) {
       this.setData({ card: previousCard });

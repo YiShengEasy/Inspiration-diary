@@ -29,13 +29,23 @@ function normalizeCard(card) {
   };
 }
 
+function mergeCards(current, incoming) {
+  const byId = new Map(current.map((card) => [card.id, card]));
+  incoming.forEach((card) => byId.set(card.id, card));
+  return Array.from(byId.values());
+}
+
 Page({
   data: {
     q: "",
     filter: "全部",
     filters: buildFilters("全部"),
     cards: [],
+    page: 0,
+    pageSize: 20,
+    hasMore: true,
     loading: false,
+    loadingMore: false,
     searched: false,
     error: ""
   },
@@ -46,47 +56,82 @@ Page({
 
   onInput(event) {
     this.setData({ q: event.detail.value });
+    clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(() => this.search({ reset: true }), 300);
+  },
+
+  onUnload() {
+    clearTimeout(this._searchTimer);
   },
 
   setFilter(event) {
     const filter = event.currentTarget.dataset.filter;
     this.setData({ filter, filters: buildFilters(filter) });
-    this.search();
+    this.search({ reset: true });
   },
 
   useKeyword(event) {
     this.setData({ q: event.currentTarget.dataset.keyword });
-    this.search();
+    this.search({ reset: true });
   },
 
-  async search() {
-    this.setData({ loading: true, searched: true, error: "" });
+  async search(options = {}) {
+    const reset = options.reset !== false;
+    if (reset) clearTimeout(this._searchTimer);
+    if (!reset && (this.data.loadingMore || !this.data.hasMore)) return;
+    const page = reset ? 1 : this.data.page + 1;
+    if (reset) this._requestSeq = (this._requestSeq || 0) + 1;
+    const requestSeq = this._requestSeq || 1;
+    this.setData(reset
+      ? { loading: true, searched: true, error: "", page: 0, hasMore: true }
+      : { loadingMore: true, error: "" });
     try {
       const q = this.data.q.trim();
+      const contentType = this.data.filter === "图片"
+        ? "image"
+        : this.data.filter === "文档" ? "md" : this.data.filter === "标签" ? "tags" : "all";
       const body = await request({
-        url: `/api/db/cards?weekId=all&page=1&pageSize=50&q=${encodeURIComponent(q)}`
+        url: `/api/db/cards?weekId=all&page=${page}&pageSize=${this.data.pageSize}&q=${encodeURIComponent(q)}&contentType=${contentType}`
       });
-      let cards = (body.cards || []).map(normalizeCard);
-      if (this.data.filter === "图片") {
-        cards = cards.filter((card) => card.type !== "md");
-      } else if (this.data.filter === "文档") {
-        cards = cards.filter((card) => card.type === "md");
-      } else if (this.data.filter === "标签" && q) {
-        cards = cards.filter((card) => card.terms.some((term) => term.indexOf(q) >= 0));
-      }
-      cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
-      this.setData({ cards });
+      if (requestSeq !== this._requestSeq) return;
+      const incoming = (body.cards || []).map(normalizeCard);
+      const cards = reset ? incoming : mergeCards(this.data.cards, incoming);
+      incoming.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
+      this.setData({
+        cards,
+        page: Number(body.page || page),
+        hasMore: Number(body.page || page) < Number(body.totalPages || 1)
+      });
     } catch (err) {
-      this.setData({ error: err.message || "搜索失败" });
+      if (requestSeq === this._requestSeq) {
+        this.setData({ error: err.message || "搜索失败" });
+        if (!reset) wx.showToast({ title: "加载下一页失败", icon: "none" });
+      }
     } finally {
-      this.setData({ loading: false });
+      if (requestSeq === this._requestSeq) {
+        this.setData(reset ? { loading: false } : { loadingMore: false });
+      }
     }
+  },
+
+  onReachBottom() {
+    this.search({ reset: false });
   },
 
   openCard(event) {
     const id = event.currentTarget.dataset.id;
     const card = this.data.cards.find((item) => item.id === id);
     if (card) wx.setStorageSync(`miniCard:${id}`, card);
-    wx.navigateTo({ url: `/pages/card-detail/index?id=${encodeURIComponent(id)}` });
+    wx.navigateTo({
+      url: `/pages/card-detail/index?id=${encodeURIComponent(id)}`,
+      events: {
+        cardDeleted: ({ id: deletedId }) => {
+          this.setData({ cards: this.data.cards.filter((item) => item.id !== deletedId) });
+        },
+        favoriteChanged: (payload) => {
+          this.setData({ cards: this.data.cards.map((item) => item.id === payload.id ? { ...item, ...payload } : item) });
+        }
+      }
+    });
   }
 });

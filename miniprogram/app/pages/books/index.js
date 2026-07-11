@@ -45,6 +45,12 @@ function normalizeCard(card) {
   };
 }
 
+function mergeCards(current, incoming) {
+  const byId = new Map(current.map((card) => [card.id, card]));
+  incoming.forEach((card) => byId.set(card.id, card));
+  return Array.from(byId.values());
+}
+
 function todayDayIndex() {
   const day = new Date().getDay();
   if (day === 0 || day === 6) return 5;
@@ -73,6 +79,10 @@ Page({
     selectedBook: {},
     entryFrom: "",
     cards: [],
+    cardsPage: 0,
+    cardsPageSize: 20,
+    cardsHasMore: true,
+    cardsLoadingMore: false,
     visibleBooks: [],
     bookSearch: "",
     title: "",
@@ -91,12 +101,14 @@ Page({
     });
   },
 
-  onShow() {
-    this.load();
+  async onShow() {
+    const silent = this._hasLoaded === true;
+    await this.load({ silent });
+    this._hasLoaded = true;
   },
 
-  async load() {
-    this.setData({ loading: true, error: "" });
+  async load({ silent = false } = {}) {
+    if (!silent) this.setData({ loading: true, error: "" });
     try {
       const body = await request({ url: "/api/db/books" });
       const books = Array.isArray(body) ? body.map(normalizeBook) : [];
@@ -104,30 +116,46 @@ Page({
       const selectedBook = books.find((book) => book.id === selectedBookId) || {};
       this.setData({ books, visibleBooks: this.filterBooks(books, this.data.bookSearch), selectedBookId, selectedBook });
       if (selectedBookId) {
-        await this.loadBookCards(selectedBookId);
+        await this.loadBookCards(selectedBookId, { reset: true, silent });
       }
     } catch (err) {
-      this.setData({ error: err.message || "灵感册加载失败" });
+      if (silent) wx.showToast({ title: err.message || "刷新失败", icon: "none" });
+      else this.setData({ error: err.message || "灵感册加载失败" });
     } finally {
-      this.setData({ loading: false });
+      if (!silent) this.setData({ loading: false });
     }
   },
 
-  async loadBookCards(bookId) {
-    this.setData({ cardsLoading: true, error: "" });
+  async loadBookCards(bookId, { reset = false, silent = false } = {}) {
+    if (!bookId || (!reset && (this.data.cardsLoadingMore || !this.data.cardsHasMore))) return;
+    const page = reset ? 1 : this.data.cardsPage + 1;
+    if (!silent) this.setData(reset ? { cardsLoading: true, error: "" } : { cardsLoadingMore: true, error: "" });
     try {
       const body = await request({
-        url: `/api/db/books/${encodeURIComponent(bookId)}/cards?page=1&pageSize=200`
+        url: `/api/db/books/${encodeURIComponent(bookId)}/cards?page=${page}&pageSize=${this.data.cardsPageSize}`
       });
-      const rawCards = Array.isArray(body) ? body : body.cards || [];
-      const cards = rawCards.map(normalizeCard);
-      cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
-      this.setData({ cards });
+      if (bookId !== this.data.selectedBookId) return;
+      const incoming = (body.cards || []).map(normalizeCard);
+      const cards = reset
+        ? (silent ? mergeCards(incoming, this.data.cards.slice(this.data.cardsPageSize)) : incoming)
+        : mergeCards(this.data.cards, incoming);
+      incoming.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
+      this.setData({
+        cards,
+        cardsPage: silent ? Math.max(this.data.cardsPage, Number(body.page || page)) : Number(body.page || page),
+        cardsHasMore: (silent ? Math.max(this.data.cardsPage, Number(body.page || page)) : Number(body.page || page)) < Number(body.totalPages || 1),
+        error: ""
+      });
     } catch (err) {
-      this.setData({ error: err.message || "灵感册内容加载失败", cards: [] });
+      if (reset && !silent) this.setData({ error: err.message || "灵感册内容加载失败" });
+      else wx.showToast({ title: "加载失败", icon: "none" });
     } finally {
-      this.setData({ cardsLoading: false });
+      if (!silent) this.setData(reset ? { cardsLoading: false } : { cardsLoadingMore: false });
     }
+  },
+
+  loadMoreCards() {
+    this.loadBookCards(this.data.selectedBookId, { reset: false });
   },
 
   onTitleInput(event) {
@@ -180,8 +208,8 @@ Page({
     const id = event.currentTarget.dataset.id;
     if (!id) return;
     const selectedBook = this.data.books.find((book) => book.id === id) || {};
-    this.setData({ selectedBookId: id, selectedBook, cards: [] });
-    this.loadBookCards(id);
+    this.setData({ selectedBookId: id, selectedBook, cards: [], cardsPage: 0, cardsHasMore: true });
+    this.loadBookCards(id, { reset: true });
   },
 
   closeBook() {
@@ -432,6 +460,16 @@ Page({
     const id = event.currentTarget.dataset.id;
     const card = this.data.cards.find((item) => item.id === id);
     if (card) wx.setStorageSync(`miniCard:${id}`, card);
-    wx.navigateTo({ url: `/pages/card-detail/index?id=${encodeURIComponent(id)}` });
+    wx.navigateTo({
+      url: `/pages/card-detail/index?id=${encodeURIComponent(id)}`,
+      events: {
+        cardDeleted: ({ id: deletedId }) => {
+          this.setData({ cards: this.data.cards.filter((item) => item.id !== deletedId) });
+        },
+        favoriteChanged: (payload) => {
+          this.setData({ cards: this.data.cards.map((item) => item.id === payload.id ? { ...item, ...payload } : item) });
+        }
+      }
+    });
   }
 });

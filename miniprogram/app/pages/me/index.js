@@ -98,6 +98,12 @@ function normalizeDraft(draft) {
   };
 }
 
+function mergeCards(current, incoming) {
+  const byId = new Map(current.map((card) => [card.id, card]));
+  incoming.forEach((card) => byId.set(card.id, card));
+  return Array.from(byId.values());
+}
+
 Page({
   data: {
     accountState: "guest",
@@ -123,6 +129,10 @@ Page({
     books: [],
     drafts: [],
     favorites: [],
+    favoritePage: 0,
+    favoritePageSize: 12,
+    favoriteHasMore: true,
+    favoriteLoadingMore: false,
     sectionError: ""
   },
 
@@ -130,12 +140,14 @@ Page({
     const tabBar = this.getTabBar && this.getTabBar();
     if (tabBar) tabBar.setData({ selected: 2 });
 
-    await this.load();
+    const silent = this._hasLoaded === true;
+    await this.load({ silent });
+    this._hasLoaded = true;
   },
 
-  async load() {
+  async load({ silent = false } = {}) {
     this.setData({
-      loading: true,
+      ...(silent ? {} : { loading: true }),
       sectionError: "",
       drafts: readToolDrafts().map(normalizeDraft)
     });
@@ -149,17 +161,17 @@ Page({
         user,
         profile: buildProfile(accountState, user),
         stats: EMPTY_STATS,
-        books: [],
-        favorites: []
+        books: silent ? this.data.books : [],
+        favorites: silent ? this.data.favorites : []
       };
 
       if (accountState === "registered") {
-        const [me, smartSettings, customTagLibrary, books, favorites] = await Promise.all([
+        const [me, smartSettings, customTagLibrary, books, favoritePage] = await Promise.all([
           request({ url: "/api/miniprogram/me" }),
           loadSmartSettings().catch(() => ({ images: false, markdown: false })),
           loadCustomTagLibrary().catch(() => ({ enabled: true, groups: [] })),
           this.loadBooks(),
-          this.loadFavorites()
+          this.loadFavorites(1)
         ]);
         const meUser = me.user || user;
         nextData.user = meUser;
@@ -171,7 +183,12 @@ Page({
         nextData.smartSuggestImages = smartSettings.images;
         nextData.smartSuggestMarkdown = smartSettings.markdown;
         nextData.books = books;
-        nextData.favorites = favorites;
+        const visibleFavoritePage = silent ? Math.max(this.data.favoritePage, favoritePage.page) : favoritePage.page;
+        nextData.favorites = silent
+          ? mergeCards(favoritePage.cards, this.data.favorites.slice(this.data.favoritePageSize))
+          : favoritePage.cards;
+        nextData.favoritePage = visibleFavoritePage;
+        nextData.favoriteHasMore = visibleFavoritePage < favoritePage.totalPages;
         const groups = customTagLibrary.groups || [];
         nextData.customTagLibraryEnabled = customTagLibrary.enabled !== false;
         nextData.customTagTotalCount = flattenCustomTagGroups(groups).length;
@@ -187,7 +204,7 @@ Page({
     } catch (err) {
       wx.showToast({ title: err.message || "加载失败", icon: "none" });
     } finally {
-      this.setData({ loading: false });
+      if (!silent) this.setData({ loading: false });
     }
   },
 
@@ -197,12 +214,37 @@ Page({
     return books.map(normalizeBook);
   },
 
-  async loadFavorites() {
-    const body = await request({ url: "/api/db/cards?weekId=all&page=1&pageSize=60&favorite=true" });
-    const rawCards = Array.isArray(body) ? body : body.cards || [];
+  async loadFavorites(page) {
+    const body = await request({ url: `/api/db/cards?weekId=all&page=${page}&pageSize=${this.data.favoritePageSize}&favorite=true` });
+    const rawCards = body.cards || [];
     const cards = rawCards.map(normalizeCard);
     cards.forEach((card) => wx.setStorageSync(`miniCard:${card.id}`, card));
-    return cards;
+    return {
+      cards,
+      page: Number(body.page || page),
+      totalPages: Number(body.totalPages || 1)
+    };
+  },
+
+  async loadMoreFavorites() {
+    if (this.data.favoriteLoadingMore || !this.data.favoriteHasMore) return;
+    this.setData({ favoriteLoadingMore: true });
+    try {
+      const result = await this.loadFavorites(this.data.favoritePage + 1);
+      this.setData({
+        favorites: mergeCards(this.data.favorites, result.cards),
+        favoritePage: result.page,
+        favoriteHasMore: result.page < result.totalPages
+      });
+    } catch (err) {
+      wx.showToast({ title: "加载收藏失败", icon: "none" });
+    } finally {
+      this.setData({ favoriteLoadingMore: false });
+    }
+  },
+
+  onReachBottom() {
+    if (this.data.activeTab === "收藏") this.loadMoreFavorites();
   },
 
   async login() {
@@ -283,7 +325,20 @@ Page({
     const id = event.currentTarget.dataset.id;
     const card = this.data.favorites.find((item) => item.id === id);
     if (card) wx.setStorageSync(`miniCard:${id}`, card);
-    wx.navigateTo({ url: `/pages/card-detail/index?id=${encodeURIComponent(id)}` });
+    wx.navigateTo({
+      url: `/pages/card-detail/index?id=${encodeURIComponent(id)}`,
+      events: {
+        cardDeleted: ({ id: deletedId }) => {
+          this.setData({ favorites: this.data.favorites.filter((item) => item.id !== deletedId) });
+        },
+        favoriteChanged: (payload) => {
+          const favorites = payload.isFavorite
+            ? this.data.favorites.map((item) => item.id === payload.id ? { ...item, ...payload } : item)
+            : this.data.favorites.filter((item) => item.id !== payload.id);
+          this.setData({ favorites });
+        }
+      }
+    });
   },
 
   openDraft(event) {

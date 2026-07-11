@@ -109,6 +109,13 @@ button::after {
   margin-top: 26rpx;
 }
 
+.page-state {
+  padding: 30rpx 0 12rpx;
+  color: #8b8f86;
+  font-size: 24rpx;
+  text-align: center;
+}
+
 .result-card {
   display: flex;
   align-items: center;

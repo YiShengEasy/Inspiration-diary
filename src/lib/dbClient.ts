@@ -184,11 +184,19 @@ export function subscribeCards(weekId: string, callback: CardCallback): () => vo
  */
 async function fetchCardsFromApi(weekId: string): Promise<ImageCard[]> {
   try {
-    const res = await authFetch(`/api/db/cards?weekId=${encodeURIComponent(weekId)}`);
-    if (res.ok) {
+    const cards: ImageCard[] = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const res = await authFetch(`/api/db/cards?weekId=${encodeURIComponent(weekId)}&page=${page}&pageSize=60`);
+      if (!res.ok) return cards;
       const data = await res.json();
-      return Array.isArray(data) ? data : data.cards || [];
-    }
+      const pageCards = Array.isArray(data) ? data : data.cards || [];
+      cards.push(...pageCards);
+      totalPages = Array.isArray(data) ? 1 : Number(data.totalPages || 1);
+      page += 1;
+    } while (page <= totalPages);
+    return cards;
   } catch (err) {
     console.error("Failed to query cards from API:", err);
   }

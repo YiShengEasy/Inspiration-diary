@@ -781,3 +781,10 @@
   font-weight: 900;
   text-align: center;
 }
+
+.page-state {
+  padding: 28rpx 0;
+  color: #858a80;
+  font-size: 23rpx;
+  text-align: center;
+}
