@@ -11,6 +11,11 @@ import { computeContentMask, computeFastDepth, sampleParticleSource } from "../s
 import { normalizeDepthOutput } from "../src/features/particle-studio/aiDepth";
 import { dispersionForCoherence, loopPhase, retainParticleColor } from "../src/features/particle-studio/motionField";
 import { isLatestParticleRequest } from "../src/features/particle-studio/particleWorkerClient";
+import {
+  MP4_EXPORT_FRAME_COUNT,
+  mp4FrameTimestamp,
+  particleVideoFilename,
+} from "../src/features/particle-studio/particleVideoExporter";
 
 test("ships the five approved presets", () => {
   assert.deepEqual(Object.keys(PARTICLE_PRESETS), ["portrait", "landscape", "neon", "mono", "reference"]);
@@ -66,6 +71,17 @@ test("preserves source RGB when color retention is full", () => {
 test("accepts only the latest particle worker result", () => {
   assert.equal(isLatestParticleRequest(8, 8), true);
   assert.equal(isLatestParticleRequest(8, 7), false);
+});
+
+test("builds a five-second 30fps export timeline without duplicating the loop start", () => {
+  assert.equal(MP4_EXPORT_FRAME_COUNT, 150);
+  assert.equal(mp4FrameTimestamp(0), 0);
+  assert.equal(mp4FrameTimestamp(149), 149 / 30);
+  assert.ok(mp4FrameTimestamp(149) < 5);
+});
+
+test("uses a stable dated MP4 filename", () => {
+  assert.equal(particleVideoFilename(new Date("2026-07-11T03:00:00.000Z")), "particle-live-20260711.mp4");
 });
 
 test("computes normalized depth from RGBA brightness", () => {

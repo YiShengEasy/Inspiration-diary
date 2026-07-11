@@ -5,6 +5,7 @@ interface ParticleControlsProps {
   params: ParticleParams;
   collapsed: boolean;
   supportsTransparency: boolean;
+  disabled?: boolean;
   onChange: (params: ParticleParams) => void;
   onReset: () => void;
   onToggleCollapsed: () => void;
@@ -56,7 +57,7 @@ const groups: Array<{ title: string; controls: Control[] }> = [
   ] },
 ];
 
-export function ParticleControls({ params, collapsed, supportsTransparency, onChange, onReset, onToggleCollapsed }: ParticleControlsProps) {
+export function ParticleControls({ params, collapsed, supportsTransparency, disabled = false, onChange, onReset, onToggleCollapsed }: ParticleControlsProps) {
   const latestRef = useRef(params);
   const pendingRef = useRef<ParticleParams | null>(null);
   const frameRef = useRef(0);
@@ -75,12 +76,12 @@ export function ParticleControls({ params, collapsed, supportsTransparency, onCh
     });
   };
   return (
-    <aside className={`particle-controls ${collapsed ? "is-collapsed" : ""}`} aria-label="粒子参数">
+    <aside className={`particle-controls ${collapsed ? "is-collapsed" : ""} ${disabled ? "is-disabled" : ""}`} aria-label="粒子参数" aria-busy={disabled}>
       <button className="particle-controls__handle" type="button" onClick={onToggleCollapsed} aria-expanded={!collapsed}>
         <span>{collapsed ? "参数" : "收起"}</span><span aria-hidden="true">{collapsed ? "‹" : "›"}</span>
       </button>
       <div className="particle-controls__body">
-        <div className="particle-controls__heading"><div><strong>粒子参数</strong><small>实时 GPU 预览</small></div><button type="button" onClick={onReset}>恢复默认</button></div>
+        <div className="particle-controls__heading"><div><strong>粒子参数</strong><small>实时 GPU 预览</small></div><button type="button" disabled={disabled} onClick={onReset}>恢复默认</button></div>
         {groups.map((group) => (
           <fieldset key={group.title} className="particle-controls__group">
             <legend>{group.title}</legend>
@@ -93,12 +94,12 @@ export function ParticleControls({ params, collapsed, supportsTransparency, onCh
                 : control.key === "rotationSpeed" && !params.autoRotate ? "开启自动旋转后生效" : undefined}>
                 <span>{control.label}<output>{Number(params[control.key]).toFixed(control.step >= 1 ? 0 : 2)}</output></span>
                 <input aria-label={control.label} type="range" min={control.min} max={control.max} step={control.step} value={params[control.key]}
-                  disabled={(control.key === "alphaThreshold" && !supportsTransparency) || (control.key === "rotationSpeed" && !params.autoRotate)}
+                  disabled={disabled || (control.key === "alphaThreshold" && !supportsTransparency) || (control.key === "rotationSpeed" && !params.autoRotate)}
                   onInput={(event) => update(control.key, Number(event.currentTarget.value))} />
               </label>
             ))}
-            {group.title === "立体" && <label className="particle-toggle"><span>自动旋转</span><input type="checkbox" checked={params.autoRotate} onChange={(event) => update("autoRotate", event.target.checked)} /></label>}
-            {group.title === "场景" && <label className="particle-color"><span>背景颜色</span><input type="color" value={params.backgroundColor} onChange={(event) => update("backgroundColor", event.target.value)} /></label>}
+            {group.title === "立体" && <label className="particle-toggle"><span>自动旋转</span><input type="checkbox" disabled={disabled} checked={params.autoRotate} onChange={(event) => update("autoRotate", event.target.checked)} /></label>}
+            {group.title === "场景" && <label className="particle-color"><span>背景颜色</span><input type="color" disabled={disabled} value={params.backgroundColor} onChange={(event) => update("backgroundColor", event.target.value)} /></label>}
           </fieldset>
         ))}
       </div>

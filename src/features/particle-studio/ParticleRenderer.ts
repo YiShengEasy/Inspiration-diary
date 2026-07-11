@@ -10,6 +10,11 @@ import {
   particleFragmentShader,
   particleVertexShader,
 } from "./shaders";
+import {
+  exportCanvasToMp4,
+  MP4_EXPORT_HEIGHT,
+  MP4_EXPORT_WIDTH,
+} from "./particleVideoExporter";
 
 const EXPORT_SCALE_LIMIT = 3;
 type ImageSurface = THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
@@ -94,12 +99,12 @@ function createImageSurface(source: ParticleSource): ImageSurface {
       uLoopDuration: { value: 5 },
       uProgress: { value: 0 },
       uExit: { value: 0 },
-      uWaveStrength: { value: 0.035 },
+      uWaveStrength: { value: 0.026 },
       uWaveScale: { value: 2.6 },
       uWaveSpeed: { value: 0.35 },
-      uInvasionRange: { value: 0.48 },
-      uEdgeSoftness: { value: 0.22 },
-      uIrregularity: { value: 0.36 },
+      uInvasionRange: { value: 0.38 },
+      uEdgeSoftness: { value: 0.24 },
+      uIrregularity: { value: 0.32 },
       uNoiseScale: { value: 3.4 },
     },
   });
@@ -142,10 +147,10 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     const dissolveWeight = clamp01(1 - contentWeight);
     const selectionNoise = hash2d(index * 0.73 + 5.1, index * 1.37 - 9.4);
     const keepChance = clamp01(
-      0.18
-      + boundaryWeight * 0.52
-      + edgeWeight * 0.38
-      + contentWeight * 0.22,
+      0.3
+      + boundaryWeight * 0.58
+      + edgeWeight * 0.42
+      + contentWeight * 0.3,
     );
     if (contentWeight < 0.012 && edgeWeight < 0.04 && boundaryWeight < 0.03) continue;
     if (selectionNoise > keepChance) continue;
@@ -170,7 +175,7 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
         + (seed > 0.982 ? 1.2 + seed * 0.62 : 0.48 + seed * 0.36) * dissolveWeight)
       * (1 + edgeWeight * 0.42),
     );
-    opacity.push(Math.min(1, 0.48 + boundaryWeight * 0.42 + luminance * 0.1 + edgeWeight * 0.28));
+    opacity.push(Math.min(1, 0.6 + boundaryWeight * 0.42 + luminance * 0.12 + edgeWeight * 0.28));
     dissolve.push(dissolveWeight);
     edge.push(edgeWeight);
     content.push(contentWeight);
@@ -251,9 +256,9 @@ export class ParticleRenderer {
       uniforms: {
         uDepthStrength: { value: 2.4 }, uScatter: { value: 0.18 }, uDrift: { value: 0.12 },
         uTime: { value: 0 }, uLoopDuration: { value: 5 }, uProgress: { value: 0 }, uExit: { value: 0 }, uPointSize: { value: 2.1 },
-        uWaveStrength: { value: 0.035 }, uWaveScale: { value: 2.6 }, uWaveSpeed: { value: 0.35 },
-        uInvasionRange: { value: 0.48 }, uEdgeSoftness: { value: 0.22 }, uIrregularity: { value: 0.36 },
-        uNoiseScale: { value: 3.4 }, uOuterDispersion: { value: 0.6 }, uColorRetention: { value: 0.82 },
+        uWaveStrength: { value: 0.026 }, uWaveScale: { value: 2.6 }, uWaveSpeed: { value: 0.5 },
+        uInvasionRange: { value: 0.38 }, uEdgeSoftness: { value: 0.24 }, uIrregularity: { value: 0.32 },
+        uNoiseScale: { value: 3.4 }, uOuterDispersion: { value: 0.7 }, uColorRetention: { value: 0.82 },
       },
     });
 
@@ -342,6 +347,55 @@ export class ParticleRenderer {
     this.resize();
     if (!blob) throw new Error("无法导出当前粒子画面");
     return blob;
+  }
+
+  async exportMp4(options: {
+    onProgress?: (completedFrames: number, totalFrames: number) => void;
+    signal?: AbortSignal;
+  } = {}): Promise<Blob> {
+    if (!this.imageSurface || !this.particlePoints) throw new Error("请先上传图片并等待粒子生成完成");
+    const wasPaused = this.paused;
+    const previewTime = this.particleMaterial.uniforms.uTime.value as number;
+    const oldRatio = this.renderer.getPixelRatio();
+    const oldAspect = this.camera.aspect;
+    const oldPosition = this.camera.position.clone();
+    const oldQuaternion = this.camera.quaternion.clone();
+    const oldTarget = this.controls.target.clone();
+    const controlsEnabled = this.controls.enabled;
+    const autoRotate = this.controls.autoRotate;
+    if (!wasPaused) this.pause();
+    this.removeExitingContent();
+    this.controls.enabled = false;
+    this.controls.autoRotate = false;
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(MP4_EXPORT_WIDTH, MP4_EXPORT_HEIGHT, false);
+    this.composer.setSize(MP4_EXPORT_WIDTH, MP4_EXPORT_HEIGHT);
+    this.camera.aspect = MP4_EXPORT_WIDTH / MP4_EXPORT_HEIGHT;
+    this.camera.updateProjectionMatrix();
+    try {
+      return await exportCanvasToMp4({
+        canvas: this.renderer.domElement,
+        renderFrame: (timeSeconds) => {
+          this.setAnimationTime(timeSeconds, 1);
+          this.composer.render();
+        },
+        onProgress: options.onProgress,
+        signal: options.signal,
+      });
+    } finally {
+      this.renderer.setPixelRatio(oldRatio);
+      this.camera.aspect = oldAspect;
+      this.camera.position.copy(oldPosition);
+      this.camera.quaternion.copy(oldQuaternion);
+      this.controls.target.copy(oldTarget);
+      this.controls.enabled = controlsEnabled;
+      this.controls.autoRotate = autoRotate;
+      this.camera.updateProjectionMatrix();
+      this.setAnimationTime(previewTime, 1);
+      this.startTime = performance.now() - previewTime * 1000;
+      this.resize();
+      if (!wasPaused) this.resume();
+    }
   }
 
   pause(): void {
@@ -433,18 +487,23 @@ export class ParticleRenderer {
     surface.material.uniforms.uNoiseScale.value = params.noiseScale;
   }
 
+  private setAnimationTime(seconds: number, progress: number): void {
+    this.particleMaterial.uniforms.uTime.value = seconds;
+    this.particleMaterial.uniforms.uProgress.value = progress;
+    if (this.imageSurface) {
+      this.imageSurface.material.uniforms.uTime.value = seconds;
+      this.imageSurface.material.uniforms.uProgress.value = progress;
+    }
+  }
+
   private animate = (): void => {
     if (this.paused || this.disposed) return;
     this.animationFrame = requestAnimationFrame(this.animate);
     const now = performance.now();
     const delta = now - this.lastFrame;
     this.lastFrame = now;
-    this.particleMaterial.uniforms.uTime.value = (now - this.startTime) / 1000;
-    this.particleMaterial.uniforms.uProgress.value = Math.min(1, (now - this.startTime) / 1100);
-    if (this.imageSurface) {
-      this.imageSurface.material.uniforms.uTime.value = (now - this.startTime) / 1000;
-      this.imageSurface.material.uniforms.uProgress.value = Math.min(1, (now - this.startTime) / 900);
-    }
+    const elapsed = (now - this.startTime) / 1000;
+    this.setAnimationTime(elapsed, Math.min(1, elapsed / 1.1));
     if (this.exitingPoints || this.exitingSurface) {
       const exitProgress = Math.min(1, (now - this.exitStartedAt) / 850);
       if (this.exitingPoints) {

@@ -55,7 +55,8 @@ export const particleVertexShader = /* glsl */ `
     float coarse = valueNoise(fieldUv + loopOffset * 0.42);
     float fine = valueNoise(fieldUv * 3.17 - loopOffset * 0.28);
     float erosionNoise = coarse * 0.68 + fine * 0.32 - 0.5;
-    float field = aContent
+    float centerProtect = 1.0 - smoothstep(0.42, 1.05, length(position.xy * vec2(1.15, 0.9)));
+    float field = aContent * 0.8 + centerProtect * 0.9
       - (uInvasionRange - 0.5) * 0.82
       + erosionNoise * uIrregularity * 0.72
       + aBoundary * 0.08;
@@ -68,6 +69,8 @@ export const particleVertexShader = /* glsl */ `
       + cos(position.y * uWaveScale * 2.35 - warpedPhase * 0.86)
     ) * 0.5;
     float waveEnvelope = mix(0.22, 1.0, invasion);
+    transformed.xy += vec2(cos(warpedPhase + position.y * 2.1), sin(warpedPhase - position.x * 1.7))
+      * wave * uWaveStrength * 0.18 * waveEnvelope;
     transformed.z += wave * uWaveStrength * waveEnvelope;
     transformed.z += (aDepth - 0.5) * uDepthStrength * mix(0.1, 0.36, invasion);
 
@@ -87,15 +90,19 @@ export const particleVertexShader = /* glsl */ `
     transformed += (exitDirection * (0.45 + randomVector * 0.7) + motion * 0.22)
       * uExit * (0.35 + invasion);
 
-    float middleBand = 1.0 - smoothstep(0.28, 0.82, abs(invasion - 0.55));
-    float particlePresence = max(invasion * 0.42, middleBand * 0.92);
+    float middleBand = smoothstep(0.08, 0.34, invasion)
+      * (1.0 - smoothstep(0.72, 1.0, invasion));
+    float particlePresence = max(invasion * 0.82, middleBand);
     float densityChance = mix(0.34, 0.9, 1.0 - invasion * 0.72);
     float densityGate = step(aRandom, densityChance);
     float originalLuminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
     float highlight = smoothstep(0.62, 0.96, originalLuminance)
       * clamp(aEdge * 1.35 + aBoundary * 0.82, 0.0, 1.0);
-    vec3 highlighted = mix(color, vec3(1.0), highlight * 0.58);
-    vColor = mix(highlighted, color, uColorRetention);
+    float maxChannel = max(color.r, max(color.g, color.b));
+    vec3 luminousSource = color * max(1.0, 0.52 / max(0.08, maxChannel));
+    vec3 highlighted = mix(luminousSource, vec3(1.0), highlight * 0.42);
+    float effectiveRetention = mix(uColorRetention, min(uColorRetention, 0.55), invasion);
+    vColor = mix(highlighted, color, effectiveRetention);
 
     vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
     gl_Position = projectionMatrix * mvPosition;
@@ -117,7 +124,7 @@ export const particleFragmentShader = /* glsl */ `
     if (distanceFromCenter > 1.0) discard;
     float alpha = (1.0 - smoothstep(0.42, 1.0, distanceFromCenter)) * vAlpha * vTwinkle;
     if (alpha < 0.004) discard;
-    gl_FragColor = vec4(vColor * (1.0 + vTwinkle * 0.18), alpha);
+    gl_FragColor = vec4(vColor * (1.35 + vTwinkle * 0.45), alpha);
   }
 `;
 
@@ -166,7 +173,9 @@ export const imageSurfaceVertexShader = /* glsl */ `
     float coarse = valueNoise(uv * uNoiseScale + loopOffset * 0.42);
     float fine = valueNoise(uv * uNoiseScale * 3.17 - loopOffset * 0.28);
     float erosionNoise = coarse * 0.68 + fine * 0.32 - 0.5;
-    float field = content - (uInvasionRange - 0.5) * 0.82
+    vec2 centeredUv = (uv - 0.5) * 2.0;
+    float centerProtect = 1.0 - smoothstep(0.42, 1.08, length(centeredUv * vec2(0.9, 1.12)));
+    float field = content * 0.8 + centerProtect * 0.9 - (uInvasionRange - 0.5) * 0.82
       + erosionNoise * uIrregularity * 0.72;
     vInvasion = 1.0 - smoothstep(0.5 - uEdgeSoftness, 0.5 + uEdgeSoftness, field);
 
@@ -176,6 +185,8 @@ export const imageSurfaceVertexShader = /* glsl */ `
       sin(position.x * uWaveScale * 3.1 + warpedPhase)
       + cos(position.y * uWaveScale * 2.35 - warpedPhase * 0.86)
     ) * 0.5;
+    transformed.xy += vec2(cos(warpedPhase + position.y * 2.1), sin(warpedPhase - position.x * 1.7))
+      * wave * uWaveStrength * 0.18 * mix(0.18, 0.9, vInvasion);
     transformed.z += wave * uWaveStrength * mix(0.18, 0.9, vInvasion);
     transformed.z += (imageDepth - 0.5) * uDepthStrength * 0.11;
     transformed.z += uExit * 0.16;
@@ -199,7 +210,11 @@ export const imageSurfaceFragmentShader = /* glsl */ `
     vec4 imageColor = texture2D(uImage, vUv);
     float contentMask = texture2D(uContentMask, vUv).r;
     float luminance = dot(imageColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-    float contentPresence = smoothstep(0.025, 0.28, contentMask);
+    float contentPresence = smoothstep(0.005, 0.12, contentMask);
+    vec2 centeredUv = (vUv - 0.5) * 2.0;
+    float automaticProtection = (1.0 - smoothstep(0.38, 1.02, length(centeredUv * vec2(0.9, 1.12))))
+      * contentPresence;
+    float effectiveInvasion = vInvasion * (1.0 - automaticProtection * 0.98);
     float darkPresence = smoothstep(
       uBrightnessThreshold * 0.5,
       max(0.12, uBrightnessThreshold + 0.08),
@@ -207,11 +222,11 @@ export const imageSurfaceFragmentShader = /* glsl */ `
     );
     float alphaMask = smoothstep(uAlphaThreshold, min(1.0, uAlphaThreshold + 0.08), imageColor.a);
     float entrance = smoothstep(0.02, 0.42, uProgress);
-    float surfacePresence = mix(1.0, 0.055, smoothstep(0.18, 0.94, vInvasion));
-    float alpha = alphaMask * contentPresence * mix(0.16, 1.0, darkPresence)
+    float surfacePresence = mix(1.0, 0.055, smoothstep(0.18, 0.94, effectiveInvasion));
+    float alpha = alphaMask * contentPresence * mix(0.48, 1.0, darkPresence)
       * surfacePresence * entrance * (1.0 - uExit);
     if (alpha < 0.008) discard;
-    float blackening = mix(0.72, 0.12, smoothstep(0.12, 0.96, vInvasion));
+    float blackening = mix(1.25, 0.1, smoothstep(0.12, 0.96, effectiveInvasion));
     gl_FragColor = vec4(imageColor.rgb * blackening, alpha);
   }
 `;
