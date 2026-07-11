@@ -3,6 +3,7 @@ import type { ParticleParams } from "./types";
 interface ParticleControlsProps {
   params: ParticleParams;
   collapsed: boolean;
+  supportsTransparency: boolean;
   onChange: (params: ParticleParams) => void;
   onReset: () => void;
   onToggleCollapsed: () => void;
@@ -41,7 +42,7 @@ const groups: Array<{ title: string; controls: Control[] }> = [
   ] },
 ];
 
-export function ParticleControls({ params, collapsed, onChange, onReset, onToggleCollapsed }: ParticleControlsProps) {
+export function ParticleControls({ params, collapsed, supportsTransparency, onChange, onReset, onToggleCollapsed }: ParticleControlsProps) {
   const update = <K extends keyof ParticleParams>(key: K, value: ParticleParams[K]) => onChange({ ...params, [key]: value });
   return (
     <aside className={`particle-controls ${collapsed ? "is-collapsed" : ""}`} aria-label="粒子参数">
@@ -54,10 +55,16 @@ export function ParticleControls({ params, collapsed, onChange, onReset, onToggl
           <fieldset key={group.title} className="particle-controls__group">
             <legend>{group.title}</legend>
             {group.controls.map((control) => (
-              <label key={control.key} className="particle-range">
+              <label key={control.key} className={`particle-range ${
+                (control.key === "alphaThreshold" && !supportsTransparency)
+                || (control.key === "rotationSpeed" && !params.autoRotate) ? "is-disabled" : ""
+              }`} title={control.key === "alphaThreshold" && !supportsTransparency
+                ? "仅对带透明通道的 PNG/WebP 生效"
+                : control.key === "rotationSpeed" && !params.autoRotate ? "开启自动旋转后生效" : undefined}>
                 <span>{control.label}<output>{Number(params[control.key]).toFixed(control.step >= 1 ? 0 : 2)}</output></span>
                 <input aria-label={control.label} type="range" min={control.min} max={control.max} step={control.step} value={params[control.key]}
-                  onChange={(event) => update(control.key, Number(event.target.value))} />
+                  disabled={(control.key === "alphaThreshold" && !supportsTransparency) || (control.key === "rotationSpeed" && !params.autoRotate)}
+                  onInput={(event) => update(control.key, Number(event.currentTarget.value))} />
               </label>
             ))}
             {group.title === "立体" && <label className="particle-toggle"><span>自动旋转</span><input type="checkbox" checked={params.autoRotate} onChange={(event) => update("autoRotate", event.target.checked)} /></label>}

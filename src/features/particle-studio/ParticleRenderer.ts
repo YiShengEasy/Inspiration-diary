@@ -156,9 +156,9 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     if (boundaryWeight < 0.025 && detailWeight < 0.26) continue;
     if (selectionNoise > keepChance) continue;
 
-    const outward = dissolveWeight * (1 - edgeWeight * 0.42) * (0.016 + seed * 0.095);
+    const outward = dissolveWeight * (1 - edgeWeight * 0.42) * (0.025 + seed * 0.135);
     const length = Math.hypot(normalizedX, normalizedY) || 1;
-    const jitterAmount = 0.002 + dissolveWeight * 0.044;
+    const jitterAmount = 0.002 + dissolveWeight * 0.052;
     const jitterX = (Math.sin(seed * 928.31) - 0.5) * jitterAmount;
     const jitterY = (Math.sin(seed * 417.17 + 1.7) - 0.5) * jitterAmount;
     positions.push(
@@ -166,7 +166,7 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
       source.positions[offset + 1] + (normalizedY / length) * outward + jitterY,
       source.positions[offset + 2],
     );
-    const whitening = clamp01(edgeWeight * 0.38 + highlightWeight * 0.55 + boundaryWeight * 0.46);
+    const whitening = clamp01(edgeWeight * 0.38 + highlightWeight * 0.55 + boundaryWeight * 0.52);
     colors.push(
       THREE.MathUtils.lerp(source.colors[offset], 1, whitening),
       THREE.MathUtils.lerp(source.colors[offset + 1], 1, whitening),

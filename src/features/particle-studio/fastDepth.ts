@@ -204,6 +204,14 @@ export function computeContentMask(
     const normalizedX = ((x + 0.5) / width - 0.5) * 2;
     const normalizedY = ((y + 0.5) / height - 0.5) * 2;
     const centerAttention = 1 - smoothstep(Math.hypot(normalizedX, normalizedY), 0.48, 1.22);
+    const edgeDistance = Math.min(
+      (x + 0.5) / width,
+      (y + 0.5) / height,
+      (width - x - 0.5) / width,
+      (height - y - 0.5) / height,
+    );
+    // Keep the uploaded raster boundary from becoming the dissolve boundary.
+    const frameFade = smoothstep(edgeDistance, 0.015, 0.11);
     const brightnessPresence = smoothstep(
       luminance[index],
       params.brightnessThreshold * 0.5,
@@ -214,7 +222,7 @@ export function computeContentMask(
       + centerAttention * (1 - background[3])
     ) * (0.1 + centerAttention * 0.9);
     const brightnessWeight = 0.06 + (1 - background[3]) * 0.24;
-    raw[index] = alphaPresence * clamp01(
+    raw[index] = alphaPresence * frameFade * clamp01(
       backgroundAware * 0.86
       + brightnessPresence * brightnessWeight
       + edges[index] * params.edgeStrength * 0.2,
@@ -232,8 +240,17 @@ export function computeContentMask(
   const outer = boxBlur(filteredRaw, width, height, outerRadius);
   const content = new Float32Array(pixelCount);
   for (let index = 0; index < pixelCount; index += 1) {
+    const x = index % width;
+    const y = Math.floor(index / width);
+    const edgeDistance = Math.min(
+      (x + 0.5) / width,
+      (y + 0.5) / height,
+      (width - x - 0.5) / width,
+      (height - y - 0.5) / height,
+    );
+    const frameFade = smoothstep(edgeDistance, 0.018, 0.13);
     const denseNeighborhood = smoothstep(inner[index], 0.055, 0.26);
-    content[index] = clamp01(Math.max(
+    content[index] = frameFade * clamp01(Math.max(
       filteredRaw[index] * denseNeighborhood,
       inner[index] * 0.94,
       Math.sqrt(outer[index]) * 0.52,
@@ -306,7 +323,10 @@ export function sampleParticleSource(
   const contentMap = computeContentMask(imageRgba, width, height, background, params);
   const boundaryMap = computeEdges(contentMap, width, height);
   for (let index = 0; index < boundaryMap.length; index += 1) {
-    boundaryMap[index] = clamp01(boundaryMap[index] * 8);
+    const content = contentMap[index];
+    const dissolveBand = smoothstep(content, 0.025, 0.28)
+      * (1 - smoothstep(content, 0.58, 0.9));
+    boundaryMap[index] = clamp01(boundaryMap[index] * 7 + dissolveBand * 0.72);
   }
   const luminance = computeLuminance(imageRgba, pixelCount);
   const edges = computeEdges(luminance, width, height);

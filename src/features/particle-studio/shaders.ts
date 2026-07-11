@@ -131,7 +131,7 @@ export const imageSurfaceFragmentShader = /* glsl */ `
     if (alpha < 0.01) discard;
     // Keep the coherent surface below the default Bloom threshold. Bright
     // particles still glow, while white image backgrounds retain detail.
-    vec3 color = imageColor.rgb * mix(0.36, 0.64, smoothstep(0.22, 0.82, contentMask));
+    vec3 color = imageColor.rgb * mix(0.44, 0.72, smoothstep(0.22, 0.82, contentMask));
     gl_FragColor = vec4(color, alpha);
   }
 `;

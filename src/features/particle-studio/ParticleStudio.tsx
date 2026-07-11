@@ -24,6 +24,7 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
   const [progress, setProgress] = useState<DepthProgress | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [activePreset, setActivePreset] = useState<PresetId | null>(null);
   const [reduced, setReduced] = useState(false);
   const [exporting, setExporting] = useState(false);
   const rendererRef = useRef<ParticleRenderer | null>(null);
@@ -38,6 +39,9 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
     ? sampleParticleSource(decoded.rgba, selectedDepth, decoded.width, decoded.height, params, profile.maxParticles)
     : null, [decoded, selectedDepth, params.brightnessThreshold, params.contrast, params.alphaThreshold,
       params.saturation, params.density, profile.maxParticles]);
+  const supportsTransparency = useMemo(() => decoded
+    ? decoded.rgba.some((value, index) => index % 4 === 3 && value < 255)
+    : false, [decoded]);
   const handleRendererReady = useCallback((renderer: ParticleRenderer | null) => { rendererRef.current = renderer; }, []);
 
   const runAi = useCallback(async (imageFile: File, image: Decoded) => {
@@ -69,7 +73,12 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
   useEffect(() => () => { abortRef.current?.abort(); if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   const switchMode = (next: DepthMode) => { setMode(next); if (next === "fast") { abortRef.current?.abort(); setStatus(decoded ? "fast-ready" : "empty"); } else if (file && decoded) void runAi(file, decoded); };
   const applyParams = (next: ParticleParams) => {
+    setActivePreset(null);
     setParams(normalizeParams(next));
+  };
+  const applyPreset = (id: PresetId) => {
+    setActivePreset(id);
+    setParams(normalizeParams({ ...PARTICLE_PRESETS[id] }));
   };
   const exportPng = async () => {
     if (!rendererRef.current || !source) return; setExporting(true); setNotice(null);
@@ -88,11 +97,11 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
       <button type="button" disabled={!source} onClick={() => rendererRef.current?.resetCamera()} title="复位视角"><RotateCcw size={16} /></button>
       <button type="button" disabled={!source || exporting} onClick={() => void exportPng()}><Download size={16} />{exporting ? "导出中" : "PNG"}</button>
     </div>
-    <div className="particle-studio__presets">{(Object.keys(presetNames) as PresetId[]).map((id) => <button key={id} type="button" onClick={() => applyParams({ ...PARTICLE_PRESETS[id] })}>{presetNames[id]}</button>)}</div>
+    <div className="particle-studio__presets">{(Object.keys(presetNames) as PresetId[]).map((id) => <button key={id} type="button" className={activePreset === id ? "is-active" : ""} aria-pressed={activePreset === id} onClick={() => applyPreset(id)}>{presetNames[id]}</button>)}</div>
     {source && <div className="particle-studio__hint">拖拽旋转 · 滚轮缩放 · 双击复位</div>}
     {reduced && <div className="particle-studio__performance">性能保护已开启</div>}
     {(status === "decoding" || status === "ai-loading") && <div className="particle-studio__progress"><LoaderCircle className="is-spinning" size={22} /><span>{status === "decoding" ? "正在解析图片" : progress?.message}</span>{progress && <div><i style={{ width: `${Math.round(progress.progress * 100)}%` }} /></div>}</div>}
     {notice && <button type="button" className="particle-studio__notice" onClick={() => setNotice(null)}>{notice}<span>×</span></button>}
-    <ParticleControls params={params} collapsed={collapsed} onChange={applyParams} onReset={() => applyParams({ ...DEFAULT_PARTICLE_PARAMS })} onToggleCollapsed={() => setCollapsed((value) => !value)} />
+    <ParticleControls params={params} collapsed={collapsed} supportsTransparency={supportsTransparency} onChange={applyParams} onReset={() => applyParams({ ...DEFAULT_PARTICLE_PARAMS })} onToggleCollapsed={() => setCollapsed((value) => !value)} />
   </main>;
 }
