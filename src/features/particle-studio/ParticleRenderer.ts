@@ -5,9 +5,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import type { ParticleParams, ParticleSource, QualityProfile } from "./types";
 import {
-  imagePlaneFragmentShader,
-  imagePlaneVertexShader,
-  particleGlowFragmentShader,
+  particleFragmentShader,
   particleVertexShader,
 } from "./shaders";
 
@@ -20,7 +18,9 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   const depth: number[] = [];
   const random: number[] = [];
   const scale: number[] = [];
-  const candidateStep = Math.max(1, Math.floor(source.particleCount / 16_000));
+  const opacity: number[] = [];
+  const dissolve: number[] = [];
+  const candidateStep = Math.max(1, Math.floor(source.particleCount / 60_000));
 
   for (let index = 0; index < source.particleCount; index += candidateStep) {
     const offset = index * 3;
@@ -32,12 +32,14 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
       + source.colors[offset + 1] * 0.7152
       + source.colors[offset + 2] * 0.0722;
     const structure = source.depth[index];
-    const dissolveScore = structure * 0.46 + luminance * 0.34 + radialDistance * 0.24 + seed * 0.16;
-    const inOuterCloud = radialDistance > 0.42 && dissolveScore > 0.48;
-    const inBrightDetail = luminance > 0.58 && seed > 0.36;
-    if (!inOuterCloud && !inBrightDetail) continue;
+    const coreWeight = Math.max(0, Math.min(1, (0.92 - radialDistance) / 0.5));
+    const dissolveWeight = Math.max(0, Math.min(1,
+      (radialDistance - 0.28) / 0.64 + (seed - 0.5) * 0.38 + (0.48 - luminance) * 0.28,
+    ));
+    const visibility = coreWeight * 0.76 + luminance * 0.34 + structure * 0.2 + seed * 0.08;
+    if (visibility < 0.24 || (dissolveWeight > 0.62 && seed < dissolveWeight * 0.36)) continue;
 
-    const outward = Math.max(0, radialDistance - 0.3) * (0.035 + seed * 0.13);
+    const outward = dissolveWeight * (0.018 + seed * 0.075);
     const length = Math.hypot(normalizedX, normalizedY) || 1;
     const jitterX = (Math.sin(seed * 928.31) - 0.5) * 0.055;
     const jitterY = (Math.sin(seed * 417.17 + 1.7) - 0.5) * 0.055;
@@ -49,9 +51,9 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     colors.push(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2]);
     depth.push(source.depth[index]);
     random.push(seed);
-    // Most particles are fine dust; a small deterministic subset becomes
-    // larger soft grains to reproduce the two-scale dissolve boundary.
-    scale.push(seed > 0.88 ? 1.65 + seed * 0.9 : 0.42 + seed * 0.48);
+    scale.push((0.48 + seed * 0.28) * (1 - dissolveWeight) + (seed > 0.86 ? 1.7 + seed : 0.72 + seed * 0.58) * dissolveWeight);
+    opacity.push(Math.min(1, 0.42 + coreWeight * 0.58 + luminance * 0.16));
+    dissolve.push(dissolveWeight);
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -60,6 +62,8 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   geometry.setAttribute("aDepth", new THREE.Float32BufferAttribute(depth, 1));
   geometry.setAttribute("aRandom", new THREE.Float32BufferAttribute(random, 1));
   geometry.setAttribute("aScale", new THREE.Float32BufferAttribute(scale, 1));
+  geometry.setAttribute("aOpacity", new THREE.Float32BufferAttribute(opacity, 1));
+  geometry.setAttribute("aDissolve", new THREE.Float32BufferAttribute(dissolve, 1));
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -74,9 +78,7 @@ export class ParticleRenderer {
   private readonly controls: OrbitControls;
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
-  private readonly glowMaterial: THREE.ShaderMaterial;
-  private imagePlane: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> | null = null;
-  private imageTexture: THREE.Texture | null = null;
+  private readonly particleMaterial: THREE.ShaderMaterial;
   private particlePoints: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
   private params: ParticleParams | null = null;
   private animationFrame = 0;
@@ -111,13 +113,13 @@ export class ParticleRenderer {
     this.controls.minDistance = 2.5;
     this.controls.maxDistance = 10;
 
-    this.glowMaterial = new THREE.ShaderMaterial({
+    this.particleMaterial = new THREE.ShaderMaterial({
       vertexShader: particleVertexShader,
-      fragmentShader: particleGlowFragmentShader,
+      fragmentShader: particleFragmentShader,
       transparent: true,
       depthWrite: false,
       vertexColors: true,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       uniforms: {
         uDepthStrength: { value: 2.4 }, uScatter: { value: 0.18 }, uDrift: { value: 0.12 },
         uTime: { value: 0 }, uProgress: { value: 0 }, uPointSize: { value: 2.1 },
@@ -139,46 +141,20 @@ export class ParticleRenderer {
   setSource(source: ParticleSource): void {
     this.removePoints();
     const geometry = createDissolveParticleGeometry(source);
-    this.particlePoints = new THREE.Points(geometry, this.glowMaterial);
+    this.particlePoints = new THREE.Points(geometry, this.particleMaterial);
     this.particlePoints.frustumCulled = false;
     this.scene.add(this.particlePoints);
     this.startTime = performance.now();
-    this.glowMaterial.uniforms.uProgress.value = 0;
-  }
-
-  async setImageTexture(url: string | null, aspect = 1): Promise<void> {
-    this.removeImagePlane();
-    if (!url || this.disposed) return;
-    const texture = await new THREE.TextureLoader().loadAsync(url);
-    if (this.disposed) {
-      texture.dispose();
-      return;
-    }
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    this.imageTexture = texture;
-    const geometry = new THREE.PlaneGeometry(aspect * 2, 2);
-    const material = new THREE.ShaderMaterial({
-      vertexShader: imagePlaneVertexShader,
-      fragmentShader: imagePlaneFragmentShader,
-      transparent: true,
-      depthWrite: false,
-      uniforms: { uImage: { value: texture } },
-    });
-    this.imagePlane = new THREE.Mesh(geometry, material);
-    this.imagePlane.position.z = -0.08;
-    this.imagePlane.renderOrder = -1;
-    this.scene.add(this.imagePlane);
+    this.particleMaterial.uniforms.uProgress.value = 0;
   }
 
   setParams(params: ParticleParams): void {
     this.params = params;
     this.scene.background = new THREE.Color(params.backgroundColor);
-    this.glowMaterial.uniforms.uDepthStrength.value = params.depthStrength;
-    this.glowMaterial.uniforms.uScatter.value = params.scatter;
-    this.glowMaterial.uniforms.uDrift.value = params.driftSpeed;
-    this.glowMaterial.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio * 1.15;
+    this.particleMaterial.uniforms.uDepthStrength.value = params.depthStrength;
+    this.particleMaterial.uniforms.uScatter.value = params.scatter;
+    this.particleMaterial.uniforms.uDrift.value = params.driftSpeed;
+    this.particleMaterial.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio * 1.15;
     this.bloomPass.strength = params.bloomStrength * (this.reduced ? 0.55 : 1);
     this.bloomPass.radius = params.bloomRadius;
     this.bloomPass.threshold = params.bloomThreshold;
@@ -242,8 +218,7 @@ export class ParticleRenderer {
     this.renderer.domElement.removeEventListener("dblclick", this.resetCamera);
     this.controls.dispose();
     this.removePoints();
-    this.removeImagePlane();
-    this.glowMaterial.dispose();
+    this.particleMaterial.dispose();
     this.bloomPass.dispose();
     this.composer.dispose();
     this.renderer.dispose();
@@ -258,25 +233,14 @@ export class ParticleRenderer {
     this.particlePoints = null;
   }
 
-  private removeImagePlane(): void {
-    if (this.imagePlane) {
-      this.scene.remove(this.imagePlane);
-      this.imagePlane.geometry.dispose();
-      this.imagePlane.material.dispose();
-      this.imagePlane = null;
-    }
-    this.imageTexture?.dispose();
-    this.imageTexture = null;
-  }
-
   private animate = (): void => {
     if (this.paused || this.disposed) return;
     this.animationFrame = requestAnimationFrame(this.animate);
     const now = performance.now();
     const delta = now - this.lastFrame;
     this.lastFrame = now;
-    this.glowMaterial.uniforms.uTime.value = (now - this.startTime) / 1000;
-    this.glowMaterial.uniforms.uProgress.value = Math.min(1, (now - this.startTime) / 1100);
+    this.particleMaterial.uniforms.uTime.value = (now - this.startTime) / 1000;
+    this.particleMaterial.uniforms.uProgress.value = Math.min(1, (now - this.startTime) / 1100);
     this.controls.update();
     this.composer.render();
     this.trackPerformance(delta);

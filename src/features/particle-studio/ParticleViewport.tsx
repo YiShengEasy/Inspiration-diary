@@ -4,7 +4,6 @@ import type { ParticleParams, ParticleSource, QualityProfile } from "./types";
 
 interface ParticleViewportProps {
   source: ParticleSource | null;
-  imageUrl?: string | null;
   params: ParticleParams;
   profile: QualityProfile;
   paused?: boolean;
@@ -14,7 +13,7 @@ interface ParticleViewportProps {
 }
 
 export function ParticleViewport({
-  source, imageUrl = null, params, profile, paused = false, onRendererReady, onPerformanceMode, className,
+  source, params, profile, paused = false, onRendererReady, onPerformanceMode, className,
 }: ParticleViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<ParticleRenderer | null>(null);
@@ -41,10 +40,6 @@ export function ParticleViewport({
   useEffect(() => {
     if (source) rendererRef.current?.setSource(source);
   }, [source]);
-
-  useEffect(() => {
-    void rendererRef.current?.setImageTexture(imageUrl, source ? source.width / source.height : 1);
-  }, [imageUrl, source?.width, source?.height]);
 
   useEffect(() => {
     rendererRef.current?.setParams(params);

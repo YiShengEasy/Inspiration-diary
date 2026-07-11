@@ -78,7 +78,7 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
   };
 
   return <main className="particle-studio">
-    <ParticleViewport source={source} imageUrl={previewUrl} params={params} profile={profile} onRendererReady={handleRendererReady} onPerformanceMode={setReduced} className="particle-studio__viewport" />
+    <ParticleViewport source={source} params={params} profile={profile} onRendererReady={handleRendererReady} onPerformanceMode={setReduced} className="particle-studio__viewport" />
     {!source && <div className="particle-studio__empty">{previewUrl && <img src={previewUrl} alt="待处理图片预览" />}<Sparkles size={34} /><h1>深度辉光粒子画廊</h1><p>上传一张图片，生成可拖拽旋转的立体粒子点云。</p><button type="button" onClick={() => fileInputRef.current?.click()}><ImagePlus size={17} />选择图片</button></div>}
     <div className="particle-studio__toolbar">
       <button type="button" onClick={onBack} title="返回"><ArrowLeft size={17} /></button>
