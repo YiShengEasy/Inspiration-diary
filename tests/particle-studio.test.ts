@@ -6,6 +6,7 @@ import {
   getQualityProfile,
   normalizeParams,
 } from "../src/features/particle-studio/presets";
+import { computeFastDepth, sampleParticleSource } from "../src/features/particle-studio/fastDepth";
 
 test("ships the five approved presets", () => {
   assert.deepEqual(Object.keys(PARTICLE_PRESETS), ["portrait", "landscape", "neon", "mono", "reference"]);
@@ -25,4 +26,22 @@ test("normalizes unsafe parameter input", () => {
   assert.equal(next.density, 1);
   assert.equal(next.particleSize, 0.4);
   assert.equal(next.bloomStrength, 3);
+});
+
+test("computes normalized depth from RGBA brightness", () => {
+  const rgba = new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]);
+  assert.deepEqual(Array.from(computeFastDepth(rgba, 2, 1, DEFAULT_PARTICLE_PARAMS)), [0, 1]);
+});
+
+test("samples no more than the device particle cap", () => {
+  const rgba = new Uint8ClampedArray(20 * 20 * 4).fill(255);
+  const source = sampleParticleSource(
+    rgba,
+    new Float32Array(400).fill(0.5),
+    20,
+    20,
+    DEFAULT_PARTICLE_PARAMS,
+    50,
+  );
+  assert.equal(source.particleCount <= 50, true);
 });
