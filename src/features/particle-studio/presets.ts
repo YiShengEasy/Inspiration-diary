@@ -69,6 +69,11 @@ export const normalizeParams = (params: ParticleParams): ParticleParams => ({
 });
 
 export const STRUCTURAL_PARAM_KEYS = new Set<keyof ParticleParams>([
+  "brightnessThreshold",
+  "contrast",
+  "edgeStrength",
+  "alphaThreshold",
+  "saturation",
   "density",
   "depthSmoothing",
   "depthLayers",

@@ -4,3 +4,4 @@
 .particle-studio__presets button.is-active{border-color:rgba(82,226,255,.78);background:rgba(31,196,231,.22);color:#fff;box-shadow:0 0 16px rgba(31,201,236,.18)}
 .particle-range.is-disabled{opacity:.42}.particle-range.is-disabled input{cursor:not-allowed}
 .particle-range input{height:18px;margin:2px 0 0}
+.particle-studio__rebuilding{position:absolute;z-index:7;left:50%;bottom:18px;transform:translateX(-50%);padding:7px 11px;border:1px solid rgba(82,218,245,.22);border-radius:999px;background:rgba(2,10,13,.82);color:#7edff1;font-size:11px;backdrop-filter:blur(10px)}

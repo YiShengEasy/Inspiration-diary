@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Download, ImagePlus, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
 import { generateAiDepth } from "./aiDepth";
-import { computeFastDepth, decodeImageFile, sampleParticleSource } from "./fastDepth";
+import { decodeImageFile } from "./fastDepth";
 import { ParticleControls } from "./ParticleControls";
 import { ParticleViewport } from "./ParticleViewport";
 import type { ParticleRenderer } from "./ParticleRenderer";
+import { ParticleWorkerClient } from "./particleWorkerClient";
 import { DEFAULT_PARTICLE_PARAMS, getQualityProfile, normalizeParams, PARTICLE_PRESETS } from "./presets";
-import type { DepthMode, DepthProgress, ParticleParams, PresetId } from "./types";
+import type { DepthMode, DepthProgress, ParticleParams, ParticleSource, PresetId } from "./types";
 import "./particle-studio.css";
 
 type StudioStatus = "empty" | "decoding" | "fast-ready" | "ai-loading" | "ai-ready" | "error";
@@ -18,6 +19,8 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
   const [mode, setMode] = useState<DepthMode>("fast");
   const [status, setStatus] = useState<StudioStatus>("empty");
   const [decoded, setDecoded] = useState<Decoded | null>(null);
+  const [source, setSource] = useState<ParticleSource | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
   const [aiDepth, setAiDepth] = useState<Float32Array | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -30,19 +33,54 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
   const rendererRef = useRef<ParticleRenderer | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const workerClientRef = useRef<ParticleWorkerClient | null>(null);
+  const buildSequenceRef = useRef(0);
   const isMobile = useMemo(() => typeof window !== "undefined" && window.matchMedia("(max-width: 767px), (pointer: coarse)").matches, []);
   const profile = useMemo(() => getQualityProfile(isMobile, typeof devicePixelRatio === "number" ? devicePixelRatio : 1), [isMobile]);
-  const computedFastDepth = useMemo(() => decoded ? computeFastDepth(decoded.rgba, decoded.width, decoded.height, params) : null,
-    [decoded, params.edgeStrength, params.depthSmoothing, params.depthLayers]);
-  const selectedDepth = mode === "ai" && aiDepth ? aiDepth : computedFastDepth;
-  const source = useMemo(() => decoded && selectedDepth
-    ? sampleParticleSource(decoded.rgba, selectedDepth, decoded.width, decoded.height, params, profile.maxParticles)
-    : null, [decoded, selectedDepth, params.brightnessThreshold, params.contrast, params.alphaThreshold,
-      params.saturation, params.density, profile.maxParticles]);
   const supportsTransparency = useMemo(() => decoded
     ? decoded.rgba.some((value, index) => index % 4 === 3 && value < 255)
     : false, [decoded]);
   const handleRendererReady = useCallback((renderer: ParticleRenderer | null) => { rendererRef.current = renderer; }, []);
+
+  useEffect(() => {
+    const client = new ParticleWorkerClient();
+    workerClientRef.current = client;
+    return () => {
+      workerClientRef.current = null;
+      client.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    const client = workerClientRef.current;
+    if (!client || !decoded || (mode === "ai" && !aiDepth)) return;
+    const sequence = ++buildSequenceRef.current;
+    const delay = source ? 150 : 0;
+    setRebuilding(true);
+    const timer = window.setTimeout(() => {
+      void client.buildSource({
+        rgba: decoded.rgba,
+        width: decoded.width,
+        height: decoded.height,
+        params,
+        maxParticles: profile.maxParticles,
+        depth: mode === "ai" ? aiDepth : null,
+      }).then((nextSource) => {
+        if (buildSequenceRef.current === sequence) setSource(nextSource);
+      }).catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (buildSequenceRef.current === sequence) setNotice(error instanceof Error ? error.message : "粒子预处理失败");
+      }).finally(() => {
+        if (buildSequenceRef.current === sequence) setRebuilding(false);
+      });
+    }, delay);
+    return () => {
+      window.clearTimeout(timer);
+      client.cancelPending();
+    };
+  }, [decoded, mode, aiDepth, profile.maxParticles, params.brightnessThreshold, params.contrast,
+    params.edgeStrength, params.alphaThreshold, params.saturation, params.density,
+    params.depthSmoothing, params.depthLayers]);
 
   const runAi = useCallback(async (imageFile: File, image: Decoded) => {
     abortRef.current?.abort();
@@ -60,7 +98,7 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
 
   const loadFile = useCallback(async (nextFile: File) => {
     if (!nextFile.type.match(/^image\/(jpeg|png|webp)$/)) { setNotice("请选择 JPG、PNG 或 WebP 图片"); setStatus("error"); return; }
-    abortRef.current?.abort(); setStatus("decoding"); setNotice(null); setProgress(null); setAiDepth(null);
+    abortRef.current?.abort(); setStatus("decoding"); setNotice(null); setProgress(null); setAiDepth(null); setSource(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(nextFile)); setFile(nextFile);
     try {
@@ -68,7 +106,7 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
       setDecoded(image); setStatus("fast-ready");
       if (mode === "ai") void runAi(nextFile, image);
     } catch (error) { setStatus("error"); setNotice(error instanceof Error ? error.message : "图片解析失败"); }
-  }, [isMobile, mode, params, previewUrl, runAi]);
+  }, [isMobile, mode, previewUrl, runAi]);
 
   useEffect(() => () => { abortRef.current?.abort(); if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   const switchMode = (next: DepthMode) => { setMode(next); if (next === "fast") { abortRef.current?.abort(); setStatus(decoded ? "fast-ready" : "empty"); } else if (file && decoded) void runAi(file, decoded); };
@@ -99,6 +137,7 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
     </div>
     <div className="particle-studio__presets">{(Object.keys(presetNames) as PresetId[]).map((id) => <button key={id} type="button" className={activePreset === id ? "is-active" : ""} aria-pressed={activePreset === id} onClick={() => applyPreset(id)}>{presetNames[id]}</button>)}</div>
     {source && <div className="particle-studio__hint">拖拽旋转 · 滚轮缩放 · 双击复位</div>}
+    {rebuilding && source && <div className="particle-studio__rebuilding">正在重建粒子…</div>}
     {reduced && <div className="particle-studio__performance">性能保护已开启</div>}
     {(status === "decoding" || status === "ai-loading") && <div className="particle-studio__progress"><LoaderCircle className="is-spinning" size={22} /><span>{status === "decoding" ? "正在解析图片" : progress?.message}</span>{progress && <div><i style={{ width: `${Math.round(progress.progress * 100)}%` }} /></div>}</div>}
     {notice && <button type="button" className="particle-studio__notice" onClick={() => setNotice(null)}>{notice}<span>×</span></button>}

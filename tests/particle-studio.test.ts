@@ -10,6 +10,7 @@ import {
 import { computeContentMask, computeFastDepth, sampleParticleSource } from "../src/features/particle-studio/fastDepth";
 import { normalizeDepthOutput } from "../src/features/particle-studio/aiDepth";
 import { dispersionForCoherence, loopPhase, retainParticleColor } from "../src/features/particle-studio/motionField";
+import { isLatestParticleRequest } from "../src/features/particle-studio/particleWorkerClient";
 
 test("ships the five approved presets", () => {
   assert.deepEqual(Object.keys(PARTICLE_PRESETS), ["portrait", "landscape", "neon", "mono", "reference"]);
@@ -60,6 +61,11 @@ test("increases dispersion as coherence falls", () => {
 
 test("preserves source RGB when color retention is full", () => {
   assert.deepEqual(retainParticleColor([0.15, 0.4, 0.85], 1, 1), [0.15, 0.4, 0.85]);
+});
+
+test("accepts only the latest particle worker result", () => {
+  assert.equal(isLatestParticleRequest(8, 8), true);
+  assert.equal(isLatestParticleRequest(8, 7), false);
 });
 
 test("computes normalized depth from RGBA brightness", () => {

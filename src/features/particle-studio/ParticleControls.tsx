@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { ParticleParams } from "./types";
 
 interface ParticleControlsProps {
@@ -56,7 +57,23 @@ const groups: Array<{ title: string; controls: Control[] }> = [
 ];
 
 export function ParticleControls({ params, collapsed, supportsTransparency, onChange, onReset, onToggleCollapsed }: ParticleControlsProps) {
-  const update = <K extends keyof ParticleParams>(key: K, value: ParticleParams[K]) => onChange({ ...params, [key]: value });
+  const latestRef = useRef(params);
+  const pendingRef = useRef<ParticleParams | null>(null);
+  const frameRef = useRef(0);
+  latestRef.current = params;
+  useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
+  const update = <K extends keyof ParticleParams>(key: K, value: ParticleParams[K]) => {
+    pendingRef.current = { ...(pendingRef.current ?? latestRef.current), [key]: value };
+    if (frameRef.current) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = 0;
+      const next = pendingRef.current;
+      pendingRef.current = null;
+      if (!next) return;
+      latestRef.current = next;
+      onChange(next);
+    });
+  };
   return (
     <aside className={`particle-controls ${collapsed ? "is-collapsed" : ""}`} aria-label="粒子参数">
       <button className="particle-controls__handle" type="button" onClick={onToggleCollapsed} aria-expanded={!collapsed}>
