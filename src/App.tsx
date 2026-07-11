@@ -42,6 +42,8 @@ import { getCurrentUser, login, logout, register, authFetch, type AuthUser } fro
 import { loadBooks, loadBookSuggestionCandidates, loadCardBookMembership, recordBookSuggestionFeedback, setCardBookMembership } from "./lib/booksClient";
 import { CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY, CUSTOM_TAG_LIBRARY_SETTINGS_KEY, flattenEnabledCustomTagGroups, normalizeCustomTagGroups } from "./lib/customTagLibrary";
 import MarkdownContent from "./components/MarkdownContent";
+import OnDemandVideo from "./components/OnDemandVideo";
+import ProgressiveImage from "./components/ProgressiveImage";
 
 const ALL_CARDS_PAGE_SIZE = 12;
 const SMART_BOOK_SUGGEST_IMAGES_KEY = "smart_book_suggest_images";
@@ -2558,13 +2560,11 @@ export default function App() {
                 ) : zoomedCard.type === "video" ? (
                   <div className="flex h-full w-full items-center justify-center bg-stone-950">
                     {zoomedCard.videoAssets?.[0] ? (
-                      <video
+                      <OnDemandVideo
                         src={zoomedCard.videoAssets[0].videoUrl}
                         poster={zoomedCard.videoAssets[0].posterUrl || undefined}
                         className="h-full w-full object-contain"
-                        controls
-                        playsInline
-                        preload="metadata"
+                        label={`播放${zoomedCard.videoAssets[0].originalName || "视频"}`}
                       />
                     ) : (
                       <div className="flex flex-col items-center justify-center gap-3 text-stone-400">
@@ -2584,7 +2584,8 @@ export default function App() {
                       onPointerCancel={handleImagePointerEnd}
                       onDoubleClick={toggleActualSize}
                     >
-                      <img
+                      <ProgressiveImage
+                        previewSrc={zoomedCard.thumbnailUrl}
                         src={zoomedCard.imageUrl}
                         alt="Original Snippet View"
                         referrerPolicy="no-referrer"
@@ -2921,12 +2922,11 @@ export default function App() {
                         <div className="space-y-2">
                           {zoomedCard.videoAssets.map((video) => (
                             <div key={video.id} className="rounded-[8px] border border-stone-900/10 bg-white/65 p-2 dark:border-white/10 dark:bg-white/[0.05]">
-                              <video
+                              <OnDemandVideo
                                 src={video.videoUrl}
+                                poster={video.posterUrl || undefined}
                                 className="mb-2 aspect-video max-h-40 min-h-[128px] w-full rounded-[6px] bg-stone-950 object-contain"
-                                controls
-                                playsInline
-                                preload="metadata"
+                                label={`播放${video.originalName || "绑定视频"}`}
                               />
                               <div className="flex min-w-0 items-center justify-between gap-2">
                                 <div className="min-w-0 self-center">

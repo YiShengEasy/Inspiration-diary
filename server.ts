@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import pg from "pg";
 import multer from "multer";
 import mammoth from "mammoth";
+import compression from "compression";
 import { createAuthRouter, requireAuth, type AuthenticatedRequest } from "./src/server/auth";
 import { fetchPhotoPrismImage } from "./src/server/photoprism";
 import { normalizeImageUpload } from "./src/server/upload";
@@ -719,6 +720,7 @@ function buildBookSuggestionScoreAdjustments(card: ImageCard, feedbackRows: any[
   return adjustments;
 }
 
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -2580,6 +2582,7 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const favoriteOnly = String(req.query.favorite || "").toLowerCase() === "true";
     const q = String(req.query.q || "").trim();
     const contentType = String(req.query.contentType || "all");
+    const listView = String(req.query.view || "") === "list";
     const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
     const rawPageSize = Number.parseInt(String(req.query.pageSize || "12"), 10) || 12;
     const pageSize = Math.min(60, Math.max(1, rawPageSize));
@@ -2624,15 +2627,18 @@ app.get("/api/db/cards", requirePostgresAuth, async (req, res) => {
     values.push(offset);
     const offsetParam = values.length;
 
+    const imageAssetsSelect = listView
+      ? "'[]'::json AS image_assets"
+      : `(SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
+         FROM image_assets ia
+         WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets`;
     const result = await pgPool.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
               ${comboSummarySelectSql},
               (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
                FROM video_assets va
                WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets,
-              (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
-               FROM image_assets ia
-               WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
+              ${imageAssetsSelect}
        FROM cards
        ${whereSql}
        ORDER BY ${weekId && weekId !== "all" && !dayIndexValue ? "day_index ASC, created_at DESC" : "created_at DESC"}
@@ -3960,7 +3966,18 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      maxAge: "1y",
+      immutable: true,
+      setHeaders: (res, filePath) => {
+        const fileName = path.basename(filePath);
+        if (fileName === "index.html") {
+          res.setHeader("Cache-Control", "no-cache");
+        } else if (!/[.-][a-zA-Z0-9_-]{8,}\.(?:js|css|woff2?|png|jpe?g|webp|svg)$/i.test(fileName)) {
+          res.setHeader("Cache-Control", "public, max-age=86400");
+        }
+      },
+    }));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

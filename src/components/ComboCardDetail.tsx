@@ -10,6 +10,7 @@ import {
   updateComboGeneration,
   uploadComboImage,
 } from "../lib/dbClient";
+import OnDemandVideo from "./OnDemandVideo";
 
 const roleLabels: Record<ComboImageRole, string> = {
   character: "人物",
@@ -421,12 +422,10 @@ export function ComboCardDetailView({
           <div className="space-y-3">
             {generations.map((generation) => (
               <div key={generation.id} className="rounded-[8px] border border-stone-900/10 bg-white/75 p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.055]">
-                <video
+                <OnDemandVideo
                   src={generation.videoUrl}
                   poster={generation.posterUrl || undefined}
-                  controls
-                  playsInline
-                  preload="metadata"
+                  label={`播放${generation.originalName || "视频记录"}`}
                   className="mb-3 aspect-video max-h-[360px] w-full rounded-[6px] bg-stone-950 object-contain"
                 />
                 <textarea

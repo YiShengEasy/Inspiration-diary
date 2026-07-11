@@ -188,7 +188,7 @@ async function fetchCardsFromApi(weekId: string): Promise<ImageCard[]> {
     let page = 1;
     let totalPages = 1;
     do {
-      const res = await authFetch(`/api/db/cards?weekId=${encodeURIComponent(weekId)}&page=${page}&pageSize=60`);
+      const res = await authFetch(`/api/db/cards?weekId=${encodeURIComponent(weekId)}&page=${page}&pageSize=60&view=list`);
       if (!res.ok) return cards;
       const data = await res.json();
       const pageCards = Array.isArray(data) ? data : data.cards || [];
@@ -245,6 +245,7 @@ export async function loadAllCardsPage(params: {
       weekId: "all",
       page: String(page),
       pageSize: String(pageSize),
+      view: "list",
     });
     const query = (params.query || "").trim();
     if (query) {
