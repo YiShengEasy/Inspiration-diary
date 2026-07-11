@@ -45,6 +45,8 @@ import MarkdownContent from "./components/MarkdownContent";
 import OnDemandVideo from "./components/OnDemandVideo";
 import ProgressiveImage from "./components/ProgressiveImage";
 
+const ParticleStudio = React.lazy(() => import("./features/particle-studio/ParticleStudio"));
+
 const ALL_CARDS_PAGE_SIZE = 12;
 const SMART_BOOK_SUGGEST_IMAGES_KEY = "smart_book_suggest_images";
 const SMART_BOOK_SUGGEST_MARKDOWN_KEY = "smart_book_suggest_markdown";
@@ -67,6 +69,8 @@ type UploadTargetOptions = {
   targetBookId?: string;
 };
 
+type MainView = "board" | "books" | "tags" | "particles";
+
 export default function App() {
   const shouldShowMockTools = import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK_TOOLS !== "false";
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -82,7 +86,7 @@ export default function App() {
   const [searchScope, setSearchScope] = useState<"current" | "all">("current");
   const [favoriteOnly, setFavoriteOnly] = useState<boolean>(false);
   const [favoriteUpdatingCardIds, setFavoriteUpdatingCardIds] = useState<Set<string>>(() => new Set());
-  const [mainView, setMainView] = useState<"board" | "books" | "tags">("board");
+  const [mainView, setMainView] = useState<MainView>("board");
   const [bookRefreshToken, setBookRefreshToken] = useState<number>(0);
   const [customTagGroups, setCustomTagGroups] = useState<CustomTagGroup[]>([]);
   const [customTagLibraryEnabled, setCustomTagLibraryEnabled] = useState<boolean>(true);
@@ -1688,6 +1692,48 @@ export default function App() {
     );
   }
 
+  if (mainView === "particles") {
+    return (
+      <div className="min-h-screen bg-black text-white">
+        <header className="flex h-[58px] items-center justify-between border-b border-white/10 bg-black px-3 md:h-[72px] md:px-5">
+          <button
+            type="button"
+            onClick={() => setMainView("board")}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-3 text-xs font-semibold text-cyan-50 transition-colors hover:bg-white/10"
+          >
+            <ChevronLeft size={15} />
+            返回灵感画板
+          </button>
+          <div className="flex items-center gap-2 text-sm font-semibold text-cyan-50">
+            <Sparkles size={16} className="text-cyan-300" />
+            粒子 3D 工作台
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await logout();
+              clearAuthenticatedState();
+            }}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-red-300/15 bg-red-500/10 text-red-200 transition-colors hover:bg-red-500/20"
+            title="退出登录"
+            aria-label="退出登录"
+          >
+            <LogOut size={15} />
+          </button>
+        </header>
+        <React.Suspense
+          fallback={(
+            <div className="grid min-h-[70vh] place-items-center bg-black text-cyan-100">
+              <Loader2 className="animate-spin" size={24} />
+            </div>
+          )}
+        >
+          <ParticleStudio onBack={() => setMainView("board")} />
+        </React.Suspense>
+      </div>
+    );
+  }
+
   return (
     <div
       className="min-h-screen flex flex-col transition-colors duration-300"
@@ -1751,6 +1797,17 @@ export default function App() {
             >
               <Tags size={14} />
               <span>{mainView === "tags" ? "返回画板" : "标签库"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMainView("particles")}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-cyan-400/25 bg-gradient-to-r from-slate-950 via-cyan-950 to-slate-950 px-4 text-xs font-bold text-cyan-50 shadow-[0_10px_24px_rgba(8,145,178,0.18)] transition-all hover:-translate-y-0.5 hover:border-cyan-300/45 hover:shadow-[0_12px_30px_rgba(8,145,178,0.28)] active:scale-95"
+              title="打开粒子 3D 工作台"
+              aria-pressed={false}
+            >
+              <Sparkles size={14} className="text-cyan-300" />
+              <span>粒子 3D</span>
             </button>
 
             <button
