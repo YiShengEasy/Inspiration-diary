@@ -21,7 +21,8 @@ export const particleVertexShader = /* glsl */ `
   void main() {
     vec3 randomVector = fract(vec3(aRandom, aRandom * 17.17, aRandom * 43.71));
     vec3 settled = position;
-    settled.z += (aDepth - 0.5) * uDepthStrength * (0.32 + aDissolve * 0.5 + aEdge * 0.18);
+    float depthEnvelope = mix(0.11, 0.38, max(aDissolve, aEdge * 0.55));
+    settled.z += (aDepth - 0.5) * uDepthStrength * depthEnvelope;
 
     float phase = uTime * (0.35 + randomVector.z) + randomVector.x * 6.2831853;
     vec3 motion = vec3(sin(phase), cos(phase * 0.83), sin(phase * 0.57));
@@ -55,5 +56,77 @@ export const particleFragmentShader = /* glsl */ `
     if (distanceFromCenter > 1.0) discard;
     float alpha = (1.0 - smoothstep(0.48, 1.0, distanceFromCenter)) * vAlpha * vTwinkle;
     gl_FragColor = vec4(vColor * (0.94 + vTwinkle * 0.06), alpha);
+  }
+`;
+
+export const imageSurfaceVertexShader = /* glsl */ `
+  varying vec2 vUv;
+
+  uniform sampler2D uDepthMap;
+  uniform float uDepthStrength;
+  uniform float uProgress;
+  uniform float uExit;
+
+  void main() {
+    vUv = uv;
+    vec3 transformed = position;
+    float imageDepth = texture2D(uDepthMap, uv).r;
+    transformed.z += (imageDepth - 0.5) * uDepthStrength * 0.11;
+    transformed.z += uExit * 0.16;
+    vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+export const imageSurfaceFragmentShader = /* glsl */ `
+  varying vec2 vUv;
+
+  uniform sampler2D uImage;
+  uniform float uTime;
+  uniform float uProgress;
+  uniform float uExit;
+  uniform float uBrightnessThreshold;
+  uniform vec3 uBackgroundColor;
+  uniform float uBackgroundConfidence;
+
+  float hash21(vec2 point) {
+    point = fract(point * vec2(123.34, 456.21));
+    point += dot(point, point + 45.32);
+    return fract(point.x * point.y);
+  }
+
+  float valueNoise(vec2 point) {
+    vec2 cell = floor(point);
+    vec2 fraction = fract(point);
+    fraction = fraction * fraction * (3.0 - 2.0 * fraction);
+    return mix(
+      mix(hash21(cell), hash21(cell + vec2(1.0, 0.0)), fraction.x),
+      mix(hash21(cell + vec2(0.0, 1.0)), hash21(cell + vec2(1.0)), fraction.x),
+      fraction.y
+    );
+  }
+
+  void main() {
+    vec4 imageColor = texture2D(uImage, vUv);
+    float luminance = dot(imageColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+    vec2 centered = vUv * 2.0 - 1.0;
+    float superellipse = pow(pow(abs(centered.x), 4.0) + pow(abs(centered.y), 4.0), 0.25);
+    float coarse = valueNoise(vUv * 4.2 + vec2(8.7, -3.4));
+    float fine = valueNoise(vUv * 19.0 + vec2(-2.6, 11.3));
+    float organicDistance = superellipse + (coarse * 0.66 + fine * 0.34 - 0.5) * 0.2;
+    float dissolveMask = 1.0 - smoothstep(0.58, 0.98, organicDistance);
+    float darkMask = smoothstep(uBrightnessThreshold * 0.65, max(0.11, uBrightnessThreshold + 0.075), luminance);
+    float vignette = 1.0 - smoothstep(0.42, 1.0, superellipse);
+    float backgroundDistance = distance(imageColor.rgb, uBackgroundColor) / 1.7320508;
+    float contentMask = smoothstep(0.025, 0.14, backgroundDistance);
+    float edgeBackgroundSuppression = mix(1.0, contentMask, smoothstep(0.32, 0.9, superellipse));
+    edgeBackgroundSuppression = mix(1.0, edgeBackgroundSuppression, uBackgroundConfidence);
+    float entrance = smoothstep(0.02, 0.42, uProgress);
+    float alpha = imageColor.a * dissolveMask * darkMask * edgeBackgroundSuppression * entrance * (1.0 - uExit);
+    if (alpha < 0.01) discard;
+    // Keep the coherent surface below the default Bloom threshold. Bright
+    // particles still glow, while white image backgrounds retain detail.
+    vec3 color = imageColor.rgb * mix(0.4, 0.68, vignette);
+    gl_FragColor = vec4(color, alpha);
   }
 `;

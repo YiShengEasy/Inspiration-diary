@@ -26,6 +26,9 @@ export interface ParticleParams {
 export interface ParticleSource {
   width: number;
   height: number;
+  background: [number, number, number, number];
+  imageRgba: Uint8Array;
+  depthMap: Float32Array;
   colors: Float32Array;
   positions: Float32Array;
   depth: Float32Array;

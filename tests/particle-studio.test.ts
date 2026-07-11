@@ -61,6 +61,7 @@ test("samples low edge values from a solid-color image", () => {
   );
   assert.equal(source.edge.length, source.particleCount);
   assert.equal(Math.max(...source.edge), 0);
+  assert.deepEqual(source.background, [1, 1, 1, 1]);
 });
 
 test("samples high edge values at a black-white boundary", () => {
@@ -85,13 +86,41 @@ test("samples high edge values at a black-white boundary", () => {
     { ...DEFAULT_PARTICLE_PARAMS, brightnessThreshold: 0, density: 1 },
     width * height,
   );
-  const boundaryEdges = [
-    source.edge[2 * width + 2],
-    source.edge[2 * width + 3],
-  ];
-  assert.ok(boundaryEdges.every((edge) => edge > 0.9));
-  assert.equal(source.edge[2 * width], 0);
-  assert.equal(source.edge[2 * width + 5], 0);
+  const sampledEdges = Array.from(source.edge);
+  assert.equal(sampledEdges.filter((edge) => edge > 0.9).length, height * 2);
+  assert.ok(sampledEdges.some((edge) => edge === 0));
+  assert.ok(source.background[3] < 0.1);
+});
+
+test("jitters sampled positions instead of aligning particles on repeated rows", () => {
+  const width = 32;
+  const height = 24;
+  const rgba = new Uint8ClampedArray(width * height * 4).fill(255);
+  const source = sampleParticleSource(
+    rgba,
+    new Float32Array(width * height).fill(0.5),
+    width,
+    height,
+    { ...DEFAULT_PARTICLE_PARAMS, density: 0.5 },
+    200,
+  );
+  let repeatedAdjacentY = 0;
+  for (let particle = 1; particle < source.particleCount; particle += 1) {
+    if (source.positions[particle * 3 + 1] === source.positions[(particle - 1) * 3 + 1]) {
+      repeatedAdjacentY += 1;
+    }
+  }
+  assert.ok(repeatedAdjacentY < source.particleCount * 0.1);
+});
+
+test("produces identical particle samples for identical input", () => {
+  const width = 16;
+  const height = 12;
+  const rgba = new Uint8ClampedArray(width * height * 4).fill(255);
+  const depth = Float32Array.from({ length: width * height }, (_, index) => index / (width * height));
+  const first = sampleParticleSource(rgba, depth, width, height, DEFAULT_PARTICLE_PARAMS, 80);
+  const second = sampleParticleSource(rgba, depth, width, height, DEFAULT_PARTICLE_PARAMS, 80);
+  assert.deepEqual(first, second);
 });
 
 test("normalizes arbitrary AI depth output and supports inversion", () => {

@@ -5,11 +5,14 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import type { ParticleParams, ParticleSource, QualityProfile } from "./types";
 import {
+  imageSurfaceFragmentShader,
+  imageSurfaceVertexShader,
   particleFragmentShader,
   particleVertexShader,
 } from "./shaders";
 
 const EXPORT_SCALE_LIMIT = 3;
+type ImageSurface = THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -30,6 +33,67 @@ function valueNoise(x: number, y: number): number {
   return THREE.MathUtils.lerp(top, bottom, smoothY);
 }
 
+function createImageSurface(source: ParticleSource): ImageSurface {
+  const aspect = source.width / source.height;
+  const segmentsX = Math.min(160, Math.max(40, Math.round(source.width / 8)));
+  const segmentsY = Math.min(160, Math.max(40, Math.round(source.height / 8)));
+  const geometry = new THREE.PlaneGeometry(aspect * 2, 2, segmentsX, segmentsY);
+  const imageTexture = new THREE.DataTexture(
+    source.imageRgba,
+    source.width,
+    source.height,
+    THREE.RGBAFormat,
+    THREE.UnsignedByteType,
+  );
+  imageTexture.colorSpace = THREE.SRGBColorSpace;
+  imageTexture.flipY = true;
+  imageTexture.needsUpdate = true;
+
+  const depthBytes = new Uint8Array(source.depthMap.length);
+  for (let index = 0; index < source.depthMap.length; index += 1) {
+    depthBytes[index] = Math.round(clamp01(source.depthMap[index]) * 255);
+  }
+  const depthTexture = new THREE.DataTexture(
+    depthBytes,
+    source.width,
+    source.height,
+    THREE.RedFormat,
+    THREE.UnsignedByteType,
+  );
+  depthTexture.flipY = true;
+  depthTexture.needsUpdate = true;
+
+  const material = new THREE.ShaderMaterial({
+    vertexShader: imageSurfaceVertexShader,
+    fragmentShader: imageSurfaceFragmentShader,
+    transparent: true,
+    depthWrite: true,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uImage: { value: imageTexture },
+      uDepthMap: { value: depthTexture },
+      uDepthStrength: { value: 1.6 },
+      uBrightnessThreshold: { value: 0.04 },
+      uBackgroundColor: { value: new THREE.Vector3(source.background[0], source.background[1], source.background[2]) },
+      uBackgroundConfidence: { value: source.background[3] },
+      uTime: { value: 0 },
+      uProgress: { value: 0 },
+      uExit: { value: 0 },
+    },
+  });
+  const surface = new THREE.Mesh(geometry, material);
+  surface.renderOrder = 0;
+  surface.frustumCulled = false;
+  return surface;
+}
+
+function disposeImageSurface(surface: ImageSurface): void {
+  (surface.material.uniforms.uImage.value as THREE.Texture).dispose();
+  (surface.material.uniforms.uDepthMap.value as THREE.Texture).dispose();
+  surface.geometry.dispose();
+  surface.material.dispose();
+}
+
 function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeometry {
   const aspect = source.width / source.height;
   const positions: number[] = [];
@@ -46,36 +110,51 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     const offset = index * 3;
     const normalizedX = source.positions[offset] / Math.max(aspect, 0.0001);
     const normalizedY = source.positions[offset + 1];
-    const radialDistance = Math.min(1.4, Math.hypot(normalizedX, normalizedY));
+    const superellipseDistance = Math.pow(
+      Math.pow(Math.abs(normalizedX), 4) + Math.pow(Math.abs(normalizedY), 4),
+      0.25,
+    );
     const seed = source.random[index];
     const luminance = source.colors[offset] * 0.2126
       + source.colors[offset + 1] * 0.7152
       + source.colors[offset + 2] * 0.0722;
-    const structure = source.depth[index];
+    const saturation = Math.max(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2])
+      - Math.min(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2]);
+    const backgroundDistance = Math.hypot(
+      source.colors[offset] - source.background[0],
+      source.colors[offset + 1] - source.background[1],
+      source.colors[offset + 2] - source.background[2],
+    ) / Math.sqrt(3);
+    const backgroundPresence = THREE.MathUtils.smoothstep(backgroundDistance, 0.025, 0.14);
+    const contentWeight = THREE.MathUtils.lerp(1, backgroundPresence, source.background[3]);
     const edgeWeight = source.edge[index] ?? 0;
     const coarseNoise = valueNoise(normalizedX * 3.8 + 19.3, normalizedY * 3.8 - 7.1);
     const fineNoise = valueNoise(normalizedX * 18.0 - 2.7, normalizedY * 18.0 + 11.6);
     const dissolveNoise = coarseNoise * 0.64 + fineNoise * 0.36;
-    const coreWeight = clamp01((0.92 - radialDistance) / 0.5);
+    const organicDistance = superellipseDistance + (dissolveNoise - 0.5) * 0.16;
     // Two noise scales break up the perimeter, while real Sobel contours are
     // retained closer to their source pixels so image and particles read as one.
     const dissolveWeight = clamp01(
-      (radialDistance - 0.3) / 0.62
-      + (dissolveNoise - 0.5) * 0.72
-      + (0.46 - luminance) * 0.24
+      (organicDistance - 0.48) / 0.52
+      + (0.42 - luminance) * 0.18
       - edgeWeight * 0.3,
     );
-    const visibility = coreWeight * 0.72
-      + luminance * 0.3
-      + structure * 0.16
-      + edgeWeight * 0.52
-      + seed * 0.06;
-    if (visibility < 0.24 || (dissolveWeight > 0.62 && seed < dissolveWeight * 0.36)) continue;
+    const highlightWeight = clamp01((luminance - 0.7) / 0.3)
+      * clamp01(edgeWeight * 1.8 + saturation * 0.75);
+    const detailWeight = Math.max(edgeWeight, highlightWeight);
+    const selectionNoise = hash2d(index * 0.73 + 5.1, index * 1.37 - 9.4);
+    const keepChance = clamp01(0.035 + dissolveWeight * 0.84 + detailWeight * 0.42) * contentWeight;
+    // The textured surface owns the coherent core. Points live in the same
+    // dissolve band and on a sparse set of real image highlights/contours.
+    if (dissolveWeight < 0.045 && detailWeight < 0.28) continue;
+    if (contentWeight < 0.08) continue;
+    if (selectionNoise > keepChance) continue;
 
-    const outward = dissolveWeight * (1 - edgeWeight * 0.48) * (0.018 + seed * 0.075);
+    const outward = dissolveWeight * (1 - edgeWeight * 0.48) * (0.035 + seed * 0.18);
     const length = Math.hypot(normalizedX, normalizedY) || 1;
-    const jitterX = (Math.sin(seed * 928.31) - 0.5) * 0.055;
-    const jitterY = (Math.sin(seed * 417.17 + 1.7) - 0.5) * 0.055;
+    const jitterAmount = 0.002 + dissolveWeight * 0.044;
+    const jitterX = (Math.sin(seed * 928.31) - 0.5) * jitterAmount;
+    const jitterY = (Math.sin(seed * 417.17 + 1.7) - 0.5) * jitterAmount;
     positions.push(
       source.positions[offset] + (normalizedX / length) * outward * aspect + jitterX,
       source.positions[offset + 1] + (normalizedY / length) * outward + jitterY,
@@ -85,11 +164,11 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     depth.push(source.depth[index]);
     random.push(seed);
     scale.push(
-      ((0.48 + seed * 0.28) * (1 - dissolveWeight)
-        + (seed > 0.86 ? 1.7 + seed : 0.72 + seed * 0.58) * dissolveWeight)
+      ((0.86 + seed * 0.2) * (1 - dissolveWeight)
+        + (seed > 0.96 ? 1.35 + seed * 0.8 : 0.58 + seed * 0.42) * dissolveWeight)
       * (1 + edgeWeight * 0.42),
     );
-    opacity.push(Math.min(1, 0.38 + coreWeight * 0.5 + luminance * 0.14 + edgeWeight * 0.4));
+    opacity.push(Math.min(1, 0.4 + dissolveWeight * 0.32 + luminance * 0.12 + edgeWeight * 0.34));
     dissolve.push(dissolveWeight);
     edge.push(edgeWeight);
   }
@@ -118,6 +197,8 @@ export class ParticleRenderer {
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
   private readonly particleMaterial: THREE.ShaderMaterial;
+  private imageSurface: ImageSurface | null = null;
+  private exitingSurface: ImageSurface | null = null;
   private particlePoints: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
   private exitingPoints: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
   private exitStartedAt = 0;
@@ -181,13 +262,17 @@ export class ParticleRenderer {
 
   setSource(source: ParticleSource): void {
     this.beginCurrentExit();
+    this.imageSurface = createImageSurface(source);
+    this.scene.add(this.imageSurface);
     const geometry = createDissolveParticleGeometry(source);
     this.particlePoints = new THREE.Points(geometry, this.particleMaterial);
     this.particlePoints.frustumCulled = false;
+    this.particlePoints.renderOrder = 1;
     this.scene.add(this.particlePoints);
     this.startTime = performance.now();
     this.particleMaterial.uniforms.uProgress.value = 0;
     this.particleMaterial.uniforms.uExit.value = 0;
+    if (this.params) this.applySurfaceParams(this.imageSurface, this.params);
   }
 
   setParams(params: ParticleParams): void {
@@ -197,6 +282,7 @@ export class ParticleRenderer {
     this.particleMaterial.uniforms.uScatter.value = params.scatter;
     this.particleMaterial.uniforms.uDrift.value = params.driftSpeed;
     this.particleMaterial.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio * 1.15;
+    if (this.imageSurface) this.applySurfaceParams(this.imageSurface, params);
     this.bloomPass.strength = params.bloomStrength * (this.reduced ? 0.55 : 1);
     this.bloomPass.radius = params.bloomRadius;
     this.bloomPass.threshold = params.bloomThreshold;
@@ -269,32 +355,56 @@ export class ParticleRenderer {
   }
 
   private removePoints(): void {
+    if (this.imageSurface) {
+      this.scene.remove(this.imageSurface);
+      disposeImageSurface(this.imageSurface);
+      this.imageSurface = null;
+    }
     if (this.particlePoints) {
       this.scene.remove(this.particlePoints);
       this.particlePoints.geometry.dispose();
       this.particlePoints = null;
     }
-    this.removeExitingPoints();
+    this.removeExitingContent();
   }
 
   private beginCurrentExit(): void {
-    this.removeExitingPoints();
-    if (!this.particlePoints) return;
-    const exitingMaterial = this.particleMaterial.clone();
-    exitingMaterial.uniforms.uProgress.value = 1;
-    exitingMaterial.uniforms.uExit.value = 0;
-    this.particlePoints.material = exitingMaterial;
-    this.exitingPoints = this.particlePoints;
-    this.particlePoints = null;
+    this.removeExitingContent();
+    if (this.imageSurface) {
+      this.imageSurface.material.uniforms.uProgress.value = 1;
+      this.imageSurface.material.uniforms.uExit.value = 0;
+      this.exitingSurface = this.imageSurface;
+      this.imageSurface = null;
+    }
+    if (this.particlePoints) {
+      const exitingMaterial = this.particleMaterial.clone();
+      exitingMaterial.uniforms.uProgress.value = 1;
+      exitingMaterial.uniforms.uExit.value = 0;
+      this.particlePoints.material = exitingMaterial;
+      this.exitingPoints = this.particlePoints;
+      this.particlePoints = null;
+    }
+    if (!this.exitingSurface && !this.exitingPoints) return;
     this.exitStartedAt = performance.now();
   }
 
-  private removeExitingPoints(): void {
-    if (!this.exitingPoints) return;
-    this.scene.remove(this.exitingPoints);
-    this.exitingPoints.geometry.dispose();
-    this.exitingPoints.material.dispose();
-    this.exitingPoints = null;
+  private removeExitingContent(): void {
+    if (this.exitingSurface) {
+      this.scene.remove(this.exitingSurface);
+      disposeImageSurface(this.exitingSurface);
+      this.exitingSurface = null;
+    }
+    if (this.exitingPoints) {
+      this.scene.remove(this.exitingPoints);
+      this.exitingPoints.geometry.dispose();
+      this.exitingPoints.material.dispose();
+      this.exitingPoints = null;
+    }
+  }
+
+  private applySurfaceParams(surface: ImageSurface, params: ParticleParams): void {
+    surface.material.uniforms.uDepthStrength.value = params.depthStrength;
+    surface.material.uniforms.uBrightnessThreshold.value = params.brightnessThreshold;
   }
 
   private animate = (): void => {
@@ -305,11 +415,21 @@ export class ParticleRenderer {
     this.lastFrame = now;
     this.particleMaterial.uniforms.uTime.value = (now - this.startTime) / 1000;
     this.particleMaterial.uniforms.uProgress.value = Math.min(1, (now - this.startTime) / 1100);
-    if (this.exitingPoints) {
+    if (this.imageSurface) {
+      this.imageSurface.material.uniforms.uTime.value = (now - this.startTime) / 1000;
+      this.imageSurface.material.uniforms.uProgress.value = Math.min(1, (now - this.startTime) / 900);
+    }
+    if (this.exitingPoints || this.exitingSurface) {
       const exitProgress = Math.min(1, (now - this.exitStartedAt) / 850);
-      this.exitingPoints.material.uniforms.uTime.value = (now - this.exitStartedAt) / 1000;
-      this.exitingPoints.material.uniforms.uExit.value = exitProgress;
-      if (exitProgress >= 1) this.removeExitingPoints();
+      if (this.exitingPoints) {
+        this.exitingPoints.material.uniforms.uTime.value = (now - this.exitStartedAt) / 1000;
+        this.exitingPoints.material.uniforms.uExit.value = exitProgress;
+      }
+      if (this.exitingSurface) {
+        this.exitingSurface.material.uniforms.uTime.value = (now - this.exitStartedAt) / 1000;
+        this.exitingSurface.material.uniforms.uExit.value = exitProgress;
+      }
+      if (exitProgress >= 1) this.removeExitingContent();
     }
     this.controls.update();
     this.composer.render();
