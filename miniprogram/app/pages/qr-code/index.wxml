@@ -1,0 +1,51 @@
+<view class="page qr-page">
+  <view class="hero-card">
+    <text class="hero-kicker">本地实用工具</text>
+    <text class="hero-title">二维码</text>
+    <text class="hero-desc">本地生成二维码，也可以调用微信扫码识别。</text>
+  </view>
+
+  <view class="mode-tabs">
+    <button class="mode-button {{mode === 'generate' ? 'active' : ''}}" data-mode="generate" bindtap="switchMode">生成二维码</button>
+    <button class="mode-button {{mode === 'scan' ? 'active' : ''}}" data-mode="scan" bindtap="switchMode">识别二维码</button>
+  </view>
+
+  <block wx:if="{{mode === 'generate'}}">
+    <view class="editor-head">
+      <text class="section-title">二维码内容</text>
+      <view class="head-actions">
+        <button class="head-button" bindtap="pasteContent">粘贴</button>
+        <button class="head-button" bindtap="clearContent">清空</button>
+      </view>
+    </view>
+    <view class="text-box">
+      <textarea class="content-input" value="{{content}}" placeholder="输入网址、文字或其他内容…" maxlength="2000" bindinput="changeContent"></textarea>
+      <text class="content-count">{{content.length}} / 2000</text>
+    </view>
+    <button class="primary-button" disabled="{{generating}}" bindtap="generateCode">{{generating ? '正在生成…' : '生成二维码'}}</button>
+
+    <view class="result-card" wx:if="{{resultPath}}">
+      <image class="qr-image" src="{{resultPath}}" mode="aspectFit"></image>
+      <button class="save-button" bindtap="saveCode">保存到相册</button>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="scan-card">
+      <text class="scan-icon">▦</text>
+      <text class="scan-title">扫描或选择二维码</text>
+      <text class="scan-desc">使用微信扫码界面，可通过相机或相册识别。</text>
+      <button class="scan-button" bindtap="scanCode">开始识别</button>
+    </view>
+    <view class="scan-result" wx:if="{{scanResult}}">
+      <text class="section-title">识别结果</text>
+      <text class="scan-content">{{scanResult}}</text>
+      <view class="result-actions">
+        <button class="secondary-button" bindtap="copyScanResult">复制结果</button>
+        <button class="secondary-button active" bindtap="useScanResult">生成新二维码</button>
+      </view>
+    </view>
+  </block>
+
+  <canvas type="2d" id="qrCanvas" class="offscreen-canvas"></canvas>
+</view>

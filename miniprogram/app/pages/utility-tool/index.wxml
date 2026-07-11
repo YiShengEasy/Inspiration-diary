@@ -1,0 +1,61 @@
+<view class="page utility-page">
+  <view class="hero-card">
+    <text class="hero-kicker">本地实用工具</text>
+    <text class="hero-title">{{config.title}}</text>
+    <text class="hero-desc">{{config.desc}}</text>
+  </view>
+
+  <block wx:if="{{tool === 'password'}}">
+    <view class="setting-card">
+      <view class="setting-head"><text class="setting-title">密码长度</text><text class="setting-value">{{passwordLength}} 位</text></view>
+      <slider min="8" max="64" step="1" value="{{passwordLength}}" activeColor="#111111" backgroundColor="#e5e7e0" block-color="#b7ff38" block-size="22" bindchange="changePasswordLength" />
+      <text class="setting-title option-title">字符类型</text>
+      <view class="option-grid">
+        <button class="option-button {{passwordOptions.lower ? 'active' : ''}}" data-key="lower" bindtap="togglePasswordOption">小写字母</button>
+        <button class="option-button {{passwordOptions.upper ? 'active' : ''}}" data-key="upper" bindtap="togglePasswordOption">大写字母</button>
+        <button class="option-button {{passwordOptions.number ? 'active' : ''}}" data-key="number" bindtap="togglePasswordOption">数字</button>
+        <button class="option-button {{passwordOptions.symbol ? 'active' : ''}}" data-key="symbol" bindtap="togglePasswordOption">符号</button>
+      </view>
+    </view>
+    <button class="primary-button" bindtap="generatePassword">生成密码</button>
+    <view class="result-card" wx:if="{{passwordResult}}"><text class="result-text mono">{{passwordResult}}</text><button class="copy-button" data-key="passwordResult" bindtap="copyResult">复制</button></view>
+    <text class="notice">适合日常账号密码，不用于密钥或高安全场景。</text>
+  </block>
+
+  <block wx:elif="{{tool === 'dateCalc'}}">
+    <view class="setting-card date-card">
+      <text class="setting-title">开始日期</text>
+      <picker mode="date" value="{{startDate}}" bindchange="changeStartDate"><view class="picker-value">{{startDate}} ›</view></picker>
+      <text class="setting-title second-label">结束日期</text>
+      <picker mode="date" value="{{endDate}}" bindchange="changeEndDate"><view class="picker-value">{{endDate}} ›</view></picker>
+    </view>
+    <button class="primary-button" bindtap="calculateDate">计算日期间隔</button>
+    <view class="result-card" wx:if="{{dateResult}}"><text class="result-text">{{dateResult}}</text><button class="copy-button" data-key="dateResult" bindtap="copyResult">复制</button></view>
+  </block>
+
+  <block wx:elif="{{tool === 'unitConvert'}}">
+    <view class="setting-card">
+      <text class="setting-title">换算类型</text>
+      <picker range="{{unitGroupOptions}}" range-key="label" bindchange="changeUnitGroup"><view class="picker-value">{{unitGroupLabel}} ›</view></picker>
+      <text class="setting-title second-label">输入数值</text>
+      <input class="number-input" type="digit" value="{{unitInput}}" bindinput="changeUnitInput" />
+      <view class="unit-row">
+        <view class="unit-column"><text class="unit-label">从</text><picker range="{{unitOptions}}" range-key="label" value="{{fromUnitIndex}}" bindchange="changeFromUnit"><view class="picker-value">{{unitOptions[fromUnitIndex].label}} ›</view></picker></view>
+        <text class="unit-arrow">→</text>
+        <view class="unit-column"><text class="unit-label">到</text><picker range="{{unitOptions}}" range-key="label" value="{{toUnitIndex}}" bindchange="changeToUnit"><view class="picker-value">{{unitOptions[toUnitIndex].label}} ›</view></picker></view>
+      </view>
+    </view>
+    <button class="primary-button" bindtap="convertUnit">开始换算</button>
+    <view class="result-card" wx:if="{{unitResult}}"><text class="result-text">{{unitResult}}</text><button class="copy-button" data-key="unitResult" bindtap="copyResult">复制</button></view>
+  </block>
+
+  <block wx:else>
+    <view class="setting-card">
+      <view class="random-row"><view><text class="setting-title">最小值</text><input class="number-input" type="number" value="{{randomMin}}" bindinput="changeRandomMin" /></view><view><text class="setting-title">最大值</text><input class="number-input" type="number" value="{{randomMax}}" bindinput="changeRandomMax" /></view></view>
+      <text class="setting-title second-label">生成数量（最多 100）</text>
+      <input class="number-input" type="number" value="{{randomCount}}" bindinput="changeRandomCount" />
+    </view>
+    <button class="primary-button" bindtap="generateRandom">生成随机数</button>
+    <view class="result-card" wx:if="{{randomResult}}"><text class="result-text mono">{{randomResult}}</text><button class="copy-button" data-key="randomResult" bindtap="copyResult">复制</button></view>
+  </block>
+</view>

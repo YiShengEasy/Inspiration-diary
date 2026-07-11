@@ -1,47 +1,103 @@
 <view class="page toolbox-page">
   <view class="promo-banner">
     <view class="promo-copy">
-      <text class="eyebrow">免费工具先试用</text>
-      <text class="title">把图片灵感收进每天的日记</text>
-      <text class="subtitle">图片、手稿、标签，一键整理成每周记录。</text>
+      <text class="eyebrow">Inspiration Diary</text>
+      <text class="title">AI 灵感册</text>
+      <text class="subtitle">图片、文字、文档，一键整理成每天的灵感记录。</text>
     </view>
     <view class="promo-stack" aria-hidden="true">
       <image wx:for="{{promoImages}}" wx:key="*this" class="promo-image promo-image-{{index}}" src="{{item}}" mode="aspectFill"></image>
     </view>
   </view>
 
-  <view class="featured">
-    <block wx:for="{{featuredTools}}" wx:key="id">
-      <button data-id="{{item.id}}" bindtap="openTool" class="feature {{item.featureClass}}">
-        <text class="feature-label">{{item.label}}</text>
-        <text class="feature-icon icon icon-{{item.iconKey}}">{{item.iconText}}</text>
-        <text class="feature-title">{{item.name}}</text>
-        <text class="feature-desc">{{item.desc}}</text>
-      </button>
-    </block>
+  <view class="search-box">
+    <text class="search-icon">⌕</text>
+    <input class="search-input" value="{{searchKeyword}}" placeholder="搜索工具" bindinput="searchTools" confirm-type="search" />
+    <button wx:if="{{searchKeyword}}" class="search-clear" bindtap="clearSearch">×</button>
   </view>
 
-  <scroll-view class="category-tabs" scroll-x enable-flex>
-    <block wx:for="{{categories}}" wx:key="*this">
-      <button class="category {{category === item ? 'active' : ''}}" data-category="{{item}}" bindtap="selectCategory">{{item}}</button>
-    </block>
+  <scroll-view class="category-tabs" scroll-x enable-flex show-scrollbar="{{false}}">
+    <view class="category-row">
+      <button wx:for="{{categories}}" wx:key="*this" class="category {{category === item ? 'active' : ''}}" data-category="{{item}}" bindtap="selectCategory">{{item}}</button>
+    </view>
   </scroll-view>
 
-  <view class="tool-grid" wx:if="{{visibleTools.length}}">
-    <block wx:for="{{visibleTools}}" wx:key="id">
-      <button class="tool-card {{item.accent}}" data-id="{{item.id}}" bindtap="openTool">
-        <text wx:if="{{item.locked}}" class="lock-icon">⌕</text>
-        <text class="tool-icon icon icon-{{item.iconKey}}">{{item.iconText}}</text>
-        <text class="tool-name">{{item.name}}</text>
-        <text class="tool-desc">{{item.desc}}</text>
+  <view wx:if="{{isSearching}}" class="search-section">
+    <view class="section-head compact-head">
+      <text class="section-title">搜索结果</text>
+      <text class="result-count">{{searchResults.length}} 个工具</text>
+    </view>
+    <view class="search-grid" wx:if="{{searchResults.length}}">
+      <button wx:for="{{searchResults}}" wx:key="id" class="grid-tool" data-id="{{item.id}}" bindtap="openTool">
+        <text class="grid-icon">{{item.iconText}}</text>
+        <text class="grid-name">{{item.name}}</text>
+        <text class="grid-desc">{{item.desc}}</text>
       </button>
-    </block>
+    </view>
+    <view class="empty-state" wx:else>
+      <text class="empty-title">没有找到这个工具</text>
+      <text class="empty-desc">换个关键词试试，或从分类中浏览。</text>
+    </view>
   </view>
 
-  <view class="empty-state" wx:else>
-    <text class="empty-title">这个分类还在整理</text>
-    <text class="empty-desc">先试试常用工具，后续会补充更多能力。</text>
-  </view>
+  <block wx:else>
+    <button wx:if="{{featuredTool}}" class="featured-tool" data-id="{{featuredTool.id}}" bindtap="openTool">
+      <text class="featured-icon">{{featuredTool.iconText}}</text>
+      <view class="featured-copy">
+        <text class="featured-name">{{featuredTool.name}}</text>
+        <text class="featured-desc">{{featuredTool.desc}}</text>
+      </view>
+      <text class="featured-arrow">›</text>
+    </button>
+
+    <view class="tool-grid" wx:if="{{gridTools.length}}">
+      <button wx:for="{{gridTools}}" wx:key="id" class="grid-tool {{index === 0 ? 'tinted' : ''}}" data-id="{{item.id}}" bindtap="openTool">
+        <text class="grid-icon">{{item.iconText}}</text>
+        <text class="grid-name">{{item.name}}</text>
+        <text class="grid-desc">{{item.desc}}</text>
+      </button>
+    </view>
+
+    <view class="compact-tools" wx:if="{{listTools.length}}">
+      <button wx:for="{{listTools}}" wx:key="id" class="compact-tool" data-id="{{item.id}}" bindtap="openTool">
+        <text class="compact-icon">{{item.iconText}}</text>
+        <view class="compact-copy">
+          <text class="compact-name">{{item.name}}</text>
+          <text class="compact-desc">{{item.desc}}</text>
+        </view>
+        <text class="compact-arrow">›</text>
+      </button>
+    </view>
+
+    <view class="recent" wx:if="{{recentTools.length}}">
+      <view class="section-head compact-head">
+        <text class="section-title">最近使用</text>
+        <button class="text-action" bindtap="clearRecentTools">清空</button>
+      </view>
+      <scroll-view class="recent-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+        <view class="recent-strip">
+          <button wx:for="{{recentTools}}" wx:key="id" class="recent-tool" data-id="{{item.id}}" bindtap="openTool">
+            <text class="recent-icon">{{item.iconText}}</text>
+            <view class="recent-copy">
+              <text class="recent-name">{{item.name}}</text>
+              <text class="recent-desc">{{item.desc}}</text>
+            </view>
+          </button>
+        </view>
+      </scroll-view>
+    </view>
+
+    <button wx:if="{{!allExpanded}}" class="all-tools" bindtap="showAllTools">
+      <text class="all-icon">▦</text>
+      <text>查看全部{{category}}工具</text>
+      <text class="all-arrow">›</text>
+    </button>
+
+    <view class="privacy-tip">
+      <text class="privacy-lock">▢</text>
+      <text>本地工具优先处理 · 内容不主动上传</text>
+    </view>
+  </block>
 
   <view class="recommend">
     <view class="section-head">

@@ -1,0 +1,40 @@
+<view class="page text-page">
+  <view class="hero-card">
+    <text class="hero-kicker">本地文字工具</text>
+    <text class="hero-title">文本整理</text>
+    <text class="hero-desc">清理、去重、排序，内容不会上传服务器。</text>
+  </view>
+
+  <view class="editor-head">
+    <text class="section-title">原始文本</text>
+    <view class="head-actions">
+      <button class="head-button" bindtap="pasteText">粘贴</button>
+      <button class="head-button" bindtap="clearText">清空</button>
+    </view>
+  </view>
+  <view class="text-box">
+    <textarea class="text-input" value="{{inputText}}" placeholder="在这里输入或粘贴需要整理的文字…" maxlength="-1" bindinput="changeInput"></textarea>
+    <text class="text-count">{{inputCount}} 字符</text>
+  </view>
+
+  <text class="section-title action-title">整理方式</text>
+  <view class="action-grid">
+    <button wx:for="{{actions}}" wx:key="id" class="action-button {{recommendedAction === item.id ? 'recommended' : ''}}" data-action="{{item.id}}" bindtap="runAction">
+      <text class="action-icon">{{item.icon}}</text>
+      <text>{{item.name}}</text>
+    </button>
+  </view>
+
+  <view class="editor-head result-head">
+    <view>
+      <text class="section-title">整理结果</text>
+      <text class="section-desc">可连续使用多个整理操作</text>
+    </view>
+    <button class="reuse-button" bindtap="useResult">结果作为原文</button>
+  </view>
+  <view class="text-box result-box">
+    <textarea class="text-input" value="{{outputText}}" placeholder="整理结果会显示在这里" maxlength="-1" disabled></textarea>
+    <text class="text-count">{{outputCount}} 字符</text>
+  </view>
+  <button class="copy-button" bindtap="copyResult">复制整理结果</button>
+</view>

@@ -1,0 +1,36 @@
+<view class="page mosaic-page">
+  <view class="hero-card">
+    <text class="hero-kicker">本地隐私工具</text>
+    <text class="hero-title">马赛克</text>
+    <text class="hero-desc">选择画笔后直接涂抹，图片不会上传服务器。</text>
+  </view>
+
+  <button class="choose-button" bindtap="chooseImage">
+    <text class="choose-plus">＋</text>
+    <text>{{sourcePath ? '更换图片' : '选择图片'}}</text>
+  </button>
+
+  <block wx:if="{{sourcePath}}">
+    <view class="toolbar">
+      <view class="brush-options">
+        <button wx:for="{{brushOptions}}" wx:key="value" class="brush-button {{brushSize === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectBrush">{{item.label}}</button>
+      </view>
+      <button class="restore-button" bindtap="restoreImage">恢复原图</button>
+    </view>
+
+    <view class="canvas-wrap" style="height: {{canvasHeight}}px;">
+      <canvas type="2d" id="mosaicCanvas" class="mosaic-canvas" style="height: {{canvasHeight}}px;" disable-scroll bindtouchstart="startDraw" catchtouchmove="moveDraw" bindtouchend="endDraw" bindtouchcancel="endDraw"></canvas>
+      <view class="canvas-tip" wx:if="{{!drawing}}">在图片上滑动涂抹</view>
+    </view>
+
+    <button class="primary-button" disabled="{{exporting}}" bindtap="exportImage">{{exporting ? '正在导出…' : '生成图片'}}</button>
+  </block>
+
+  <view class="result-section" wx:if="{{resultPath}}">
+    <view class="section-head">
+      <text class="section-title">处理结果</text>
+      <button class="save-button" bindtap="saveResult">保存相册</button>
+    </view>
+    <image class="result-image" src="{{resultPath}}" mode="widthFix"></image>
+  </view>
+</view>

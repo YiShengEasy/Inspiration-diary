@@ -1,0 +1,39 @@
+<view class="page markdown-page">
+  <view class="hero-card">
+    <text class="hero-kicker">本地文档工具</text>
+    <text class="hero-title">Markdown 预览</text>
+    <text class="hero-desc">边写边预览，内容只保留在当前页面。</text>
+  </view>
+
+  <view class="mode-tabs">
+    <button class="mode-button {{mode === 'edit' ? 'active' : ''}}" data-mode="edit" bindtap="switchMode">编辑</button>
+    <button class="mode-button {{mode === 'preview' ? 'active' : ''}}" data-mode="preview" bindtap="switchMode">预览</button>
+  </view>
+
+  <block wx:if="{{mode === 'edit'}}">
+    <view class="editor-head">
+      <text class="section-title">Markdown 原文</text>
+      <view class="head-actions">
+        <button class="head-button" bindtap="pasteMarkdown">粘贴</button>
+        <button class="head-button" bindtap="copyMarkdown">复制</button>
+        <button class="head-button" bindtap="clearMarkdown">清空</button>
+      </view>
+    </view>
+    <view class="editor-box">
+      <textarea class="markdown-input" value="{{markdown}}" placeholder="# 输入 Markdown 内容…" maxlength="-1" bindinput="changeMarkdown"></textarea>
+    </view>
+    <button class="primary-button" data-mode="preview" bindtap="switchMode">查看预览</button>
+  </block>
+
+  <block wx:else>
+    <view class="editor-head">
+      <text class="section-title">渲染结果</text>
+      <button class="copy-html" bindtap="copyHtml">复制 HTML</button>
+    </view>
+    <view class="preview-box">
+      <rich-text class="markdown-preview" nodes="{{previewHtml}}"></rich-text>
+      <view class="empty-preview" wx:if="{{!previewHtml}}">暂无预览内容</view>
+    </view>
+    <button class="primary-button" data-mode="edit" bindtap="switchMode">继续编辑</button>
+  </block>
+</view>

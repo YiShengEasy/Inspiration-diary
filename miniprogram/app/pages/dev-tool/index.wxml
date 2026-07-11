@@ -1,0 +1,42 @@
+<view class="page dev-page">
+  <view class="hero-card">
+    <text class="hero-kicker">本地开发工具</text>
+    <text class="hero-title">{{config.title}}</text>
+    <text class="hero-desc">{{config.desc}}</text>
+    <text class="local-chip">本地处理</text>
+  </view>
+
+  <view class="editor-head">
+    <text class="section-title">输入</text>
+    <view class="head-actions">
+      <button class="head-button" bindtap="pasteInput">粘贴</button>
+      <button class="head-button" bindtap="clearAll">清空</button>
+    </view>
+  </view>
+  <view class="text-box">
+    <textarea class="text-input" value="{{input}}" placeholder="{{config.placeholder}}" maxlength="-1" bindinput="changeInput"></textarea>
+  </view>
+
+  <block wx:if="{{config.auxiliaryLabel}}">
+    <text class="aux-label">{{config.auxiliaryLabel}}</text>
+    <view class="text-box auxiliary-box">
+      <textarea class="text-input auxiliary-input" value="{{auxiliary}}" placeholder="{{config.auxiliaryPlaceholder}}" maxlength="-1" bindinput="changeAuxiliary"></textarea>
+    </view>
+  </block>
+
+  <view class="action-row">
+    <button wx:for="{{config.actions}}" wx:key="id" class="action-button {{index === 0 ? 'primary' : ''}}" data-action="{{item.id}}" bindtap="runAction">{{item.label}}</button>
+  </view>
+
+  <view class="error-card" wx:if="{{error}}">{{error}}</view>
+
+  <view class="result-section">
+    <view class="editor-head result-head">
+      <text class="section-title">输出结果</text>
+      <button class="copy-button" bindtap="copyOutput">复制</button>
+    </view>
+    <view class="text-box result-box">
+      <textarea class="text-input result-input" value="{{output}}" placeholder="处理结果会显示在这里" maxlength="-1" disabled></textarea>
+    </view>
+  </view>
+</view>

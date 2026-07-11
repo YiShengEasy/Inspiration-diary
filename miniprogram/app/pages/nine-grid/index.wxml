@@ -1,0 +1,37 @@
+<view class="page grid-page">
+  <view class="hero-card">
+    <text class="hero-kicker">本地图片工具</text>
+    <text class="hero-title">九宫格切图</text>
+    <text class="hero-desc">自动居中裁成正方形，再按发布顺序生成九张图片。</text>
+  </view>
+
+  <button class="choose-button" bindtap="chooseImage">
+    <text class="choose-plus">＋</text>
+    <text>{{sourcePath ? '更换图片' : '选择图片'}}</text>
+  </button>
+
+  <view class="source-card" wx:if="{{sourcePath}}">
+    <image class="source-image" src="{{sourcePath}}" mode="aspectFit"></image>
+    <text class="source-meta">原图 {{sourceWidth}} × {{sourceHeight}}px · 自动居中裁切</text>
+  </view>
+
+  <button wx:if="{{sourcePath}}" class="primary-button" disabled="{{processing}}" bindtap="generateTiles">{{processing ? '正在生成…' : '生成九宫格'}}</button>
+
+  <view class="result-section" wx:if="{{tiles.length}}">
+    <view class="section-head">
+      <view>
+        <text class="section-title">切图结果</text>
+        <text class="section-desc">按 1 → 9 的顺序发布</text>
+      </view>
+      <button class="save-button" disabled="{{saving}}" bindtap="saveAllTiles">保存全部</button>
+    </view>
+    <view class="tile-grid">
+      <button wx:for="{{tiles}}" wx:key="id" class="tile-button" data-path="{{item.path}}" bindtap="previewTile">
+        <image class="tile-image" src="{{item.path}}" mode="aspectFill"></image>
+        <text class="tile-order">{{item.order}}</text>
+      </button>
+    </view>
+  </view>
+
+  <canvas type="2d" id="gridCanvas" class="offscreen-canvas"></canvas>
+</view>

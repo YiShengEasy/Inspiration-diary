@@ -1,0 +1,26 @@
+.mosaic-page { min-height:100vh; padding:28rpx 31rpx 120rpx; box-sizing:border-box; background:#fff; color:#151712; }
+button { margin:0; padding:0; border:0; line-height:1; }
+button::after { border:0; }
+.hero-card { position:relative; overflow:hidden; min-height:210rpx; padding:34rpx; box-sizing:border-box; border-radius:34rpx; background:linear-gradient(118deg,#e9edff,#ded4ff 52%,#d9f8ec); }
+.hero-card::after { content:""; position:absolute; right:-25rpx; top:-70rpx; width:240rpx; height:230rpx; border-radius:76rpx; background:rgba(183,255,56,.38); transform:rotate(13deg); }
+.hero-kicker,.hero-title,.hero-desc { position:relative; z-index:1; display:block; }
+.hero-kicker { color:#5742c8; font-size:20rpx; line-height:24rpx; font-weight:900; }
+.hero-title { margin-top:12rpx; font-size:49rpx; line-height:55rpx; font-weight:950; }
+.hero-desc { width:450rpx; margin-top:13rpx; color:rgba(28,27,62,.62); font-size:21rpx; line-height:29rpx; }
+.choose-button { display:flex; align-items:center; justify-content:center; width:100%; min-height:96rpx; margin-top:28rpx; border:3rpx dashed #cfd3c8; border-radius:28rpx; background:#fafbf7; color:#1c1e19; font-size:24rpx; font-weight:900; }
+.choose-plus { margin-right:10rpx; color:#7acb00; font-size:35rpx; }
+.toolbar { display:flex; align-items:center; justify-content:space-between; margin:22rpx 0 15rpx; }
+.brush-options { display:flex; gap:8rpx; padding:6rpx; border-radius:999rpx; background:#f1f2ed; }
+.brush-button { display:flex; align-items:center; justify-content:center; width:66rpx; height:51rpx; border-radius:999rpx; background:transparent; color:#757a71; font-size:18rpx; font-weight:900; }
+.brush-button.active { background:#111; color:#b7ff38; }
+.restore-button { display:flex; align-items:center; justify-content:center; padding:14rpx 18rpx; border-radius:999rpx; background:#f1f2ed; color:#666b62; font-size:18rpx; font-weight:850; }
+.canvas-wrap { position:relative; width:100%; overflow:hidden; border-radius:25rpx; background:#eceee8; }
+.mosaic-canvas { display:block; width:100%; }
+.canvas-tip { position:absolute; left:50%; bottom:18rpx; transform:translateX(-50%); padding:11rpx 18rpx; border-radius:999rpx; background:rgba(17,17,17,.74); color:#fff; font-size:17rpx; font-weight:800; pointer-events:none; }
+.primary-button { display:flex; align-items:center; justify-content:center; width:100%; min-height:92rpx; margin-top:22rpx; border-radius:28rpx; background:#111; color:#b7ff38; font-size:27rpx; font-weight:950; }
+.primary-button[disabled] { opacity:.5; }
+.result-section { margin-top:35rpx; }
+.section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:18rpx; }
+.section-title { font-size:31rpx; line-height:37rpx; font-weight:950; }
+.save-button { display:flex; align-items:center; justify-content:center; min-height:58rpx; padding:0 22rpx; border-radius:999rpx; background:#b7ff38; color:#111; font-size:20rpx; font-weight:950; }
+.result-image { display:block; width:100%; border-radius:24rpx; background:#eceee8; }

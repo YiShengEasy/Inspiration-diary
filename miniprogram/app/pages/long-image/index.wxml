@@ -1,0 +1,54 @@
+<view class="page long-image-page">
+  <view class="hero-card">
+    <text class="hero-kicker">本地图片工具</text>
+    <text class="hero-title">长图拼接</text>
+    <text class="hero-desc">按当前顺序纵向拼接，图片仅在本机处理。</text>
+    <view class="hero-count">{{images.length}} / {{maxImages}} 张</view>
+  </view>
+
+  <view class="section-head">
+    <view>
+      <text class="section-title">选择与排序</text>
+      <text class="section-desc">至少选择 2 张图片</text>
+    </view>
+    <button wx:if="{{images.length}}" class="text-button" bindtap="clearImages">清空</button>
+  </view>
+
+  <button class="choose-button" bindtap="chooseImages">
+    <text class="choose-plus">＋</text>
+    <text>{{images.length ? '继续添加图片' : '选择图片'}}</text>
+  </button>
+
+  <view class="image-list" wx:if="{{images.length}}">
+    <view wx:for="{{images}}" wx:key="id" class="image-row">
+      <text class="image-order">{{index + 1}}</text>
+      <image class="image-thumb" src="{{item.src}}" mode="aspectFill"></image>
+      <view class="image-info">
+        <text class="image-name">第 {{index + 1}} 张图片</text>
+        <text class="image-size">{{item.width}} × {{item.height}}px</text>
+      </view>
+      <view class="row-actions">
+        <button class="row-button" disabled="{{index === 0}}" data-index="{{index}}" data-direction="-1" bindtap="moveImage">↑</button>
+        <button class="row-button" disabled="{{index === images.length - 1}}" data-index="{{index}}" data-direction="1" bindtap="moveImage">↓</button>
+        <button class="row-button remove" data-index="{{index}}" bindtap="removeImage">×</button>
+      </view>
+    </view>
+  </view>
+
+  <button class="generate-button" disabled="{{images.length < 2 || processing}}" bindtap="generateLongImage">
+    {{processing ? '正在拼接…' : '生成长图'}}
+  </button>
+
+  <view class="result-section" wx:if="{{resultPath}}">
+    <view class="section-head result-head">
+      <view>
+        <text class="section-title">拼接结果</text>
+        <text class="section-desc">{{resultMeta}}</text>
+      </view>
+      <button class="save-button" bindtap="saveResult">保存相册</button>
+    </view>
+    <image class="result-image" src="{{resultPath}}" mode="widthFix"></image>
+  </view>
+
+  <canvas type="2d" id="stitchCanvas" class="offscreen-canvas"></canvas>
+</view>

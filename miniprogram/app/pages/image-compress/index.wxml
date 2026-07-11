@@ -1,0 +1,53 @@
+<view class="page compress-page">
+  <view class="hero-card">
+    <text class="hero-kicker">本地图片工具</text>
+    <text class="hero-title">图片压缩</text>
+    <text class="hero-desc">调整画质与尺寸，处理过程不上传图片。</text>
+  </view>
+
+  <button class="choose-button" bindtap="chooseImage">
+    <text class="choose-plus">＋</text>
+    <text>{{sourcePath ? '更换图片' : '选择图片'}}</text>
+  </button>
+
+  <view class="source-card" wx:if="{{sourcePath}}">
+    <image class="source-image" src="{{sourcePath}}" mode="aspectFit"></image>
+    <view class="source-meta">
+      <text>{{sourceWidth}} × {{sourceHeight}}px</text>
+      <text>{{sourceSizeText}}</text>
+    </view>
+  </view>
+
+  <view class="setting-card" wx:if="{{sourcePath}}">
+    <view class="setting-head">
+      <text class="setting-title">图片质量</text>
+      <text class="setting-value">{{quality}}%</text>
+    </view>
+    <slider min="30" max="95" step="5" value="{{quality}}" activeColor="#111111" backgroundColor="#e5e7e0" block-color="#b7ff38" block-size="22" bindchange="changeQuality" />
+
+    <text class="setting-title size-title">输出尺寸</text>
+    <view class="size-options">
+      <button wx:for="{{sizeOptions}}" wx:key="value" class="size-option {{maxEdge === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectSize">{{item.label}}</button>
+    </view>
+  </view>
+
+  <button wx:if="{{sourcePath}}" class="compress-button" disabled="{{processing}}" bindtap="compressImage">{{processing ? '正在压缩…' : '开始压缩'}}</button>
+
+  <view class="result-card" wx:if="{{resultPath}}">
+    <view class="result-head">
+      <view>
+        <text class="result-title">压缩完成</text>
+        <text class="result-saving">{{savingRate}}</text>
+      </view>
+      <view class="result-size">
+        <text class="old-size">{{sourceSizeText}}</text>
+        <text class="size-arrow">→</text>
+        <text class="new-size">{{resultSizeText}}</text>
+      </view>
+    </view>
+    <image class="result-image" src="{{resultPath}}" mode="widthFix"></image>
+    <button class="save-button" bindtap="saveResult">保存到相册</button>
+  </view>
+
+  <canvas type="2d" id="compressCanvas" class="offscreen-canvas"></canvas>
+</view>
