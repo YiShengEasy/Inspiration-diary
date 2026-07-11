@@ -2,6 +2,35 @@ import type { ParticleParams, ParticleSource } from "./types";
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
+function computeLuminance(rgba: Uint8ClampedArray, pixelCount: number): Float32Array {
+  const luminance = new Float32Array(pixelCount);
+  for (let index = 0; index < pixelCount; index += 1) {
+    const offset = index * 4;
+    luminance[index] = (0.2126 * rgba[offset] + 0.7152 * rgba[offset + 1] + 0.0722 * rgba[offset + 2]) / 255;
+  }
+  return luminance;
+}
+
+function computeEdges(luminance: Float32Array, width: number, height: number): Float32Array {
+  const edges = new Float32Array(luminance.length);
+  if (width < 3 || height < 3) return edges;
+
+  const at = (x: number, y: number) => luminance[
+    Math.min(height - 1, Math.max(0, y)) * width + Math.min(width - 1, Math.max(0, x))
+  ];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const gx = -at(x - 1, y - 1) + at(x + 1, y - 1)
+        - 2 * at(x - 1, y) + 2 * at(x + 1, y)
+        - at(x - 1, y + 1) + at(x + 1, y + 1);
+      const gy = -at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1)
+        + at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1);
+      edges[y * width + x] = clamp01(Math.hypot(gx, gy) / 4);
+    }
+  }
+  return edges;
+}
+
 function boxBlur(values: Float32Array, width: number, height: number, radius: number): Float32Array {
   if (radius <= 0 || width < 2 || height < 2) return values;
   const output = new Float32Array(values.length);
@@ -33,26 +62,14 @@ export function computeFastDepth(
     throw new Error("Invalid RGBA image dimensions");
   }
 
-  const luminance = new Float32Array(width * height);
-  for (let index = 0; index < luminance.length; index += 1) {
-    const offset = index * 4;
-    luminance[index] = (0.2126 * rgba[offset] + 0.7152 * rgba[offset + 1] + 0.0722 * rgba[offset + 2]) / 255;
-  }
+  const luminance = computeLuminance(rgba, width * height);
+  const edges = computeEdges(luminance, width, height);
 
   const combined = new Float32Array(luminance.length);
   const edgeMix = clamp01(params.edgeStrength);
-  const canDetectEdges = width >= 3 && height >= 3;
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      const at = (sx: number, sy: number) => luminance[
-        Math.min(height - 1, Math.max(0, sy)) * width + Math.min(width - 1, Math.max(0, sx))
-      ];
-      const gx = -at(x - 1, y - 1) + at(x + 1, y - 1)
-        - 2 * at(x - 1, y) + 2 * at(x + 1, y)
-        - at(x - 1, y + 1) + at(x + 1, y + 1);
-      const gy = -at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1)
-        + at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1);
-      const edge = canDetectEdges ? clamp01(Math.hypot(gx, gy) / 4) : luminance[y * width + x];
+      const edge = width >= 3 && height >= 3 ? edges[y * width + x] : luminance[y * width + x];
       combined[y * width + x] = clamp01(luminance[y * width + x] * (1 - edgeMix) + edge * edgeMix);
     }
   }
@@ -79,6 +96,8 @@ export function sampleParticleSource(
 ): ParticleSource {
   const pixelCount = width * height;
   if (rgba.length < pixelCount * 4 || depth.length < pixelCount) throw new Error("Invalid particle source data");
+  const luminance = computeLuminance(rgba, pixelCount);
+  const edges = computeEdges(luminance, width, height);
   const target = Math.max(1, Math.min(maxParticles, Math.floor(pixelCount * clamp01(params.density))));
   const stride = Math.max(1, Math.ceil(Math.sqrt(pixelCount / target)));
   const selected: number[] = [];
@@ -87,14 +106,14 @@ export function sampleParticleSource(
       const index = y * width + x;
       const offset = index * 4;
       const alpha = rgba[offset + 3] / 255;
-      const luminance = (0.2126 * rgba[offset] + 0.7152 * rgba[offset + 1] + 0.0722 * rgba[offset + 2]) / 255;
-      if (alpha >= params.alphaThreshold && luminance >= params.brightnessThreshold) selected.push(index);
+      if (alpha >= params.alphaThreshold && luminance[index] >= params.brightnessThreshold) selected.push(index);
     }
   }
 
   const positions = new Float32Array(selected.length * 3);
   const colors = new Float32Array(selected.length * 3);
   const sampledDepth = new Float32Array(selected.length);
+  const sampledEdge = new Float32Array(selected.length);
   const random = new Float32Array(selected.length);
   const aspect = width / height;
   selected.forEach((index, particleIndex) => {
@@ -113,10 +132,20 @@ export function sampleParticleSource(
     colors[output + 1] = clamp01((gray + (g - gray) * params.saturation - 0.5) * params.contrast + 0.5);
     colors[output + 2] = clamp01((gray + (b - gray) * params.saturation - 0.5) * params.contrast + 0.5);
     sampledDepth[particleIndex] = depth[index];
+    sampledEdge[particleIndex] = edges[index];
     random[particleIndex] = ((index * 16807) % 2147483647) / 2147483647;
   });
 
-  return { width, height, colors, positions, depth: sampledDepth, random, particleCount: selected.length };
+  return {
+    width,
+    height,
+    colors,
+    positions,
+    depth: sampledDepth,
+    edge: sampledEdge,
+    random,
+    particleCount: selected.length,
+  };
 }
 
 export async function decodeImageFile(

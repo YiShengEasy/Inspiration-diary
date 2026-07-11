@@ -29,6 +29,7 @@ export interface ParticleSource {
   colors: Float32Array;
   positions: Float32Array;
   depth: Float32Array;
+  edge: Float32Array;
   random: Float32Array;
   particleCount: number;
 }

@@ -11,6 +11,25 @@ import {
 
 const EXPORT_SCALE_LIMIT = 3;
 
+const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+
+function hash2d(x: number, y: number): number {
+  const value = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
+  return value - Math.floor(value);
+}
+
+function valueNoise(x: number, y: number): number {
+  const cellX = Math.floor(x);
+  const cellY = Math.floor(y);
+  const fractionX = x - cellX;
+  const fractionY = y - cellY;
+  const smoothX = fractionX * fractionX * (3 - 2 * fractionX);
+  const smoothY = fractionY * fractionY * (3 - 2 * fractionY);
+  const top = THREE.MathUtils.lerp(hash2d(cellX, cellY), hash2d(cellX + 1, cellY), smoothX);
+  const bottom = THREE.MathUtils.lerp(hash2d(cellX, cellY + 1), hash2d(cellX + 1, cellY + 1), smoothX);
+  return THREE.MathUtils.lerp(top, bottom, smoothY);
+}
+
 function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeometry {
   const aspect = source.width / source.height;
   const positions: number[] = [];
@@ -20,6 +39,7 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   const scale: number[] = [];
   const opacity: number[] = [];
   const dissolve: number[] = [];
+  const edge: number[] = [];
   const candidateStep = Math.max(1, Math.floor(source.particleCount / 60_000));
 
   for (let index = 0; index < source.particleCount; index += candidateStep) {
@@ -32,14 +52,27 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
       + source.colors[offset + 1] * 0.7152
       + source.colors[offset + 2] * 0.0722;
     const structure = source.depth[index];
-    const coreWeight = Math.max(0, Math.min(1, (0.92 - radialDistance) / 0.5));
-    const dissolveWeight = Math.max(0, Math.min(1,
-      (radialDistance - 0.28) / 0.64 + (seed - 0.5) * 0.38 + (0.48 - luminance) * 0.28,
-    ));
-    const visibility = coreWeight * 0.76 + luminance * 0.34 + structure * 0.2 + seed * 0.08;
+    const edgeWeight = source.edge[index] ?? 0;
+    const coarseNoise = valueNoise(normalizedX * 3.8 + 19.3, normalizedY * 3.8 - 7.1);
+    const fineNoise = valueNoise(normalizedX * 18.0 - 2.7, normalizedY * 18.0 + 11.6);
+    const dissolveNoise = coarseNoise * 0.64 + fineNoise * 0.36;
+    const coreWeight = clamp01((0.92 - radialDistance) / 0.5);
+    // Two noise scales break up the perimeter, while real Sobel contours are
+    // retained closer to their source pixels so image and particles read as one.
+    const dissolveWeight = clamp01(
+      (radialDistance - 0.3) / 0.62
+      + (dissolveNoise - 0.5) * 0.72
+      + (0.46 - luminance) * 0.24
+      - edgeWeight * 0.3,
+    );
+    const visibility = coreWeight * 0.72
+      + luminance * 0.3
+      + structure * 0.16
+      + edgeWeight * 0.52
+      + seed * 0.06;
     if (visibility < 0.24 || (dissolveWeight > 0.62 && seed < dissolveWeight * 0.36)) continue;
 
-    const outward = dissolveWeight * (0.018 + seed * 0.075);
+    const outward = dissolveWeight * (1 - edgeWeight * 0.48) * (0.018 + seed * 0.075);
     const length = Math.hypot(normalizedX, normalizedY) || 1;
     const jitterX = (Math.sin(seed * 928.31) - 0.5) * 0.055;
     const jitterY = (Math.sin(seed * 417.17 + 1.7) - 0.5) * 0.055;
@@ -51,9 +84,14 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     colors.push(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2]);
     depth.push(source.depth[index]);
     random.push(seed);
-    scale.push((0.48 + seed * 0.28) * (1 - dissolveWeight) + (seed > 0.86 ? 1.7 + seed : 0.72 + seed * 0.58) * dissolveWeight);
-    opacity.push(Math.min(1, 0.42 + coreWeight * 0.58 + luminance * 0.16));
+    scale.push(
+      ((0.48 + seed * 0.28) * (1 - dissolveWeight)
+        + (seed > 0.86 ? 1.7 + seed : 0.72 + seed * 0.58) * dissolveWeight)
+      * (1 + edgeWeight * 0.42),
+    );
+    opacity.push(Math.min(1, 0.38 + coreWeight * 0.5 + luminance * 0.14 + edgeWeight * 0.4));
     dissolve.push(dissolveWeight);
+    edge.push(edgeWeight);
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -64,6 +102,7 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   geometry.setAttribute("aScale", new THREE.Float32BufferAttribute(scale, 1));
   geometry.setAttribute("aOpacity", new THREE.Float32BufferAttribute(opacity, 1));
   geometry.setAttribute("aDissolve", new THREE.Float32BufferAttribute(dissolve, 1));
+  geometry.setAttribute("aEdge", new THREE.Float32BufferAttribute(edge, 1));
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -80,6 +119,8 @@ export class ParticleRenderer {
   private readonly bloomPass: UnrealBloomPass;
   private readonly particleMaterial: THREE.ShaderMaterial;
   private particlePoints: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
+  private exitingPoints: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
+  private exitStartedAt = 0;
   private params: ParticleParams | null = null;
   private animationFrame = 0;
   private paused = false;
@@ -122,7 +163,7 @@ export class ParticleRenderer {
       blending: THREE.NormalBlending,
       uniforms: {
         uDepthStrength: { value: 2.4 }, uScatter: { value: 0.18 }, uDrift: { value: 0.12 },
-        uTime: { value: 0 }, uProgress: { value: 0 }, uPointSize: { value: 2.1 },
+        uTime: { value: 0 }, uProgress: { value: 0 }, uExit: { value: 0 }, uPointSize: { value: 2.1 },
       },
     });
 
@@ -139,13 +180,14 @@ export class ParticleRenderer {
   }
 
   setSource(source: ParticleSource): void {
-    this.removePoints();
+    this.beginCurrentExit();
     const geometry = createDissolveParticleGeometry(source);
     this.particlePoints = new THREE.Points(geometry, this.particleMaterial);
     this.particlePoints.frustumCulled = false;
     this.scene.add(this.particlePoints);
     this.startTime = performance.now();
     this.particleMaterial.uniforms.uProgress.value = 0;
+    this.particleMaterial.uniforms.uExit.value = 0;
   }
 
   setParams(params: ParticleParams): void {
@@ -227,10 +269,32 @@ export class ParticleRenderer {
   }
 
   private removePoints(): void {
+    if (this.particlePoints) {
+      this.scene.remove(this.particlePoints);
+      this.particlePoints.geometry.dispose();
+      this.particlePoints = null;
+    }
+    this.removeExitingPoints();
+  }
+
+  private beginCurrentExit(): void {
+    this.removeExitingPoints();
     if (!this.particlePoints) return;
-    this.scene.remove(this.particlePoints);
-    this.particlePoints.geometry.dispose();
+    const exitingMaterial = this.particleMaterial.clone();
+    exitingMaterial.uniforms.uProgress.value = 1;
+    exitingMaterial.uniforms.uExit.value = 0;
+    this.particlePoints.material = exitingMaterial;
+    this.exitingPoints = this.particlePoints;
     this.particlePoints = null;
+    this.exitStartedAt = performance.now();
+  }
+
+  private removeExitingPoints(): void {
+    if (!this.exitingPoints) return;
+    this.scene.remove(this.exitingPoints);
+    this.exitingPoints.geometry.dispose();
+    this.exitingPoints.material.dispose();
+    this.exitingPoints = null;
   }
 
   private animate = (): void => {
@@ -241,6 +305,12 @@ export class ParticleRenderer {
     this.lastFrame = now;
     this.particleMaterial.uniforms.uTime.value = (now - this.startTime) / 1000;
     this.particleMaterial.uniforms.uProgress.value = Math.min(1, (now - this.startTime) / 1100);
+    if (this.exitingPoints) {
+      const exitProgress = Math.min(1, (now - this.exitStartedAt) / 850);
+      this.exitingPoints.material.uniforms.uTime.value = (now - this.exitStartedAt) / 1000;
+      this.exitingPoints.material.uniforms.uExit.value = exitProgress;
+      if (exitProgress >= 1) this.removeExitingPoints();
+    }
     this.controls.update();
     this.composer.render();
     this.trackPerformance(delta);

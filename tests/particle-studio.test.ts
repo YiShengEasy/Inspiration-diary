@@ -47,6 +47,53 @@ test("samples no more than the device particle cap", () => {
   assert.equal(source.particleCount <= 50, true);
 });
 
+test("samples low edge values from a solid-color image", () => {
+  const width = 5;
+  const height = 5;
+  const rgba = new Uint8ClampedArray(width * height * 4).fill(255);
+  const source = sampleParticleSource(
+    rgba,
+    new Float32Array(width * height),
+    width,
+    height,
+    { ...DEFAULT_PARTICLE_PARAMS, density: 1 },
+    width * height,
+  );
+  assert.equal(source.edge.length, source.particleCount);
+  assert.equal(Math.max(...source.edge), 0);
+});
+
+test("samples high edge values at a black-white boundary", () => {
+  const width = 6;
+  const height = 5;
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 4;
+      const value = x < width / 2 ? 0 : 255;
+      rgba[offset] = value;
+      rgba[offset + 1] = value;
+      rgba[offset + 2] = value;
+      rgba[offset + 3] = 255;
+    }
+  }
+  const source = sampleParticleSource(
+    rgba,
+    new Float32Array(width * height),
+    width,
+    height,
+    { ...DEFAULT_PARTICLE_PARAMS, brightnessThreshold: 0, density: 1 },
+    width * height,
+  );
+  const boundaryEdges = [
+    source.edge[2 * width + 2],
+    source.edge[2 * width + 3],
+  ];
+  assert.ok(boundaryEdges.every((edge) => edge > 0.9));
+  assert.equal(source.edge[2 * width], 0);
+  assert.equal(source.edge[2 * width + 5], 0);
+});
+
 test("normalizes arbitrary AI depth output and supports inversion", () => {
   const normal = normalizeDepthOutput([10, 20, 30, 40], 2, 2);
   const inverted = normalizeDepthOutput([10, 20, 30, 40], 2, 2, true);
