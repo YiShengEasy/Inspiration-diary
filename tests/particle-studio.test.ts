@@ -7,6 +7,7 @@ import {
   normalizeParams,
 } from "../src/features/particle-studio/presets";
 import { computeFastDepth, sampleParticleSource } from "../src/features/particle-studio/fastDepth";
+import { normalizeDepthOutput } from "../src/features/particle-studio/aiDepth";
 
 test("ships the five approved presets", () => {
   assert.deepEqual(Object.keys(PARTICLE_PRESETS), ["portrait", "landscape", "neon", "mono", "reference"]);
@@ -44,4 +45,15 @@ test("samples no more than the device particle cap", () => {
     50,
   );
   assert.equal(source.particleCount <= 50, true);
+});
+
+test("normalizes arbitrary AI depth output and supports inversion", () => {
+  const normal = normalizeDepthOutput([10, 20, 30, 40], 2, 2);
+  const inverted = normalizeDepthOutput([10, 20, 30, 40], 2, 2, true);
+  [0, 1 / 3, 2 / 3, 1].forEach((expected, index) => assert.ok(Math.abs(normal[index] - expected) < 1e-6));
+  [1, 2 / 3, 1 / 3, 0].forEach((expected, index) => assert.ok(Math.abs(inverted[index] - expected) < 1e-6));
+});
+
+test("normalizes flat AI depth output without NaN", () => {
+  assert.deepEqual(Array.from(normalizeDepthOutput([7, 7], 2, 1)), [0, 0]);
 });
