@@ -18,6 +18,7 @@
     "docker:prod:down": "npm run docker:production:down",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "test:particle": "tsx --test tests/particle-studio.test.ts",
     "config:local": "tsx scripts/validate-runtime-config.ts .env.local",
     "config:production": "tsx scripts/validate-runtime-config.ts .env.production",
     "auth:smoke": "node scripts/auth-smoke.mjs",
@@ -29,6 +30,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@huggingface/transformers": "^4.2.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/pg": "^8.20.0",
     "@vitejs/plugin-react": "^5.0.4",
@@ -50,6 +52,7 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.6.0",
+    "three": "^0.185.1",
     "vite": "^6.2.3"
   },
   "devDependencies": {
@@ -58,6 +61,7 @@
     "@types/express": "^4.17.21",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.14.0",
+    "@types/three": "^0.185.1",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
