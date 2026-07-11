@@ -4,7 +4,13 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import type { ParticleParams, ParticleSource, QualityProfile } from "./types";
-import { particleFragmentShader, particleVertexShader } from "./shaders";
+import {
+  imagePlaneFragmentShader,
+  imagePlaneVertexShader,
+  particleFragmentShader,
+  particleGlowFragmentShader,
+  particleVertexShader,
+} from "./shaders";
 
 const EXPORT_SCALE_LIMIT = 3;
 
@@ -19,7 +25,11 @@ export class ParticleRenderer {
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
   private readonly material: THREE.ShaderMaterial;
+  private readonly glowMaterial: THREE.ShaderMaterial;
+  private imagePlane: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> | null = null;
+  private imageTexture: THREE.Texture | null = null;
   private points: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
+  private glowPoints: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
   private params: ParticleParams | null = null;
   private animationFrame = 0;
   private paused = false;
@@ -68,6 +78,19 @@ export class ParticleRenderer {
       },
     });
 
+    this.glowMaterial = new THREE.ShaderMaterial({
+      vertexShader: particleVertexShader,
+      fragmentShader: particleGlowFragmentShader,
+      transparent: true,
+      depthWrite: false,
+      vertexColors: true,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uDepthStrength: { value: 2.4 }, uScatter: { value: 0.18 }, uDrift: { value: 0.12 },
+        uTime: { value: 0 }, uProgress: { value: 0 }, uPointSize: { value: 2.1 },
+      },
+    });
+
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 1.15, 0.65, 0.08);
@@ -91,8 +114,37 @@ export class ParticleRenderer {
     this.points = new THREE.Points(geometry, this.material);
     this.points.frustumCulled = false;
     this.scene.add(this.points);
+    this.glowPoints = new THREE.Points(geometry, this.glowMaterial);
+    this.glowPoints.frustumCulled = false;
+    this.scene.add(this.glowPoints);
     this.startTime = performance.now();
     this.material.uniforms.uProgress.value = 0;
+  }
+
+  async setImageTexture(url: string | null, aspect = 1): Promise<void> {
+    this.removeImagePlane();
+    if (!url || this.disposed) return;
+    const texture = await new THREE.TextureLoader().loadAsync(url);
+    if (this.disposed) {
+      texture.dispose();
+      return;
+    }
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    this.imageTexture = texture;
+    const geometry = new THREE.PlaneGeometry(aspect * 2, 2);
+    const material = new THREE.ShaderMaterial({
+      vertexShader: imagePlaneVertexShader,
+      fragmentShader: imagePlaneFragmentShader,
+      transparent: true,
+      depthWrite: false,
+      uniforms: { uImage: { value: texture } },
+    });
+    this.imagePlane = new THREE.Mesh(geometry, material);
+    this.imagePlane.position.z = -0.08;
+    this.imagePlane.renderOrder = -1;
+    this.scene.add(this.imagePlane);
   }
 
   setParams(params: ParticleParams): void {
@@ -102,6 +154,10 @@ export class ParticleRenderer {
     this.material.uniforms.uScatter.value = params.scatter;
     this.material.uniforms.uDrift.value = params.driftSpeed;
     this.material.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio;
+    this.glowMaterial.uniforms.uDepthStrength.value = params.depthStrength;
+    this.glowMaterial.uniforms.uScatter.value = params.scatter * 1.12;
+    this.glowMaterial.uniforms.uDrift.value = params.driftSpeed * 1.18;
+    this.glowMaterial.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio * 1.65;
     this.bloomPass.strength = params.bloomStrength * (this.reduced ? 0.55 : 1);
     this.bloomPass.radius = params.bloomRadius;
     this.bloomPass.threshold = params.bloomThreshold;
@@ -165,7 +221,9 @@ export class ParticleRenderer {
     this.renderer.domElement.removeEventListener("dblclick", this.resetCamera);
     this.controls.dispose();
     this.removePoints();
+    this.removeImagePlane();
     this.material.dispose();
+    this.glowMaterial.dispose();
     this.bloomPass.dispose();
     this.composer.dispose();
     this.renderer.dispose();
@@ -176,8 +234,21 @@ export class ParticleRenderer {
   private removePoints(): void {
     if (!this.points) return;
     this.scene.remove(this.points);
+    if (this.glowPoints) this.scene.remove(this.glowPoints);
     this.points.geometry.dispose();
     this.points = null;
+    this.glowPoints = null;
+  }
+
+  private removeImagePlane(): void {
+    if (this.imagePlane) {
+      this.scene.remove(this.imagePlane);
+      this.imagePlane.geometry.dispose();
+      this.imagePlane.material.dispose();
+      this.imagePlane = null;
+    }
+    this.imageTexture?.dispose();
+    this.imageTexture = null;
   }
 
   private animate = (): void => {
@@ -188,6 +259,8 @@ export class ParticleRenderer {
     this.lastFrame = now;
     this.material.uniforms.uTime.value = (now - this.startTime) / 1000;
     this.material.uniforms.uProgress.value = Math.min(1, (now - this.startTime) / 1100);
+    this.glowMaterial.uniforms.uTime.value = this.material.uniforms.uTime.value;
+    this.glowMaterial.uniforms.uProgress.value = this.material.uniforms.uProgress.value;
     this.controls.update();
     this.composer.render();
     this.trackPerformance(delta);

@@ -41,7 +41,45 @@ export const particleFragmentShader = /* glsl */ `
     vec2 centered = gl_PointCoord - 0.5;
     float distanceFromCenter = length(centered) * 2.0;
     if (distanceFromCenter > 1.0) discard;
-    float alpha = (1.0 - smoothstep(0.45, 1.0, distanceFromCenter)) * vAlpha * 0.86;
+    float alpha = (1.0 - smoothstep(0.62, 1.0, distanceFromCenter)) * vAlpha * 0.96;
     gl_FragColor = vec4(vColor, alpha);
+  }
+`;
+
+export const particleGlowFragmentShader = /* glsl */ `
+  varying vec3 vColor;
+  varying float vAlpha;
+
+  void main() {
+    vec2 centered = gl_PointCoord - 0.5;
+    float distanceFromCenter = length(centered) * 2.0;
+    if (distanceFromCenter > 1.0) discard;
+    float luminance = dot(vColor, vec3(0.2126, 0.7152, 0.0722));
+    float highlight = smoothstep(0.42, 0.92, luminance);
+    if (highlight < 0.015) discard;
+    float halo = 1.0 - smoothstep(0.05, 1.0, distanceFromCenter);
+    gl_FragColor = vec4(vColor * 1.28, halo * highlight * vAlpha * 0.22);
+  }
+`;
+
+export const imagePlaneVertexShader = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+export const imagePlaneFragmentShader = /* glsl */ `
+  uniform sampler2D uImage;
+  varying vec2 vUv;
+
+  void main() {
+    vec4 sampled = texture2D(uImage, vUv);
+    float edgeDistance = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
+    float edgeFade = smoothstep(0.0, 0.16, edgeDistance);
+    float centerLight = 1.0 + (1.0 - smoothstep(0.0, 0.72, distance(vUv, vec2(0.5)))) * 0.12;
+    vec3 color = sampled.rgb * centerLight;
+    gl_FragColor = vec4(color, sampled.a * edgeFade * 0.96);
   }
 `;

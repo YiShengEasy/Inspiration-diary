@@ -16,7 +16,7 @@ export const DEFAULT_PARTICLE_PARAMS: ParticleParams = {
   rotationSpeed: 0.25,
   bloomStrength: 1.15,
   bloomRadius: 0.65,
-  bloomThreshold: 0.08,
+  bloomThreshold: 0.55,
   backgroundColor: "#000000",
   cameraDistance: 5.2,
   saturation: 1,
@@ -25,9 +25,9 @@ export const DEFAULT_PARTICLE_PARAMS: ParticleParams = {
 export const PARTICLE_PRESETS: Record<PresetId, ParticleParams> = {
   portrait: { ...DEFAULT_PARTICLE_PARAMS, edgeStrength: 0.5, depthStrength: 2.1, scatter: 0.12 },
   landscape: { ...DEFAULT_PARTICLE_PARAMS, density: 0.85, particleSize: 1, depthStrength: 3.4 },
-  neon: { ...DEFAULT_PARTICLE_PARAMS, contrast: 1.35, scatter: 0.3, bloomStrength: 1.8, saturation: 1.25 },
+  neon: { ...DEFAULT_PARTICLE_PARAMS, contrast: 1.35, scatter: 0.3, bloomStrength: 1.8, bloomThreshold: 0.35, saturation: 1.25 },
   mono: { ...DEFAULT_PARTICLE_PARAMS, contrast: 1.3, edgeStrength: 0.7, saturation: 0, bloomStrength: 1.35 },
-  reference: { ...DEFAULT_PARTICLE_PARAMS, contrast: 1.22, edgeStrength: 0.58, scatter: 0.24, depthStrength: 2.8, bloomStrength: 1.55 },
+  reference: { ...DEFAULT_PARTICLE_PARAMS, contrast: 1.22, edgeStrength: 0.58, scatter: 0.24, depthStrength: 2.8, bloomStrength: 1.55, bloomThreshold: 0.42 },
 };
 
 export const getQualityProfile = (mobile: boolean, devicePixelRatio: number): QualityProfile => mobile
