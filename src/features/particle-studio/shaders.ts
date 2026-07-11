@@ -75,12 +75,29 @@ export const imagePlaneFragmentShader = /* glsl */ `
   uniform sampler2D uImage;
   varying vec2 vUv;
 
+  float hash21(vec2 point) {
+    point = fract(point * vec2(123.34, 456.21));
+    point += dot(point, point + 45.32);
+    return fract(point.x * point.y);
+  }
+
   void main() {
     vec4 sampled = texture2D(uImage, vUv);
-    float edgeDistance = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
-    float edgeFade = smoothstep(0.0, 0.028, edgeDistance);
-    float centerLight = 1.0 + (1.0 - smoothstep(0.0, 0.72, distance(vUv, vec2(0.5)))) * 0.18;
+    float luminance = dot(sampled.rgb, vec3(0.2126, 0.7152, 0.0722));
+    vec2 centered = (vUv - 0.5) * vec2(1.0, 1.08);
+    float radial = length(centered) * 1.55;
+    float centerMask = 1.0 - smoothstep(0.32, 0.9, radial);
+    float fineNoise = hash21(floor(vUv * 170.0));
+    float coarseNoise = hash21(floor(vUv * 38.0));
+    float contentMask = smoothstep(
+      0.16 + radial * 0.22,
+      0.5 + radial * 0.08,
+      luminance * 0.62 + centerMask * 0.62 + fineNoise * 0.1 + coarseNoise * 0.12
+    );
+    float irregularEdge = 1.0 - smoothstep(0.5, 1.02, radial + (coarseNoise - 0.5) * 0.22);
+    float alpha = sampled.a * contentMask * irregularEdge;
+    float centerLight = 1.0 + centerMask * 0.12;
     vec3 color = sampled.rgb * centerLight;
-    gl_FragColor = vec4(color, sampled.a * edgeFade);
+    gl_FragColor = vec4(color, alpha);
   }
 `;
