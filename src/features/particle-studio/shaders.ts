@@ -34,21 +34,6 @@ export const particleVertexShader = /* glsl */ `
   }
 `;
 
-export const particleFragmentShader = /* glsl */ `
-  varying vec3 vColor;
-  varying float vAlpha;
-
-  void main() {
-    vec2 centered = gl_PointCoord - 0.5;
-    float distanceFromCenter = length(centered) * 2.0;
-    if (distanceFromCenter > 1.0) discard;
-    // This layer only adds a subtle grain over the photo. The original image
-    // remains the visual subject instead of being covered by opaque points.
-    float alpha = (1.0 - smoothstep(0.62, 1.0, distanceFromCenter)) * vAlpha * 0.14;
-    gl_FragColor = vec4(vColor, alpha);
-  }
-`;
-
 export const particleGlowFragmentShader = /* glsl */ `
   varying vec3 vColor;
   varying float vAlpha;
