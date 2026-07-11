@@ -20,8 +20,9 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   const colors: number[] = [];
   const depth: number[] = [];
   const random: number[] = [];
+  const candidateStep = Math.max(1, Math.floor(source.particleCount / 16_000));
 
-  for (let index = 0; index < source.particleCount; index += 1) {
+  for (let index = 0; index < source.particleCount; index += candidateStep) {
     const offset = index * 3;
     const normalizedX = source.positions[offset] / Math.max(aspect, 0.0001);
     const normalizedY = source.positions[offset + 1];
@@ -36,11 +37,13 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     const inBrightDetail = luminance > 0.58 && seed > 0.36;
     if (!inOuterCloud && !inBrightDetail) continue;
 
-    const outward = Math.max(0, radialDistance - 0.3) * (0.16 + seed * 0.5);
+    const outward = Math.max(0, radialDistance - 0.3) * (0.035 + seed * 0.13);
     const length = Math.hypot(normalizedX, normalizedY) || 1;
+    const jitterX = (Math.sin(seed * 928.31) - 0.5) * 0.055;
+    const jitterY = (Math.sin(seed * 417.17 + 1.7) - 0.5) * 0.055;
     positions.push(
-      source.positions[offset] + (normalizedX / length) * outward * aspect,
-      source.positions[offset + 1] + (normalizedY / length) * outward,
+      source.positions[offset] + (normalizedX / length) * outward * aspect + jitterX,
+      source.positions[offset + 1] + (normalizedY / length) * outward + jitterY,
       source.positions[offset + 2],
     );
     colors.push(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2]);
@@ -151,7 +154,9 @@ export class ParticleRenderer {
     const geometry = createDissolveParticleGeometry(source);
     this.points = new THREE.Points(geometry, this.material);
     this.points.frustumCulled = false;
-    this.scene.add(this.points);
+    // The reference keeps the photo readable. Do not cover it with a second,
+    // fully sampled point image; retain this object only as the geometry owner.
+    this.points.visible = false;
     this.glowPoints = new THREE.Points(geometry, this.glowMaterial);
     this.glowPoints.frustumCulled = false;
     this.scene.add(this.glowPoints);
@@ -193,9 +198,9 @@ export class ParticleRenderer {
     this.material.uniforms.uDrift.value = params.driftSpeed;
     this.material.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio;
     this.glowMaterial.uniforms.uDepthStrength.value = params.depthStrength;
-    this.glowMaterial.uniforms.uScatter.value = params.scatter * 1.12;
-    this.glowMaterial.uniforms.uDrift.value = params.driftSpeed * 1.18;
-    this.glowMaterial.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio * 1.65;
+    this.glowMaterial.uniforms.uScatter.value = params.scatter;
+    this.glowMaterial.uniforms.uDrift.value = params.driftSpeed;
+    this.glowMaterial.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio * 1.15;
     this.bloomPass.strength = params.bloomStrength * (this.reduced ? 0.55 : 1);
     this.bloomPass.radius = params.bloomRadius;
     this.bloomPass.threshold = params.bloomThreshold;

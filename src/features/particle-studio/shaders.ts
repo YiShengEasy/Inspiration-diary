@@ -19,8 +19,8 @@ export const particleVertexShader = /* glsl */ `
 
     float phase = uTime * (0.35 + randomVector.z) + randomVector.x * 6.2831853;
     vec3 motion = vec3(sin(phase), cos(phase * 0.83), sin(phase * 0.57));
-    vec3 scattered = settled + (randomVector - 0.5) * uScatter * 5.0;
-    vec3 transformed = mix(scattered, settled, uProgress) + motion * uDrift;
+    vec3 scattered = settled + (randomVector - 0.5) * uScatter * 0.65;
+    vec3 transformed = mix(scattered, settled, uProgress) + motion * uDrift * 0.08;
 
     vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
     gl_Position = projectionMatrix * mvPosition;
@@ -59,7 +59,7 @@ export const particleGlowFragmentShader = /* glsl */ `
     float luminance = dot(vColor, vec3(0.2126, 0.7152, 0.0722));
     float highlight = 0.28 + smoothstep(0.18, 0.9, luminance) * 0.72;
     float halo = 1.0 - smoothstep(0.05, 1.0, distanceFromCenter);
-    gl_FragColor = vec4(max(vColor, vec3(0.16)) * 1.22, halo * highlight * vAlpha * 0.28);
+    gl_FragColor = vec4(max(vColor, vec3(0.12)) * 1.08, halo * highlight * vAlpha * 0.1);
   }
 `;
 
@@ -95,7 +95,7 @@ export const imagePlaneFragmentShader = /* glsl */ `
       luminance * 0.62 + centerMask * 0.62 + fineNoise * 0.1 + coarseNoise * 0.12
     );
     float irregularEdge = 1.0 - smoothstep(0.5, 1.02, radial + (coarseNoise - 0.5) * 0.22);
-    float alpha = sampled.a * contentMask * irregularEdge;
+    float alpha = sampled.a * max(centerMask * 0.9, contentMask * irregularEdge);
     float centerLight = 1.0 + centerMask * 0.12;
     vec3 color = sampled.rgb * centerLight;
     gl_FragColor = vec4(color, alpha);
