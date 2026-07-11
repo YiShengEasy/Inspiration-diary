@@ -1,6 +1,7 @@
 export const particleVertexShader = /* glsl */ `
   attribute float aDepth;
   attribute float aRandom;
+  attribute float aScale;
 
   varying vec3 vColor;
   varying float vAlpha;
@@ -27,7 +28,7 @@ export const particleVertexShader = /* glsl */ `
     // Keep particles crisp at the default camera distance. The old 260 factor
     // made each point tens of pixels wide, so additive blending and Bloom
     // merged the whole image into one large light blob.
-    gl_PointSize = uPointSize * (5.0 / max(1.0, -mvPosition.z));
+    gl_PointSize = uPointSize * aScale * (5.0 / max(1.0, -mvPosition.z));
     vColor = color;
     vAlpha = smoothstep(0.0, 0.18, uProgress);
   }

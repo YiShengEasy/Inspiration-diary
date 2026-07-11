@@ -20,6 +20,7 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   const colors: number[] = [];
   const depth: number[] = [];
   const random: number[] = [];
+  const scale: number[] = [];
   const candidateStep = Math.max(1, Math.floor(source.particleCount / 16_000));
 
   for (let index = 0; index < source.particleCount; index += candidateStep) {
@@ -49,6 +50,9 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     colors.push(source.colors[offset], source.colors[offset + 1], source.colors[offset + 2]);
     depth.push(source.depth[index]);
     random.push(seed);
+    // Most particles are fine dust; a small deterministic subset becomes
+    // larger soft grains to reproduce the two-scale dissolve boundary.
+    scale.push(seed > 0.88 ? 1.65 + seed * 0.9 : 0.42 + seed * 0.48);
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -56,6 +60,7 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geometry.setAttribute("aDepth", new THREE.Float32BufferAttribute(depth, 1));
   geometry.setAttribute("aRandom", new THREE.Float32BufferAttribute(random, 1));
+  geometry.setAttribute("aScale", new THREE.Float32BufferAttribute(scale, 1));
   geometry.computeBoundingSphere();
   return geometry;
 }
