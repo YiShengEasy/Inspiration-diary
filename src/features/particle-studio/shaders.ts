@@ -41,7 +41,9 @@ export const particleFragmentShader = /* glsl */ `
     vec2 centered = gl_PointCoord - 0.5;
     float distanceFromCenter = length(centered) * 2.0;
     if (distanceFromCenter > 1.0) discard;
-    float alpha = (1.0 - smoothstep(0.62, 1.0, distanceFromCenter)) * vAlpha * 0.96;
+    // This layer only adds a subtle grain over the photo. The original image
+    // remains the visual subject instead of being covered by opaque points.
+    float alpha = (1.0 - smoothstep(0.62, 1.0, distanceFromCenter)) * vAlpha * 0.14;
     gl_FragColor = vec4(vColor, alpha);
   }
 `;
@@ -77,9 +79,9 @@ export const imagePlaneFragmentShader = /* glsl */ `
   void main() {
     vec4 sampled = texture2D(uImage, vUv);
     float edgeDistance = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
-    float edgeFade = smoothstep(0.0, 0.16, edgeDistance);
-    float centerLight = 1.0 + (1.0 - smoothstep(0.0, 0.72, distance(vUv, vec2(0.5)))) * 0.12;
+    float edgeFade = smoothstep(0.0, 0.075, edgeDistance);
+    float centerLight = 1.0 + (1.0 - smoothstep(0.0, 0.72, distance(vUv, vec2(0.5)))) * 0.18;
     vec3 color = sampled.rgb * centerLight;
-    gl_FragColor = vec4(color, sampled.a * edgeFade * 0.96);
+    gl_FragColor = vec4(color, sampled.a * edgeFade);
   }
 `;
