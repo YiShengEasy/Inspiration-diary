@@ -78,13 +78,16 @@ export const particleVertexShader = /* glsl */ `
     vec2 curl = vec2(-radial.y, radial.x);
     vec2 fieldDirection = normalize(curl + radial * (coarse - 0.5) * 0.72);
     float distanceNoise = 0.22 + randomVector.x * 0.78;
-    float erosionBoundary = smoothstep(0.08, 0.32, invasion)
-      * (1.0 - smoothstep(0.68, 0.94, invasion));
-    float innerErosion = (1.0 - smoothstep(0.02, 0.58, invasion))
-      * (1.0 - smoothstep(0.72, 0.95, aContent))
-      * clamp(aBoundary * 1.28 + aEdge * 0.34, 0.0, 1.0);
+    float erosionBoundary = smoothstep(0.16, 0.42, invasion)
+      * (1.0 - smoothstep(0.78, 0.96, invasion));
+    float innerInvasion = smoothstep(0.46, 0.88, invasion)
+      * (1.0 - smoothstep(0.94, 1.0, invasion));
+    float contentGate = smoothstep(0.06, 0.28, aContent);
+    float innerErosion = innerInvasion
+      * contentGate
+      * clamp(aBoundary * 0.96 + aEdge * 0.24 + aContent * 0.18, 0.0, 1.0);
     float erodedVoid = smoothstep(0.76, 1.0, invasion);
-    float particleRegion = max(erosionBoundary, innerErosion * 0.38)
+    float particleRegion = innerErosion
       * (1.0 - erodedVoid);
     transformed.xy += fieldDirection * particleRegion
       * uOuterDispersion * distanceNoise * 0.075;
@@ -99,7 +102,8 @@ export const particleVertexShader = /* glsl */ `
       * uExit * (0.35 + invasion);
 
     float particlePresence = particleRegion;
-    float densityChance = mix(0.16, 0.96, erosionBoundary)
+    float densityChance = mix(0.2, 0.9, innerInvasion)
+      * mix(0.65, 1.0, contentGate)
       * mix(0.72, 1.0, aBoundary);
     float densityGate = step(aRandom, densityChance);
     float originalLuminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -110,10 +114,14 @@ export const particleVertexShader = /* glsl */ `
     vec3 highlighted = mix(luminousSource, vec3(1.0), highlight * 0.42);
     float effectiveRetention = mix(uColorRetention, min(uColorRetention, 0.62), erosionBoundary);
     vColor = mix(highlighted, color, effectiveRetention);
-    vec3 coolGlow = vec3(0.15, 0.92, 1.0);
-    float coolMix = erosionBoundary * (1.0 - uColorRetention) * 0.86;
-    vColor = mix(vColor, coolGlow, coolMix);
-    vColor *= mix(0.92, 1.18, erosionBoundary);
+    vec3 normalizedSource = color / max(0.08, maxChannel);
+    vec3 auraColor = mix(normalizedSource, luminousSource, 0.52);
+    float auraLift = mix(1.0, 1.32, smoothstep(0.35, 0.95, originalLuminance));
+    float auraMix = erosionBoundary * (1.0 - contentGate) * (1.0 - uColorRetention) * 0.62;
+    vColor = mix(vColor, auraColor * auraLift, auraMix);
+    float originalMix = innerInvasion * contentGate * 0.88;
+    vColor = mix(vColor, color, originalMix);
+    vColor *= mix(0.92, 1.12, erosionBoundary);
 
     vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
     gl_Position = projectionMatrix * mvPosition;
