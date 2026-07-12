@@ -1,0 +1,68 @@
+<h2>工具箱模块采用哪种组织方式？</h2>
+<p class="subtitle">三种方案都保留现有图片工具，并为文字、文档、二维码和音视频扩展留出位置。点击选择你更喜欢的布局。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:18px;background:#f7f8f2;min-height:460px">
+      <div style="background:linear-gradient(120deg,#dcd1ff,#d9f3ff);border-radius:22px;padding:20px;margin-bottom:14px">
+        <small style="color:#5943c6;font-weight:800">灵感实用工具箱</small>
+        <h3 style="margin:8px 0 4px">处理内容，也收藏灵感</h3>
+        <p style="margin:0;font-size:12px">图片 · 文字 · 文档 · 二维码</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px">
+        <div style="text-align:center"><div style="background:#dfffaa;border-radius:14px;padding:14px">拼</div><small>长图拼接</small></div>
+        <div style="text-align:center"><div style="background:#eee;border-radius:14px;padding:14px">压</div><small>图片压缩</small></div>
+        <div style="text-align:center"><div style="background:#fff0ba;border-radius:14px;padding:14px">码</div><small>二维码</small></div>
+        <div style="text-align:center"><div style="background:#e2e4ff;border-radius:14px;padding:14px">文</div><small>文本整理</small></div>
+      </div>
+      <h4 style="margin:0 0 10px">按内容选择</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="background:#fff;border-radius:16px;padding:16px"><b>图片工具</b><p style="font-size:12px">编辑、压缩、拼接、水印</p></div>
+        <div style="background:#fff;border-radius:16px;padding:16px"><b>文字工具</b><p style="font-size:12px">排版、去重、字数统计</p></div>
+        <div style="background:#fff;border-radius:16px;padding:16px"><b>文档工具</b><p style="font-size:12px">PDF、Markdown、格式转换</p></div>
+        <div style="background:#fff;border-radius:16px;padding:16px"><b>更多工具</b><p style="font-size:12px">二维码、日期、开发辅助</p></div>
+      </div>
+    </div>
+    <div class="card-body"><h3>A · 内容分类首页（推荐）</h3><p>顶部固定高频工具，下方使用大分类卡。扩展性最好，用户不会被几十个图标淹没。</p></div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:18px;background:#fff;min-height:460px">
+      <div style="background:#111;color:#fff;border-radius:22px;padding:20px;margin-bottom:14px">
+        <small style="color:#b7ff38;font-weight:800">快捷工具</small>
+        <h3 style="margin:8px 0 4px">需要什么，直接搜索</h3>
+      </div>
+      <div style="background:#f2f2ed;border-radius:999px;padding:13px 18px;color:#888;margin-bottom:16px">搜索工具名称</div>
+      <div style="display:flex;gap:6px;margin-bottom:16px;overflow:hidden"><span style="background:#111;color:#fff;border-radius:99px;padding:8px 12px">常用</span><span style="background:#eee;border-radius:99px;padding:8px 12px">图片</span><span style="background:#eee;border-radius:99px;padding:8px 12px">文字</span><span style="background:#eee;border-radius:99px;padding:8px 12px">文档</span></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px 8px">
+        <div style="text-align:center"><div style="background:#e6ffc0;border-radius:15px;padding:15px">裁</div><small>图片编辑</small></div>
+        <div style="text-align:center"><div style="background:#eee;border-radius:15px;padding:15px">压</div><small>图片压缩</small></div>
+        <div style="text-align:center"><div style="background:#fff1bd;border-radius:15px;padding:15px">拼</div><small>长图拼接</small></div>
+        <div style="text-align:center"><div style="background:#e4e5ff;border-radius:15px;padding:15px">码</div><small>二维码</small></div>
+        <div style="text-align:center"><div style="background:#eee;border-radius:15px;padding:15px">文</div><small>文本整理</small></div>
+        <div style="text-align:center"><div style="background:#e6ffc0;border-radius:15px;padding:15px">数</div><small>字数统计</small></div>
+        <div style="text-align:center"><div style="background:#fff1bd;border-radius:15px;padding:15px">MD</div><small>MD 预览</small></div>
+        <div style="text-align:center"><div style="background:#e4e5ff;border-radius:15px;padding:15px">PDF</div><small>图片转 PDF</small></div>
+      </div>
+    </div>
+    <div class="card-body"><h3>B · 全量图标宫格</h3><p>操作最快、接近传统工具箱，但工具增长后首页会显得拥挤，品牌感也比较弱。</p></div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:18px;background:#f7f8f2;min-height:460px">
+      <div style="background:#b7ff38;border-radius:22px;padding:20px;margin-bottom:14px"><small style="font-weight:800">最近使用</small><h3 style="margin:8px 0 4px">长图拼接</h3><p style="font-size:12px;margin:0">继续上次的图片处理</p></div>
+      <h4 style="margin:0 0 10px">你可能需要</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+        <div style="background:#111;color:#fff;border-radius:18px;padding:17px"><b>压缩图片</b><p style="font-size:12px">发送前减小体积</p></div>
+        <div style="background:#e6e1ff;border-radius:18px;padding:17px"><b>整理文字</b><p style="font-size:12px">清除空行与重复</p></div>
+      </div>
+      <h4 style="margin:0 0 10px">使用场景</h4>
+      <div style="display:grid;gap:9px">
+        <div style="background:#fff;border-radius:15px;padding:14px"><b>整理聊天和截图</b><span style="float:right">›</span><p style="font-size:12px;margin:5px 0 0">拼接 · 遮挡 · 压缩</p></div>
+        <div style="background:#fff;border-radius:15px;padding:14px"><b>整理文章与笔记</b><span style="float:right">›</span><p style="font-size:12px;margin:5px 0 0">排版 · Markdown · 字数</p></div>
+        <div style="background:#fff;border-radius:15px;padding:14px"><b>制作分享素材</b><span style="float:right">›</span><p style="font-size:12px;margin:5px 0 0">二维码 · 九宫格 · 水印</p></div>
+      </div>
+    </div>
+    <div class="card-body"><h3>C · 使用场景导向</h3><p>更像产品而不是工具集合，适合新用户；但同一工具可能出现在多个场景里，查找路径不够稳定。</p></div>
+  </div>
+</div>

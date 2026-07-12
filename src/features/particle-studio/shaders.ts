@@ -76,24 +76,30 @@ export const particleVertexShader = /* glsl */ `
 
     vec2 radial = normalize(position.xy + vec2(0.0001));
     vec2 curl = vec2(-radial.y, radial.x);
-    vec2 fieldDirection = normalize(radial + curl * (coarse - 0.5) * 1.65);
+    vec2 fieldDirection = normalize(curl + radial * (coarse - 0.5) * 0.72);
     float distanceNoise = 0.22 + randomVector.x * 0.78;
-    transformed.xy += fieldDirection * pow(invasion, 1.35)
-      * uOuterDispersion * distanceNoise * 0.16;
+    float erosionBoundary = smoothstep(0.08, 0.32, invasion)
+      * (1.0 - smoothstep(0.68, 0.94, invasion));
+    float innerErosion = (1.0 - smoothstep(0.02, 0.58, invasion))
+      * clamp(aBoundary * 1.35 + aEdge * 0.42, 0.0, 1.0);
+    float erodedVoid = smoothstep(0.76, 1.0, invasion);
+    float particleRegion = max(erosionBoundary, innerErosion * 0.72)
+      * (1.0 - erodedVoid);
+    transformed.xy += fieldDirection * particleRegion
+      * uOuterDispersion * distanceNoise * 0.075;
 
     float phase = warpedPhase + randomVector.x * 6.2831853;
     vec3 motion = vec3(sin(phase), cos(phase * 0.83), sin(phase * 0.57));
-    transformed += (randomVector - 0.5) * uScatter * 0.14 * invasion;
-    transformed += motion * uDrift * 0.075 * mix(0.18, 1.0, invasion);
+    transformed += (randomVector - 0.5) * uScatter * 0.1 * particleRegion;
+    transformed += motion * uDrift * 0.055 * mix(0.12, 1.0, particleRegion);
 
     vec3 exitDirection = normalize(vec3(position.xy, 0.16 + randomVector.z));
     transformed += (exitDirection * (0.45 + randomVector * 0.7) + motion * 0.22)
       * uExit * (0.35 + invasion);
 
-    float middleBand = smoothstep(0.08, 0.34, invasion)
-      * (1.0 - smoothstep(0.72, 1.0, invasion));
-    float particlePresence = max(invasion * 0.82, middleBand);
-    float densityChance = mix(0.34, 0.9, 1.0 - invasion * 0.72);
+    float particlePresence = particleRegion;
+    float densityChance = mix(0.28, 0.92, erosionBoundary)
+      * mix(0.72, 1.0, aBoundary);
     float densityGate = step(aRandom, densityChance);
     float originalLuminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
     float highlight = smoothstep(0.62, 0.96, originalLuminance)
@@ -101,7 +107,7 @@ export const particleVertexShader = /* glsl */ `
     float maxChannel = max(color.r, max(color.g, color.b));
     vec3 luminousSource = color * max(1.0, 0.52 / max(0.08, maxChannel));
     vec3 highlighted = mix(luminousSource, vec3(1.0), highlight * 0.42);
-    float effectiveRetention = mix(uColorRetention, min(uColorRetention, 0.55), invasion);
+    float effectiveRetention = mix(uColorRetention, min(uColorRetention, 0.62), erosionBoundary);
     vColor = mix(highlighted, color, effectiveRetention);
 
     vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
@@ -109,7 +115,7 @@ export const particleVertexShader = /* glsl */ `
     gl_PointSize = uPointSize * aScale * (5.0 / max(1.0, -mvPosition.z));
     vAlpha = smoothstep(0.0, 0.18, uProgress) * aOpacity * particlePresence
       * densityGate * (1.0 - uExit);
-    vTwinkle = 0.88 + sin(phase * 2.0) * 0.12 * mix(0.25, 1.0, invasion);
+    vTwinkle = 0.9 + sin(phase * 2.0) * 0.1 * mix(0.25, 1.0, particleRegion);
   }
 `;
 

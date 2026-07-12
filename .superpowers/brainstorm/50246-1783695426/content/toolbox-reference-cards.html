@@ -1,0 +1,85 @@
+<style>
+  .phone-preview { max-width: 390px; margin: 0 auto; padding: 18px; border: 1px solid #e7e7e2; border-radius: 20px; background: #fff; }
+  .rec-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .rec-head strong { font-size:20px; color:#151712; }
+  .rec-head span { font-size:12px; color:#74796f; }
+  .sample-strip { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; }
+  .sample-card { min-width:0; overflow:hidden; border:1px solid #ecece6; border-radius:8px; background:#f8f8f4; }
+  .sample-visual { position:relative; aspect-ratio:4/5; overflow:hidden; background:#e9e9e2; }
+  .sample-visual img { width:100%; height:100%; object-fit:cover; }
+  .type-chip { position:absolute; left:7px; top:7px; padding:4px 6px; border-radius:4px; background:#111; color:#b7ff38; font-size:9px; font-weight:800; }
+  .sample-copy { padding:9px 8px 10px; }
+  .sample-title { display:block; overflow:hidden; color:#171914; font-size:12px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+  .sample-meta { display:block; margin-top:4px; color:#777c72; font-size:9px; }
+  .paper { position:absolute; inset:13px 9px; padding:13px 9px; transform:rotate(-2deg); background:#fff; box-shadow:0 8px 18px rgba(40,32,20,.13); }
+  .paper-line { height:4px; margin-bottom:6px; border-radius:2px; background:#d9ddd2; }
+  .paper-line.short { width:62%; background:#a8b486; }
+  .combo-grid { display:grid; grid-template-columns:1fr 1fr; height:62%; gap:2px; padding:7px; }
+  .combo-grid img { min-width:0; }
+  .combo-video { position:absolute; left:7px; right:7px; bottom:7px; height:31%; display:flex; align-items:center; justify-content:center; background:#161716; color:#b7ff38; font-size:18px; }
+  .alt-card .type-chip { display:none; }
+  .alt-card .sample-copy { padding-top:8px; }
+  .choice-note { margin-top:14px; color:#777c72; font-size:12px; line-height:1.5; }
+</style>
+
+<h2>工具箱“为你推荐”参考卡</h2>
+<p class="subtitle">三张卡分别展示图片、MD 和组合内容，点击后进入对应参考详情。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>A. 类型清晰（推荐）</h3>
+      <div class="phone-preview">
+        <div class="rec-head"><strong>为你推荐</strong><span>看灵感册 ›</span></div>
+        <div class="sample-strip">
+          <div class="sample-card">
+            <div class="sample-visual">
+              <img src="https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=500&q=80" alt="图片参考">
+              <span class="type-chip">图片</span>
+            </div>
+            <div class="sample-copy"><span class="sample-title">自然光影</span><span class="sample-meta">图片参考</span></div>
+          </div>
+          <div class="sample-card">
+            <div class="sample-visual">
+              <div class="paper"><div class="paper-line short"></div><div class="paper-line"></div><div class="paper-line"></div><div class="paper-line"></div><div class="paper-line short"></div></div>
+              <span class="type-chip">MD</span>
+            </div>
+            <div class="sample-copy"><span class="sample-title">周末手记</span><span class="sample-meta">文档参考</span></div>
+          </div>
+          <div class="sample-card">
+            <div class="sample-visual">
+              <div class="combo-grid"><img src="https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=240&q=80" alt="组合图一"><img src="https://images.unsplash.com/photo-1493612276216-ee3925520721?auto=format&fit=crop&w=240&q=80" alt="组合图二"></div>
+              <div class="combo-video">▶</div><span class="type-chip">组合</span>
+            </div>
+            <div class="sample-copy"><span class="sample-title">场景组合</span><span class="sample-meta">组合参考</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="choice-note">类型角标、标题和说明都明确，客户能立刻理解三种卡片的区别。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>B. 视觉优先</h3>
+      <div class="phone-preview">
+        <div class="rec-head"><strong>参考灵感</strong><span>查看更多 ›</span></div>
+        <div class="sample-strip">
+          <div class="sample-card alt-card">
+            <div class="sample-visual"><img src="https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=500&q=80" alt="图片参考"></div>
+            <div class="sample-copy"><span class="sample-title">自然光影</span></div>
+          </div>
+          <div class="sample-card alt-card">
+            <div class="sample-visual"><div class="paper"><div class="paper-line short"></div><div class="paper-line"></div><div class="paper-line"></div><div class="paper-line"></div></div></div>
+            <div class="sample-copy"><span class="sample-title">周末手记</span></div>
+          </div>
+          <div class="sample-card alt-card">
+            <div class="sample-visual"><div class="combo-grid"><img src="https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=240&q=80" alt="组合图一"><img src="https://images.unsplash.com/photo-1493612276216-ee3925520721?auto=format&fit=crop&w=240&q=80" alt="组合图二"></div><div class="combo-video">▶</div></div>
+            <div class="sample-copy"><span class="sample-title">场景组合</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="choice-note">更像内容画廊，但客户需要点击后才知道卡片类型。</p>
+    </div>
+  </div>
+</div>

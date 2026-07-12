@@ -112,6 +112,14 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
     } catch (error) { setStatus("error"); setNotice(error instanceof Error ? error.message : "图片解析失败"); }
   }, [isMobile, mode, previewUrl, runAi]);
 
+  useEffect(() => {
+    const fixture = new URLSearchParams(window.location.search).get("particleFixture");
+    if (!fixture || file) return;
+    void fetch(fixture)
+      .then((response) => response.blob())
+      .then((blob) => loadFile(new File([blob], "particle-fixture.jpg", { type: blob.type || "image/jpeg" })));
+  }, [file, loadFile]);
+
   useEffect(() => () => { abortRef.current?.abort(); if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   const switchMode = (next: DepthMode) => { setMode(next); if (next === "fast") { abortRef.current?.abort(); setStatus(decoded ? "fast-ready" : "empty"); } else if (file && decoded) void runAi(file, decoded); };
   const applyParams = (next: ParticleParams) => {

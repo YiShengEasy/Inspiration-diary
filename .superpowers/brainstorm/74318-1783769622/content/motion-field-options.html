@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>水波粒子运动方向</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,"PingFang SC",system-ui,sans-serif;background:#020507;color:#eafaff}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -20%,#13313c 0,transparent 38%),#020507}
+    main{width:min(1180px,94vw);margin:auto;padding:34px 0 48px}h1{margin:0;font-size:26px}.sub{margin:9px 0 26px;color:#7f9ba3;font-size:14px}
+    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{position:relative;overflow:hidden;border:1px solid #16323a;border-radius:18px;background:#050b0e;cursor:pointer;transition:.2s}
+    .card:hover,.card.selected{transform:translateY(-3px);border-color:#55d7ee;box-shadow:0 18px 70px #00151ccc}.card.selected:after{content:"已选择";position:absolute;right:12px;top:12px;padding:5px 9px;border-radius:999px;background:#4ee3ff;color:#001014;font-size:11px;font-weight:800;z-index:8}
+    .stage{position:relative;height:430px;overflow:hidden;background:#000}.stage:after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 38%,#000 83%);pointer-events:none}
+    .subject{position:absolute;left:50%;top:50%;width:66%;height:72%;object-fit:cover;transform:translate(-50%,-50%);mask-image:radial-gradient(ellipse 53% 54% at 50% 50%,#000 52%,rgba(0,0,0,.82) 65%,transparent 91%);filter:url(#wave-soft);animation:breath 4.8s ease-in-out infinite}
+    .field{position:absolute;inset:0;filter:blur(.15px)}.dot{position:absolute;width:var(--s);height:var(--s);border-radius:50%;background:var(--c);opacity:var(--o);box-shadow:0 0 calc(var(--s)*2.5) var(--c);animation:float var(--t) ease-in-out infinite alternate;animation-delay:var(--d)}
+    .a .subject{filter:url(#wave-soft);animation-duration:5.5s}.a .dot{animation-name:float-soft}
+    .b .subject{filter:url(#wave-curl);animation:breath 4.2s ease-in-out infinite}.b .dot{animation-name:float-curl}
+    .c .subject{filter:url(#wave-strong);animation:surge 3.2s ease-in-out infinite}.c .dot{animation-name:float-strong}
+    .info{padding:16px 17px 18px}.tag{color:#56d9ef;font-size:11px;font-weight:800;letter-spacing:.12em}.info h2{margin:7px 0 8px;font-size:18px}.info p{min-height:60px;margin:0;color:#8da3a9;font-size:12px;line-height:1.65}.metrics{display:flex;gap:7px;margin-top:13px}.metrics span{padding:5px 7px;border:1px solid #163039;border-radius:6px;color:#8fc2cc;font-size:10px}.recommend{border-color:#318c9e}.recommend .tag{color:#9cf1ff}
+    @keyframes breath{50%{transform:translate(-50%,-50%) scale(1.018) skewX(.35deg)}}
+    @keyframes surge{0%,100%{transform:translate(-50%,-50%) scale(.985) rotate(-.25deg)}50%{transform:translate(-50%,-50%) scale(1.035) rotate(.35deg)}}
+    @keyframes float{to{transform:translate(var(--dx),var(--dy)) scale(.65);opacity:.25}}
+    @keyframes float-soft{to{transform:translate(calc(var(--dx)*.55),calc(var(--dy)*.55)) scale(.8);opacity:.42}}
+    @keyframes float-curl{to{transform:translate(var(--dx),var(--dy)) rotate(38deg) scale(.62);opacity:.18}}
+    @keyframes float-strong{to{transform:translate(calc(var(--dx)*1.45),calc(var(--dy)*1.45)) rotate(70deg) scale(.45);opacity:.1}}
+    footer{margin-top:18px;padding:14px 16px;border:1px solid #13323b;border-radius:12px;background:#061015;color:#84aab3;font-size:12px;line-height:1.7}
+    @media(max-width:860px){.cards{grid-template-columns:1fr}.stage{height:390px}.info p{min-height:0}}
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true">
+    <filter id="wave-soft"><feTurbulence type="fractalNoise" baseFrequency=".007 .018" numOctaves="2" seed="11"><animate attributeName="baseFrequency" dur="5.5s" values=".007 .018;.011 .022;.007 .018" repeatCount="indefinite"/></feTurbulence><feDisplacementMap in="SourceGraphic" scale="7"/></filter>
+    <filter id="wave-curl"><feTurbulence type="fractalNoise" baseFrequency=".011 .026" numOctaves="3" seed="27"><animate attributeName="baseFrequency" dur="4.2s" values=".011 .026;.018 .032;.011 .026" repeatCount="indefinite"/></feTurbulence><feDisplacementMap in="SourceGraphic" scale="13"/></filter>
+    <filter id="wave-strong"><feTurbulence type="turbulence" baseFrequency=".018 .035" numOctaves="3" seed="39"><animate attributeName="baseFrequency" dur="3.2s" values=".018 .035;.028 .047;.018 .035" repeatCount="indefinite"/></feTurbulence><feDisplacementMap in="SourceGraphic" scale="22"/></filter>
+  </svg>
+  <main>
+    <h1>选择水波与粒子运动组织</h1>
+    <p class="sub">三种方案都会继承原图颜色，并让越靠外的粒子越稀、越散；区别是主体稳定度与向量侵蚀强度。</p>
+    <section class="cards">
+      <article class="card a" data-choice="a" onclick="toggleSelect(this)"><div class="stage"><img class="subject" src="/files/reference-portrait.jpg" alt="柔和水波"/><div class="field"></div></div><div class="info"><div class="tag">A · 稳定</div><h2>柔和水波</h2><p>主体最清楚，表面只有低频呼吸波，粒子沿轮廓轻微漂移。适合日记封面，但向量侵蚀存在感较弱。</p><div class="metrics"><span>主体清晰 95%</span><span>侵蚀 35%</span><span>低负载</span></div></div></article>
+      <article class="card b recommend" data-choice="b" onclick="toggleSelect(this)"><div class="stage"><img class="subject" src="/files/reference-portrait.jpg" alt="多尺度水波与卷曲向量"/><div class="field"></div></div><div class="info"><div class="tag">B · 推荐</div><h2>多尺度水波 + 卷曲向量</h2><p>主体使用低频水波，边缘叠加细噪声侵蚀；粒子沿卷曲向量离开画面，保留原色并逐渐离散。</p><div class="metrics"><span>主体清晰 86%</span><span>侵蚀 72%</span><span>GPU 实时</span></div></div></article>
+      <article class="card c" data-choice="c" onclick="toggleSelect(this)"><div class="stage"><img class="subject" src="/files/reference-scene.jpg" alt="强流体侵蚀"/><div class="field"></div></div><div class="info"><div class="tag">C · 戏剧化</div><h2>强流体侵蚀</h2><p>水波与侵蚀都更强，外层粒子快速扩散并闪烁。视觉冲击最大，但人物和文字细节更容易被扭曲。</p><div class="metrics"><span>主体清晰 68%</span><span>侵蚀 92%</span><span>较高负载</span></div></div></article>
+    </section>
+    <footer>建议选择 B：运动来自同一张内容纹理与同一个向量场，因此图片、水波、溶解边缘和彩色粒子会看成一体；参数拖动时只更新 GPU uniform，松手后才重建粒子分布。</footer>
+  </main>
+  <script>
+    document.querySelectorAll('.card').forEach((card,index)=>{
+      const field=card.querySelector('.field');
+      const count=index===0?115:index===1?170:205;
+      for(let i=0;i<count;i++){
+        const angle=(i/count)*Math.PI*2+(Math.sin(i*12.9898)*.35);
+        const radiusX=25+((i*37)%100)/100*17;
+        const radiusY=31+((i*53)%100)/100*20;
+        const x=50+Math.cos(angle)*radiusX;
+        const y=50+Math.sin(angle)*radiusY;
+        const outer=((i*71)%100)/100;
+        const dot=document.createElement('i');
+        dot.className='dot';
+        const palette=['#66e9ff','#d9f8ff','#3aaed2','#b8d2ff','#d9a879'];
+        dot.style.cssText=`left:${x}%;top:${y}%;--s:${.7+outer*2.2}px;--o:${.25+(1-outer)*.7};--c:${palette[i%palette.length]};--dx:${Math.cos(angle)*(8+outer*34)}px;--dy:${Math.sin(angle)*(8+outer*34)}px;--t:${2.4+(i%17)/8}s;--d:${-(i%31)/7}s`;
+        field.appendChild(dot);
+      }
+    });
+  </script>
+</body>
+</html>

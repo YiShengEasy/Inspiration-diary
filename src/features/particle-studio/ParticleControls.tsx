@@ -38,7 +38,7 @@ const groups: Array<{ title: string; controls: Control[] }> = [
     { key: "edgeSoftness", label: "边界柔化", min: 0.02, max: 0.6, step: 0.01 },
     { key: "irregularity", label: "不规则度", min: 0, max: 1, step: 0.01 },
     { key: "noiseScale", label: "噪声尺度", min: 0.5, max: 12, step: 0.1 },
-    { key: "outerDispersion", label: "外层离散度", min: 0, max: 2, step: 0.01 },
+    { key: "outerDispersion", label: "侵蚀带离散度", min: 0, max: 2, step: 0.01 },
     { key: "colorRetention", label: "原色保留度", min: 0, max: 1, step: 0.01 },
   ] },
   { title: "立体", controls: [
