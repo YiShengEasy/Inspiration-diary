@@ -67,44 +67,60 @@ input[type=file] { font-size: 11px; color: #666; cursor: pointer; }
       <button class="btn preset-btn" data-idx="1">✨ 星云扩张</button>
       <button class="btn preset-btn" data-idx="2">⟶ 线性扫除</button>
       <button class="btn preset-btn" data-idx="3">🌫 雾化飘落</button>
+      <button class="btn preset-btn" data-idx="4">🔥 火焰涅槃</button>
+      <button class="btn preset-btn" data-idx="5">⚫ 黑洞吸积</button>
+      <button class="btn preset-btn" data-idx="6">⚡ 数字雨</button>
+      <button class="btn preset-btn" data-idx="7">💎 晶体爆碎</button>
+      <button class="btn preset-btn" data-idx="8">🌌 星系螺旋</button>
+      <button class="btn preset-btn" data-idx="9">🧢 磁力线</button>
     </div>
   </div>
   <hr>
 
   <!-- Invasion -->
   <div class="row">
-    <div class="lbl"><span>侵蚀进度</span><span id="vInvasion">0.70</span></div>
+    <div class="lbl"><span id="lblInvasion">侵蚀进度</span><span id="vInvasion">0.70</span></div>
     <input type="range" id="sInvasion" min="0" max="100" value="70">
   </div>
 
   <!-- Bandwidth -->
-  <div class="row">
-    <div class="lbl"><span>过渡带宽度</span><span id="vBw">0.30</span></div>
+  <div class="row" id="rowBw">
+    <div class="lbl"><span id="lblBw">过渡带宽度</span><span id="vBw">0.30</span></div>
     <input type="range" id="sBw" min="2" max="70" value="30">
   </div>
 
   <!-- Scatter -->
-  <div class="row">
+  <div class="row particle-ctrl">
     <div class="lbl"><span>粒子散开量</span><span id="vScatter">0.057</span></div>
     <input type="range" id="sScatter" min="0" max="120" value="57">
   </div>
 
   <!-- Point size -->
-  <div class="row">
+  <div class="row particle-ctrl">
     <div class="lbl"><span>粒子大小</span><span id="vPtSize">4.0</span></div>
     <input type="range" id="sPtSize" min="5" max="80" value="40" step="5">
   </div>
 
   <!-- Sample step -->
-  <div class="row">
+  <div class="row particle-ctrl">
     <div class="lbl"><span>采样间距 (px)</span><span id="vStep">1</span></div>
     <input type="range" id="sStep" min="1" max="8" value="1" step="1">
   </div>
 
   <!-- Noise -->
-  <div class="row">
-    <div class="lbl"><span>边界噪波</span><span id="vNoise">0.07</span></div>
-    <input type="range" id="sNoise" min="0" max="40" value="7">
+  <div class="row" id="rowNoise">
+    <div class="lbl"><span id="lblNoise">边界噪波</span><span id="vNoise">0.07</span></div>
+    <input type="range" id="sNoise" min="0" max="80" value="14">
+  </div>
+
+  <!-- Wave / Heat -->
+  <div class="row" id="rowWaveStr">
+    <div class="lbl"><span id="lblWaveStr">水波强度</span><span id="vWaveStr">0.006</span></div>
+    <input type="range" id="sWaveStr" min="0" max="30" value="6">
+  </div>
+  <div class="row" id="rowWaveFreq">
+    <div class="lbl"><span id="lblWaveFreq">水波频率</span><span id="vWaveFreq">8</span></div>
+    <input type="range" id="sWaveFreq" min="1" max="40" value="8" step="1">
   </div>
 
   <hr>
@@ -127,9 +143,15 @@ renderer.setClearColor(0x000000, 1);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
 // Orthographic: [-1, 1] x [-1, 1] square
-const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 10);
-camera.position.z = 2;
+// Use PerspectiveCamera so 3D drag shows proper depth/foreshortening
+const FOV   = 45;
+const CAM_Z = 1 / Math.tan((FOV / 2) * Math.PI / 180); // fills 2-unit-tall plane exactly
+const camera = new THREE.PerspectiveCamera(FOV, 1, 0.01, 20);
+camera.position.z = CAM_Z;
 const scene  = new THREE.Scene();
+// Group for 3D drag rotation
+const sceneGroup = new THREE.Group();
+scene.add(sceneGroup);
 
 let imgAspect = 1.0; // updated on every image load
 
@@ -145,11 +167,7 @@ function resizeRenderer() {
     dispW = Math.round(maxH * imgAspect);
   }
   renderer.setSize(dispW, dispH);
-  // Ortho frustum spans [-aspect, +aspect] x [-1, +1]
-  camera.left   = -imgAspect;
-  camera.right  =  imgAspect;
-  camera.top    =  1;
-  camera.bottom = -1;
+  camera.aspect = dispW / dispH; // should equal imgAspect
   camera.updateProjectionMatrix();
 }
 resizeRenderer();
@@ -163,9 +181,14 @@ const U = {
   uBandwidth: { value: 0.30  },
   uScatter:   { value: 0.057 },
   uPointSize: { value: 4.0   },
-  uNoise:     { value: 0.07  },
+  uNoise:     { value: 0.14  },
   uTime:      { value: 0     },
   uMode:      { value: 0     }, // 0=edge→center  1=center→edge  2=left→right  3=top→bottom
+  uWaveStr:   { value: 0.006 }, // water ripple UV distortion strength
+  uWaveFreq:  { value: 8.0   }, // water ripple frequency
+  uEffect:    { value: 0     }, // 0=normal  1=fire  2=blackhole  3=rain  4=shatter  5=galaxy  6=magnet
+  uImgAspect: { value: 1.0   }, // updated on image load
+  uMouse:     { value: new THREE.Vector2(0.5, 0.5) }, // cursor UV for interactive effects
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -179,6 +202,9 @@ const vtxParticle = /* glsl */`
   uniform float uNoise;
   uniform float uTime;
   uniform int   uMode;
+  uniform float uWaveStr;
+  uniform float uWaveFreq;
+  uniform int   uEffect;
 
   attribute vec3  aColor;  // original image color at this pixel
   attribute vec2  aUV;     // normalized position in image (0-1)
@@ -186,10 +212,24 @@ const vtxParticle = /* glsl */`
 
   varying vec3  vCol;
   varying float vAlpha;
+  varying float vDs;
 
-  // Simple hash-based value noise for irregular dissolution boundary
+  // Simple hash-based value noise
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  // Smooth value noise
+  float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+               mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+  }
+  // Fractal Brownian Motion — creates organic, multi-scale irregularity
+  float fbm(vec2 p) {
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < 4; i++) { v += vnoise(p) * a; p *= 2.1; a *= 0.5; }
+    return v;
   }
 
   void main() {
@@ -198,12 +238,13 @@ const vtxParticle = /* glsl */`
     // Compute base dissolve-start threshold depending on mode
     float dfc = length(aUV - 0.5) * 1.4142; // 0=center, ~1=corner
     float dissolveStart;
-    if      (uMode == 1) dissolveStart = dfc;            // center → edge
-    else if (uMode == 2) dissolveStart = aUV.x;          // left   → right
-    else if (uMode == 3) dissolveStart = aUV.y;          // top    → bottom
-    else                 dissolveStart = 1.0 - dfc;      // edge   → center (default)
+    if      (uEffect == 1) dissolveStart = 1.0 - aUV.y; // fire: bottom burns first
+    else if (uMode == 1)   dissolveStart = dfc;          // center → edge
+    else if (uMode == 2)   dissolveStart = aUV.x;        // left   → right
+    else if (uMode == 3)   dissolveStart = aUV.y;        // top    → bottom
+    else                   dissolveStart = 1.0 - dfc;    // edge   → center (default)
 
-    float n = (hash(aUV * 3.7) - 0.5) * uNoise;
+    float n = (fbm(aUV * 2.8 + uTime * 0.04) - 0.5) * uNoise * 2.2;
     float noisedStart = clamp(dissolveStart + n, 0.0, 1.0);
     float ds = smoothstep(noisedStart, noisedStart + uBandwidth, uInvasion);
 
@@ -219,6 +260,21 @@ const vtxParticle = /* glsl */`
     vec3 pos = position;
     pos.xy  += jitter;
 
+    // Wave motion for intact particles (they ripple like water surface)
+    float wt = uTime * 1.5;
+    float waveAlive = (1.0 - ds) * uWaveStr * 0.4;
+    pos.xy += vec2(
+      sin(aUV.y * uWaveFreq + wt) * waveAlive,
+      cos(aUV.x * uWaveFreq * 0.85 + wt * 0.8) * waveAlive
+    );
+
+    // Fire: particles in dissolving band rise upward with heat turbulence
+    if (uEffect == 1) {
+      float age = clamp(ds * 1.3, 0.0, 1.0);
+      pos.y += age * age * 0.55;
+      pos.x += sin(aRnd * 23.17 + uTime * 2.8 + aUV.y * 5.0) * 0.045 * age;
+    }
+
     // Slight per-particle brightness and density variation
     vAlpha = alpha * (0.55 + aRnd * 0.45);
 
@@ -229,15 +285,37 @@ const vtxParticle = /* glsl */`
 `;
 
 const frgParticle = /* glsl */`
+  uniform int   uEffect;
+  uniform float uTime;
   varying vec3  vCol;
   varying float vAlpha;
+  varying float vDs;
   void main() {
-    // Soft circular point
     vec2  cxy = gl_PointCoord * 2.0 - 1.0;
     float r   = dot(cxy, cxy);
     if (r > 1.0) discard;
     float soft = 1.0 - smoothstep(0.3, 1.0, r);
-    gl_FragColor = vec4(vCol, vAlpha * soft);
+    if (uEffect == 1) discard; // fire: image plane only
+
+    vec3 col = vCol;
+
+    if (uEffect == 2) { // Black hole: blue Doppler blueshift
+      float bs = 1.0 - smoothstep(0.0, 0.12, vDs);
+      col = mix(vCol, vec3(0.5,0.75,1.0)*2.2, bs*0.75);
+    }
+    if (uEffect == 3) { // Digital rain: bright green-white head
+      float head = 1.0 - smoothstep(0.0, 0.08, vDs);
+      col = mix(vCol*1.1, vec3(0.7,1.0,0.75)*2.5, head*0.8);
+    }
+    if (uEffect == 5) { // Galaxy: twinkle
+      float tw = 0.65 + 0.35*sin(uTime*3.5 + vDs*12.0);
+      col = vCol * tw * 1.4;
+    }
+    if (uEffect == 6) { // Magnetic: green glow near field lines
+      float near = 1.0 - smoothstep(0.0, 0.22, vDs);
+      col = mix(vCol, vec3(0.55,1.0,0.55)*1.6, near*0.45);
+    }
+    gl_FragColor = vec4(col, vAlpha * soft);
   }
 `;
 
@@ -259,33 +337,122 @@ const frgPlane = /* glsl */`
   uniform float     uBandwidth;
   uniform float     uNoise;
   uniform int       uMode;
+  uniform float     uWaveStr;
+  uniform float     uWaveFreq;
+  uniform float     uTime;
+  uniform int       uEffect;
+  uniform vec2      uMouse;
   varying vec2      vUV;
 
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
   }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+               mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+  }
+  float fbm(vec2 p) {
+    float v = 0.0, a = 0.5;
+    for (int i = 0; i < 4; i++) { v += vnoise(p) * a; p *= 2.1; a *= 0.5; }
+    return v;
+  }
 
   void main() {
-    vec4 tex = texture2D(uTex, vUV);
-    if (tex.a < 0.01) discard;
-
     // NOTE: plane vUV.y is flipped vs particle aUV.y
     // For directional modes, compensate: vUV.y=1 is screen-top (=image-top)
+
+    // Effects that use only particles
+    if (uEffect == 3 || uEffect == 4 || uEffect == 5) discard;
+
+    // Black hole: gravitational lens (singularity at mouse)
+    if (uEffect == 2) {
+      vec2  ctr    = vec2(uMouse.x, 1.0 - uMouse.y);
+      vec2  d      = vUV - ctr;
+      float r      = length(d) + 0.001;
+      float lensR  = uInvasion * 0.28;
+      float lens   = lensR / (r + lensR);
+      vec2  lensUV = clamp(ctr + d * (1.0 - lens), 0.001, 0.999);
+      vec4  t      = texture2D(uTex, lensUV);
+      if (t.a < 0.01) discard;
+      float fade   = 1.0 - smoothstep(0.5, 1.0, uInvasion);
+      vec3  col    = mix(t.rgb, vec3(0.2,0.4,1.0)*(t.rgb+0.08), lens*0.9);
+      gl_FragColor = vec4(col, t.a * fade);
+      return;
+    }
+
+    // Magnetic field: UV warp + concentric ring shimmer
+    if (uEffect == 6) {
+      vec2  ctr  = vec2(uMouse.x, 1.0 - uMouse.y);
+      vec2  toM  = ctr - vUV;
+      float r    = length(toM) + 0.001;
+      float f    = uWaveStr / (r*r*6.0 + 0.12);
+      float pull = clamp(f * uInvasion * 0.3, 0.0, 0.25);
+      vec2  wUV2 = clamp(vUV + normalize(toM) * pull, 0.001, 0.999);
+      vec4  t    = texture2D(uTex, wUV2);
+      if (t.a < 0.01) discard;
+      float rings = sin(r * 38.0 * uInvasion - uTime * 2.5) * 0.5 + 0.5;
+      float shim  = clamp(rings * f * 1.5, 0.0, 0.35);
+      vec3  col   = mix(t.rgb, t.rgb * vec3(0.6, 1.2, 0.7), shim);
+      gl_FragColor = vec4(col, t.a);
+      return;
+    }
+
     float dfc = length(vUV - 0.5) * 1.4142;
     float dissolveStart;
-    if      (uMode == 1) dissolveStart = dfc;              // center → edge
-    else if (uMode == 2) dissolveStart = vUV.x;            // left   → right
-    else if (uMode == 3) dissolveStart = 1.0 - vUV.y;     // top    → bottom (vUV.y=1 is top)
-    else                 dissolveStart = 1.0 - dfc;        // edge   → center (default)
+    if      (uEffect == 1) dissolveStart = vUV.y;        // fire: bottom burns first
+    else if (uMode == 1)   dissolveStart = dfc;
+    else if (uMode == 2)   dissolveStart = vUV.x;
+    else if (uMode == 3)   dissolveStart = 1.0 - vUV.y;
+    else                   dissolveStart = 1.0 - dfc;
 
-    float n = (hash(vUV * 3.7) - 0.5) * uNoise;
+    float n = (fbm(vUV * 2.8 + uTime * 0.04) - 0.5) * uNoise * 2.2;
     float noisedStart = clamp(dissolveStart + n, 0.0, 1.0);
     float ds = smoothstep(noisedStart, noisedStart + uBandwidth, uInvasion);
+
+    // Water ripple: distort UV before sampling (only on intact surface)
+    float wt = uTime * 1.5;
+    float waveAlive = (1.0 - smoothstep(0.0, 0.35, ds)) * uWaveStr;
+    vec2 wUV = vUV;
+    wUV.x += sin(vUV.y * uWaveFreq + wt) * waveAlive;
+    wUV.y += cos(vUV.x * uWaveFreq * 0.85 + wt * 0.8) * waveAlive;
+    wUV = clamp(wUV, 0.001, 0.999);
+
+    // Fire: upward heat shimmer (uWaveStr=intensity, uWaveFreq=frequency)
+    if (uEffect == 1) {
+      float heatBand = smoothstep(0.0, 0.22, ds) * (1.0 - smoothstep(0.22, 0.68, ds));
+      float hStr     = heatBand * uWaveStr;
+      wUV.x += sin(vUV.y * uWaveFreq        + uTime * 5.0) * hStr;
+      wUV.y -= abs(cos(vUV.x * uWaveFreq * 0.75 + uTime * 3.8)) * hStr * 2.2;
+      wUV    = clamp(wUV, 0.001, 0.999);
+    }
+
+    vec4 tex = texture2D(uTex, wUV);
+    if (tex.a < 0.01) discard;
 
     // Image fades out as dissolution begins
     float imgAlpha = tex.a * (1.0 - smoothstep(0.0, 0.42, ds));
     if (imgAlpha < 0.004) discard;
-    gl_FragColor = vec4(tex.rgb, imgAlpha);
+
+    if (uEffect == 1) {
+      // Fire: hot orange-red glow at dissolution edge
+      float edgeGlow = smoothstep(0.0, 0.18, ds) * (1.0 - smoothstep(0.18, 0.52, ds));
+      vec3  ember    = mix(vec3(1.0, 0.62, 0.08), vec3(1.0, 0.12, 0.0), edgeGlow);
+      vec3  fireRgb  = mix(tex.rgb, ember * 2.2, edgeGlow * 0.80);
+      gl_FragColor   = vec4(fireRgb, imgAlpha);
+    } else {
+      // Iridescent shimmer (water light refraction)
+      float shimA = sin(wUV.x * uWaveFreq * 4.0 + wt * 2.5) * 0.5 + 0.5;
+      float shimB = sin(wUV.y * uWaveFreq * 3.2 - wt * 2.0) * 0.5 + 0.5;
+      float shimmer = clamp(shimA * shimB * waveAlive * 14.0, 0.0, 0.40);
+      vec3 irid = vec3(
+        0.55 + 0.45 * sin(shimA * 6.28 + 0.0),
+        0.55 + 0.45 * sin(shimA * 6.28 + 2.1),
+        0.60 + 0.40 * sin(shimA * 6.28 + 4.2)
+      );
+      gl_FragColor = vec4(mix(tex.rgb, tex.rgb * irid * 1.7, shimmer), imgAlpha);
+    }
   }
 `;
 
@@ -335,6 +502,11 @@ function buildParticleMesh(data, imgW, imgH, step) {
       uNoise:     U.uNoise,
       uTime:      U.uTime,
       uMode:      U.uMode,
+      uWaveStr:   U.uWaveStr,
+      uWaveFreq:  U.uWaveFreq,
+      uEffect:    U.uEffect,
+      uImgAspect: U.uImgAspect,
+      uMouse:     U.uMouse,
     },
     transparent: true,
     depthWrite:  false,
@@ -357,6 +529,11 @@ function buildImageMesh(texture) {
       uBandwidth: U.uBandwidth,
       uNoise:     U.uNoise,
       uMode:      U.uMode,
+      uWaveStr:   U.uWaveStr,
+      uWaveFreq:  U.uWaveFreq,
+      uTime:      U.uTime,
+      uEffect:    U.uEffect,
+      uMouse:     U.uMouse,
     },
     transparent: true,
     depthWrite:  false,
@@ -378,27 +555,31 @@ function rebuildParticles() {
   const { data, w, h } = imgCache;
   const step = parseInt(document.getElementById('sStep').value);
   if (ptsMesh) {
-    scene.remove(ptsMesh);
+    sceneGroup.remove(ptsMesh);
     ptsMesh.geometry.dispose();
     ptsMesh.material.dispose();
   }
   ptsMesh = buildParticleMesh(data, w, h, step);
-  if (ptsMesh) scene.add(ptsMesh);
+  if (ptsMesh) {
+    sceneGroup.add(ptsMesh);
+    if (U.uEffect.value === 1) ptsMesh.material.blending = THREE.AdditiveBlending;
+  }
 }
 
 function rebuildAll(data, w, h, offscreen) {
   imgAspect = w / h;      // update before any mesh is built
+  U.uImgAspect.value = imgAspect;
   resizeRenderer();       // resize canvas + camera frustum to match
   // Cleanup
-  if (ptsMesh)  { scene.remove(ptsMesh); ptsMesh.geometry.dispose(); ptsMesh.material.dispose(); }
-  if (imgMesh)  { scene.remove(imgMesh); imgMesh.geometry.dispose(); imgMesh.material.dispose(); }
+  if (ptsMesh)  { sceneGroup.remove(ptsMesh); ptsMesh.geometry.dispose(); ptsMesh.material.dispose(); }
+  if (imgMesh)  { sceneGroup.remove(imgMesh); imgMesh.geometry.dispose(); imgMesh.material.dispose(); }
   if (imgTex)   imgTex.dispose();
 
   imgCache = { data, w, h, offscreen };
   imgTex   = new THREE.CanvasTexture(offscreen);
   imgMesh  = buildImageMesh(imgTex);
-  scene.add(imgMesh);                  // image first (behind)
-  rebuildParticles();                  // particles on top
+  sceneGroup.add(imgMesh);       // image first (behind)
+  rebuildParticles();            // particles on top
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -532,6 +713,12 @@ bindSlider('sBw',       'vBw',       U.uBandwidth, 0.01,  2);
 bindSlider('sScatter',  'vScatter',  U.uScatter,   0.001, 3);
 bindSlider('sPtSize',   'vPtSize',   U.uPointSize, 0.1,   1);
 bindSlider('sNoise',    'vNoise',    U.uNoise,     0.01,  2);
+bindSlider('sWaveStr',  'vWaveStr',  U.uWaveStr,   0.001, 3);
+
+document.getElementById('sWaveFreq').addEventListener('input', e => {
+  U.uWaveFreq.value = parseFloat(e.target.value);
+  document.getElementById('vWaveFreq').textContent = U.uWaveFreq.value.toFixed(0);
+});
 
 document.getElementById('sStep').addEventListener('input', e => {
   document.getElementById('vStep').textContent = e.target.value;
@@ -570,27 +757,63 @@ document.getElementById('btnReset').addEventListener('click', () => {
 const PRESETS = [
   {
     name: '灰尘消散',
-    // 截图同款：径向从外向内，中密度粒子，小散开
     mode: 0, invasion: 0.70, bandwidth: 0.30,
-    scatter: 0.057, ptSize: 4.0, step: 1, noise: 0.07,
+    scatter: 0.057, ptSize: 4.0, step: 1, noise: 0.14,
+    waveStr: 0.006, waveFreq: 8, effect: 0,
   },
   {
     name: '星云扩张',
-    // 从中心向外爆发，宽过渡带，粒子向外扩散
     mode: 1, invasion: 0.52, bandwidth: 0.40,
-    scatter: 0.065, ptSize: 3.5, step: 2, noise: 0.16,
+    scatter: 0.065, ptSize: 3.5, step: 2, noise: 0.20,
+    waveStr: 0.006, waveFreq: 8, effect: 0,
   },
   {
     name: '线性扫除',
-    // 从左向右线性消除，窄过渡带，锐利边界
     mode: 2, invasion: 0.50, bandwidth: 0.16,
     scatter: 0.028, ptSize: 3.0, step: 2, noise: 0.05,
+    waveStr: 0, waveFreq: 8, effect: 0,
   },
   {
     name: '雾化飘落',
-    // 从上向下雾化，超宽过渡带，粒子几乎不散开，梦幻感
     mode: 3, invasion: 0.55, bandwidth: 0.48,
-    scatter: 0.015, ptSize: 2.5, step: 2, noise: 0.22,
+    scatter: 0.015, ptSize: 2.5, step: 2, noise: 0.28,
+    waveStr: 0.004, waveFreq: 6, effect: 0,
+  },
+  {
+    name: '火焰涅槃',
+    mode: 0, invasion: 0.58, bandwidth: 0.38,
+    scatter: 0.025, ptSize: 3.0, step: 1, noise: 0.22,
+    waveStr: 0.018, waveFreq: 22, effect: 1,
+  },
+  {
+    name: '黑洞吸积',
+    mode: 0, invasion: 0.55, bandwidth: 0.30,
+    scatter: 0.0, ptSize: 3.0, step: 1, noise: 0.0,
+    waveStr: 0.0, waveFreq: 10, effect: 2,
+  },
+  {
+    name: '数字雨',
+    mode: 0, invasion: 0.55, bandwidth: 0.30,
+    scatter: 0.0, ptSize: 3.5, step: 1, noise: 0.0,
+    waveStr: 0.0, waveFreq: 8, effect: 3,
+  },
+  {
+    name: '晶体爆碎',
+    mode: 0, invasion: 0.65, bandwidth: 0.20,
+    scatter: 0.0, ptSize: 3.0, step: 1, noise: 0.0,
+    waveStr: 0.0, waveFreq: 8, effect: 4,
+  },
+  {
+    name: '星系螺旋',
+    mode: 0, invasion: 0.45, bandwidth: 0.20,
+    scatter: 0.0, ptSize: 2.5, step: 2, noise: 0.0,
+    waveStr: 0.0, waveFreq: 8, effect: 5,
+  },
+  {
+    name: '磁力线',
+    mode: 0, invasion: 0.70, bandwidth: 0.20,
+    scatter: 0.0, ptSize: 3.0, step: 1, noise: 0.0,
+    waveStr: 0.025, waveFreq: 8, effect: 6,
   },
 ];
 
@@ -615,9 +838,24 @@ function applyPreset(p) {
   document.getElementById('sNoise').value           = Math.round(p.noise * 100);
   document.getElementById('vNoise').textContent     = p.noise.toFixed(2);
 
+  // Wave + effect controls
+  const ws  = p.waveStr  ?? 0.006;
+  const wf  = p.waveFreq ?? 8;
+  const eff = p.effect   ?? 0;
+  U.uWaveStr.value  = ws;
+  U.uWaveFreq.value = wf;
+  U.uEffect.value   = eff;
+  document.getElementById('sWaveStr').value        = Math.round(ws * 1000);
+  document.getElementById('vWaveStr').textContent  = ws.toFixed(3);
+  document.getElementById('sWaveFreq').value       = wf;
+  document.getElementById('vWaveFreq').textContent = wf.toFixed(0);
+  updateLabelsForEffect(eff);
+
   // Rebuild particles only if step changed
   if (imgCache && parseInt(document.getElementById('sStep').value) !== p.step) {
     rebuildParticles();
+  } else if (ptsMesh) {
+    ptsMesh.material.blending = eff === 1 ? THREE.AdditiveBlending : THREE.NormalBlending;
   }
 
   document.querySelectorAll('.preset-btn').forEach((btn, i) => {
@@ -630,7 +868,65 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
 });
 
 // Apply preset 0 on load to sync sliders
+function updateLabelsForEffect(eff) {
+  const CFG = {
+    0: { invasion:'侵蚀进度', bw:true,  noise:true,  wstr:'水波强度', wfreq:'水波频率', showWstr:true,  showWfreq:true,  particle:true  },
+    1: { invasion:'燃烧进度', bw:true,  noise:true,  wstr:'热量扭曲', wfreq:'扭曲频率', showWstr:true,  showWfreq:true,  particle:false },
+    2: { invasion:'吸积强度', bw:false, noise:false, wstr:'—',        wfreq:'旋转速度', showWstr:false, showWfreq:true,  particle:false },
+    3: { invasion:'雨速',     bw:false, noise:false, wstr:'—',        wfreq:'—',        showWstr:false, showWfreq:false, particle:false },
+    4: { invasion:'爆碎程度', bw:false, noise:false, wstr:'—',        wfreq:'—',        showWstr:false, showWfreq:false, particle:false },
+    5: { invasion:'星系扩散', bw:false, noise:false, wstr:'—',        wfreq:'—',        showWstr:false, showWfreq:false, particle:false },
+    6: { invasion:'引力强度', bw:false, noise:false, wstr:'引力场强', wfreq:'—',        showWstr:true,  showWfreq:false, particle:false },
+  };
+  const c = CFG[eff] || CFG[0];
+  document.getElementById('lblInvasion').textContent  = c.invasion;
+  document.getElementById('rowBw').style.display      = c.bw    ? '' : 'none';
+  document.getElementById('rowNoise').style.display   = c.noise ? '' : 'none';
+  document.getElementById('rowWaveStr').style.display  = c.showWstr  ? '' : 'none';
+  document.getElementById('rowWaveFreq').style.display = c.showWfreq ? '' : 'none';
+  if (c.showWstr)  document.getElementById('lblWaveStr').textContent  = c.wstr;
+  if (c.showWfreq) document.getElementById('lblWaveFreq').textContent = c.wfreq;
+  document.querySelectorAll('.particle-ctrl').forEach(el => {
+    el.style.display = c.particle ? '' : 'none';
+  });
+}
 applyPreset(PRESETS[0]);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 11. 3D Drag Interaction
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const dragState = { active: false, x: 0, y: 0 };
+const rot = { x: 0, y: 0, vx: 0, vy: 0 };
+
+function onDragStart(x, y) {
+  dragState.active = true;
+  dragState.x = x; dragState.y = y;
+}
+function onDragMove(x, y) {
+  if (!dragState.active) return;
+  rot.vy += (x - dragState.x) * 0.006;
+  rot.vx += (y - dragState.y) * 0.006;
+  dragState.x = x; dragState.y = y;
+}
+function onDragEnd() { dragState.active = false; }
+
+canvas.addEventListener('mousedown',  e => onDragStart(e.clientX, e.clientY));
+window.addEventListener('mousemove',  e => onDragMove(e.clientX, e.clientY));
+window.addEventListener('mouseup',    onDragEnd);
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  onDragStart(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false });
+window.addEventListener('touchmove',  e => onDragMove(e.touches[0].clientX, e.touches[0].clientY));
+window.addEventListener('touchend',   onDragEnd);
+
+// Mouse tracking for cursor-based effects (black hole, magnetic)
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  U.uMouse.value.x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  U.uMouse.value.y = Math.max(0, Math.min(1, (e.clientY - rect.top)  / rect.height));
+});
+canvas.addEventListener('mouseleave', () => { U.uMouse.value.set(0.5, 0.5); });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 10. Render Loop
@@ -651,6 +947,16 @@ const clock = new THREE.Clock();
     document.getElementById('vInvasion').textContent =
       U.uInvasion.value.toFixed(2);
   }
+
+  // 3D drag rotation with inertia damping
+  if (!dragState.active) {
+    rot.vx *= 0.88;
+    rot.vy *= 0.88;
+  }
+  rot.x = Math.max(-0.70, Math.min(0.70, rot.x + rot.vx));
+  rot.y = Math.max(-1.00, Math.min(1.00, rot.y + rot.vy));
+  sceneGroup.rotation.x = rot.x;
+  sceneGroup.rotation.y = rot.y;
 
   renderer.render(scene, camera);
 })();
