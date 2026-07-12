@@ -81,9 +81,10 @@ export const particleVertexShader = /* glsl */ `
     float erosionBoundary = smoothstep(0.08, 0.32, invasion)
       * (1.0 - smoothstep(0.68, 0.94, invasion));
     float innerErosion = (1.0 - smoothstep(0.02, 0.58, invasion))
-      * clamp(aBoundary * 1.35 + aEdge * 0.42, 0.0, 1.0);
+      * (1.0 - smoothstep(0.72, 0.95, aContent))
+      * clamp(aBoundary * 1.28 + aEdge * 0.34, 0.0, 1.0);
     float erodedVoid = smoothstep(0.76, 1.0, invasion);
-    float particleRegion = max(erosionBoundary, innerErosion * 0.72)
+    float particleRegion = max(erosionBoundary, innerErosion * 0.38)
       * (1.0 - erodedVoid);
     transformed.xy += fieldDirection * particleRegion
       * uOuterDispersion * distanceNoise * 0.075;
@@ -98,7 +99,7 @@ export const particleVertexShader = /* glsl */ `
       * uExit * (0.35 + invasion);
 
     float particlePresence = particleRegion;
-    float densityChance = mix(0.28, 0.92, erosionBoundary)
+    float densityChance = mix(0.16, 0.96, erosionBoundary)
       * mix(0.72, 1.0, aBoundary);
     float densityGate = step(aRandom, densityChance);
     float originalLuminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
@@ -109,6 +110,10 @@ export const particleVertexShader = /* glsl */ `
     vec3 highlighted = mix(luminousSource, vec3(1.0), highlight * 0.42);
     float effectiveRetention = mix(uColorRetention, min(uColorRetention, 0.62), erosionBoundary);
     vColor = mix(highlighted, color, effectiveRetention);
+    vec3 coolGlow = vec3(0.15, 0.92, 1.0);
+    float coolMix = erosionBoundary * (1.0 - uColorRetention) * 0.86;
+    vColor = mix(vColor, coolGlow, coolMix);
+    vColor *= mix(0.92, 1.18, erosionBoundary);
 
     vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
     gl_Position = projectionMatrix * mvPosition;
@@ -228,11 +233,11 @@ export const imageSurfaceFragmentShader = /* glsl */ `
     );
     float alphaMask = smoothstep(uAlphaThreshold, min(1.0, uAlphaThreshold + 0.08), imageColor.a);
     float entrance = smoothstep(0.02, 0.42, uProgress);
-    float surfacePresence = mix(1.0, 0.055, smoothstep(0.18, 0.94, effectiveInvasion));
+    float surfacePresence = mix(1.0, 0.028, smoothstep(0.2, 0.94, effectiveInvasion));
     float alpha = alphaMask * contentPresence * mix(0.48, 1.0, darkPresence)
       * surfacePresence * entrance * (1.0 - uExit);
     if (alpha < 0.008) discard;
-    float blackening = mix(1.25, 0.1, smoothstep(0.12, 0.96, effectiveInvasion));
+    float blackening = mix(1.2, 0.07, smoothstep(0.14, 0.96, effectiveInvasion));
     gl_FragColor = vec4(imageColor.rgb * blackening, alpha);
   }
 `;
