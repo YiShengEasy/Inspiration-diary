@@ -15,44 +15,42 @@ type NumericKey = Exclude<keyof ParticleParams, "autoRotate" | "backgroundColor"
 type Control = { key: NumericKey; label: string; min: number; max: number; step: number };
 
 const groups: Array<{ title: string; controls: Control[] }> = [
-  { title: "图像", controls: [
+  { title: "蒙版抽取", controls: [
     { key: "brightnessThreshold", label: "亮度阈值", min: 0, max: 1, step: 0.01 },
-    { key: "contrast", label: "对比度", min: 0.2, max: 2.5, step: 0.01 },
-    { key: "edgeStrength", label: "边缘增强", min: 0, max: 1, step: 0.01 },
     { key: "alphaThreshold", label: "透明度过滤", min: 0, max: 1, step: 0.01 },
+    { key: "edgeStrength", label: "边缘增强", min: 0, max: 1, step: 0.01 },
+    { key: "contrast", label: "对比度", min: 0.5, max: 2.2, step: 0.01 },
     { key: "saturation", label: "饱和度", min: 0, max: 2, step: 0.01 },
+    { key: "density", label: "粒子保留率", min: 0.05, max: 1, step: 0.01 },
   ] },
-  { title: "粒子", controls: [
-    { key: "density", label: "粒子密度", min: 0.05, max: 1, step: 0.01 },
-    { key: "particleSize", label: "粒子大小", min: 0.4, max: 5, step: 0.1 },
-    { key: "scatter", label: "随机散射", min: 0, max: 2, step: 0.01 },
-    { key: "driftSpeed", label: "漂浮速度", min: 0, max: 1, step: 0.01 },
-  ] },
-  { title: "水波", controls: [
-    { key: "waveStrength", label: "水波强度", min: 0, max: 0.2, step: 0.005 },
-    { key: "waveScale", label: "水波尺度", min: 0.5, max: 10, step: 0.1 },
-    { key: "waveSpeed", label: "水波速度", min: 0, max: 2, step: 0.01 },
-  ] },
-  { title: "侵蚀", controls: [
-    { key: "invasionRange", label: "侵入范围", min: 0, max: 1, step: 0.01 },
-    { key: "edgeSoftness", label: "边界柔化", min: 0.02, max: 0.6, step: 0.01 },
+  { title: "侵蚀边界", controls: [
+    { key: "invasionRange", label: "侵入范围", min: 0.1, max: 0.9, step: 0.01 },
+    { key: "edgeSoftness", label: "边界柔化", min: 0.04, max: 0.45, step: 0.01 },
     { key: "irregularity", label: "不规则度", min: 0, max: 1, step: 0.01 },
-    { key: "noiseScale", label: "噪声尺度", min: 0.5, max: 12, step: 0.1 },
-    { key: "outerDispersion", label: "侵蚀带离散度", min: 0, max: 2, step: 0.01 },
+    { key: "noiseScale", label: "噪声尺度", min: 1, max: 10, step: 0.1 },
+    { key: "outerDispersion", label: "侵蚀带离散度", min: 0, max: 1.6, step: 0.01 },
     { key: "colorRetention", label: "原色保留度", min: 0, max: 1, step: 0.01 },
   ] },
-  { title: "立体", controls: [
+  { title: "粒子动势", controls: [
+    { key: "particleSize", label: "粒子大小", min: 0.6, max: 4.2, step: 0.1 },
+    { key: "scatter", label: "随机散射", min: 0, max: 1.4, step: 0.01 },
+    { key: "driftSpeed", label: "漂浮速度", min: 0, max: 1, step: 0.01 },
+    { key: "waveStrength", label: "波场强度", min: 0, max: 0.12, step: 0.002 },
+    { key: "waveScale", label: "波场尺度", min: 0.8, max: 8, step: 0.1 },
+    { key: "waveSpeed", label: "波场速度", min: 0, max: 1.4, step: 0.01 },
+  ] },
+  { title: "立体景深", controls: [
     { key: "depthStrength", label: "深度强度", min: 0, max: 8, step: 0.1 },
     { key: "depthSmoothing", label: "深度平滑", min: 0, max: 1, step: 0.01 },
     { key: "depthLayers", label: "Z 轴层数", min: 2, max: 64, step: 1 },
-    { key: "rotationSpeed", label: "旋转速度", min: 0, max: 2, step: 0.01 },
   ] },
-  { title: "辉光", controls: [
+  { title: "光晕输出", controls: [
     { key: "bloomStrength", label: "Bloom 强度", min: 0, max: 3, step: 0.01 },
     { key: "bloomRadius", label: "Bloom 半径", min: 0, max: 1, step: 0.01 },
     { key: "bloomThreshold", label: "Bloom 阈值", min: 0, max: 1, step: 0.01 },
   ] },
-  { title: "场景", controls: [
+  { title: "镜头", controls: [
+    { key: "rotationSpeed", label: "旋转速度", min: 0, max: 2, step: 0.01 },
     { key: "cameraDistance", label: "相机距离", min: 2.5, max: 10, step: 0.1 },
   ] },
 ];
@@ -98,8 +96,8 @@ export function ParticleControls({ params, collapsed, supportsTransparency, disa
                   onInput={(event) => update(control.key, Number(event.currentTarget.value))} />
               </label>
             ))}
-            {group.title === "立体" && <label className="particle-toggle"><span>自动旋转</span><input type="checkbox" disabled={disabled} checked={params.autoRotate} onChange={(event) => update("autoRotate", event.target.checked)} /></label>}
-            {group.title === "场景" && <label className="particle-color"><span>背景颜色</span><input type="color" disabled={disabled} value={params.backgroundColor} onChange={(event) => update("backgroundColor", event.target.value)} /></label>}
+            {group.title === "镜头" && <label className="particle-toggle"><span>自动旋转</span><input type="checkbox" disabled={disabled} checked={params.autoRotate} onChange={(event) => update("autoRotate", event.target.checked)} /></label>}
+            {group.title === "镜头" && <label className="particle-color"><span>背景颜色</span><input type="color" disabled={disabled} value={params.backgroundColor} onChange={(event) => update("backgroundColor", event.target.value)} /></label>}
           </fieldset>
         ))}
       </div>

@@ -13,7 +13,13 @@ import "./particle-studio.css";
 
 type StudioStatus = "empty" | "decoding" | "fast-ready" | "ai-loading" | "ai-ready" | "error";
 type Decoded = { rgba: Uint8ClampedArray; width: number; height: number };
-const presetNames: Record<PresetId, string> = { portrait: "人像", landscape: "风景", neon: "霓虹", mono: "黑白", reference: "参考图" };
+const presetNames: Record<PresetId, string> = {
+  portrait: "人像柔边",
+  landscape: "风景层次",
+  neon: "霓虹冷光",
+  mono: "黑白雕刻",
+  reference: "参考图同款",
+};
 
 export default function ParticleStudio({ onBack }: { onBack: () => void }) {
   const [params, setParams] = useState<ParticleParams>({ ...DEFAULT_PARTICLE_PARAMS });
