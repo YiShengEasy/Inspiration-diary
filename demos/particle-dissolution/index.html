@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>粒子溶解 Demo</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000; color: #fff;
+  font-family: system-ui, -apple-system, sans-serif;
+  display: flex; height: 100vh; overflow: hidden;
+}
+#viewer {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+}
+#sidebar {
+  width: 240px; background: #0a0a0a; border-left: 1px solid #1c1c1c;
+  padding: 18px 16px; display: flex; flex-direction: column; gap: 14px;
+  overflow-y: auto; flex-shrink: 0;
+}
+h2 { font-size: 13px; color: #5cf; letter-spacing: 2px; text-transform: uppercase; }
+hr { border: none; border-top: 1px solid #1c1c1c; }
+.row { display: flex; flex-direction: column; gap: 4px; }
+.row .lbl {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: #888;
+}
+.row .lbl span:last-child { color: #5cf; font-variant-numeric: tabular-nums; }
+input[type=range] {
+  width: 100%; accent-color: #3bf; cursor: pointer; height: 3px;
+}
+input[type=file] { font-size: 11px; color: #666; cursor: pointer; }
+.btn {
+  padding: 8px; cursor: pointer; background: transparent; color: #3bf;
+  border: 1px solid #1e3a4a; border-radius: 6px; font-size: 12px;
+  transition: background .15s, color .15s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn:hover { background: #1e3a4a; }
+.btn.active { background: #3bf; color: #000; border-color: #3bf; }
+.hint { font-size: 11px; color: #333; line-height: 1.6; }
+#stat { font-size: 10px; color: #333; }
+</style>
+</head>
+<body>
+
+<div id="viewer">
+  <canvas id="c"></canvas>
+</div>
+
+<div id="sidebar">
+  <h2>粒子溶解</h2>
+  <hr>
+
+  <!-- Image upload -->
+  <div class="row">
+    <div class="lbl"><span>图片</span></div>
+    <input type="file" id="imgFile" accept="image/*">
+  </div>
+  <hr>
+
+  <!-- Presets -->
+  <div class="row">
+    <div class="lbl"><span>预设效果</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:3px">
+      <button class="btn preset-btn active" data-idx="0">💨 灰尘消散</button>
+      <button class="btn preset-btn" data-idx="1">✨ 星云扩张</button>
+      <button class="btn preset-btn" data-idx="2">⟶ 线性扫除</button>
+      <button class="btn preset-btn" data-idx="3">🌫 雾化飘落</button>
+    </div>
+  </div>
+  <hr>
+
+  <!-- Invasion -->
+  <div class="row">
+    <div class="lbl"><span>侵蚀进度</span><span id="vInvasion">0.70</span></div>
+    <input type="range" id="sInvasion" min="0" max="100" value="70">
+  </div>
+
+  <!-- Bandwidth -->
+  <div class="row">
+    <div class="lbl"><span>过渡带宽度</span><span id="vBw">0.30</span></div>
+    <input type="range" id="sBw" min="2" max="70" value="30">
+  </div>
+
+  <!-- Scatter -->
+  <div class="row">
+    <div class="lbl"><span>粒子散开量</span><span id="vScatter">0.057</span></div>
+    <input type="range" id="sScatter" min="0" max="120" value="57">
+  </div>
+
+  <!-- Point size -->
+  <div class="row">
+    <div class="lbl"><span>粒子大小</span><span id="vPtSize">4.0</span></div>
+    <input type="range" id="sPtSize" min="5" max="80" value="40" step="5">
+  </div>
+
+  <!-- Sample step -->
+  <div class="row">
+    <div class="lbl"><span>采样间距 (px)</span><span id="vStep">1</span></div>
+    <input type="range" id="sStep" min="1" max="8" value="1" step="1">
+  </div>
+
+  <!-- Noise -->
+  <div class="row">
+    <div class="lbl"><span>边界噪波</span><span id="vNoise">0.07</span></div>
+    <input type="range" id="sNoise" min="0" max="40" value="7">
+  </div>
+
+  <hr>
+  <button class="btn" id="btnAuto">▶ 自动播放</button>
+  <button class="btn" id="btnReset">↺ 从头开始</button>
+  <hr>
+
+  <div id="stat">粒子数: —</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 1. Renderer + Camera
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const viewer  = document.getElementById('viewer');
+const canvas  = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setClearColor(0x000000, 1);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+// Orthographic: [-1, 1] x [-1, 1] square
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 10);
+camera.position.z = 2;
+const scene  = new THREE.Scene();
+
+let imgAspect = 1.0; // updated on every image load
+
+function resizeRenderer() {
+  const maxW = viewer.clientWidth  - 8;
+  const maxH = viewer.clientHeight - 8;
+  let dispW, dispH;
+  if (imgAspect >= maxW / maxH) {
+    dispW = maxW;
+    dispH = Math.round(maxW / imgAspect);
+  } else {
+    dispH = maxH;
+    dispW = Math.round(maxH * imgAspect);
+  }
+  renderer.setSize(dispW, dispH);
+  // Ortho frustum spans [-aspect, +aspect] x [-1, +1]
+  camera.left   = -imgAspect;
+  camera.right  =  imgAspect;
+  camera.top    =  1;
+  camera.bottom = -1;
+  camera.updateProjectionMatrix();
+}
+resizeRenderer();
+window.addEventListener('resize', resizeRenderer);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 2. Shared Uniforms
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const U = {
+  uInvasion:  { value: 0.70  },
+  uBandwidth: { value: 0.30  },
+  uScatter:   { value: 0.057 },
+  uPointSize: { value: 4.0   },
+  uNoise:     { value: 0.07  },
+  uTime:      { value: 0     },
+  uMode:      { value: 0     }, // 0=edge→center  1=center→edge  2=left→right  3=top→bottom
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 3. GLSL — Particles
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const vtxParticle = /* glsl */`
+  uniform float uInvasion;
+  uniform float uBandwidth;
+  uniform float uScatter;
+  uniform float uPointSize;
+  uniform float uNoise;
+  uniform float uTime;
+  uniform int   uMode;
+
+  attribute vec3  aColor;  // original image color at this pixel
+  attribute vec2  aUV;     // normalized position in image (0-1)
+  attribute float aRnd;    // per-particle random [0, 1]
+
+  varying vec3  vCol;
+  varying float vAlpha;
+
+  // Simple hash-based value noise for irregular dissolution boundary
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  void main() {
+    vCol = aColor;
+
+    // Compute base dissolve-start threshold depending on mode
+    float dfc = length(aUV - 0.5) * 1.4142; // 0=center, ~1=corner
+    float dissolveStart;
+    if      (uMode == 1) dissolveStart = dfc;            // center → edge
+    else if (uMode == 2) dissolveStart = aUV.x;          // left   → right
+    else if (uMode == 3) dissolveStart = aUV.y;          // top    → bottom
+    else                 dissolveStart = 1.0 - dfc;      // edge   → center (default)
+
+    float n = (hash(aUV * 3.7) - 0.5) * uNoise;
+    float noisedStart = clamp(dissolveStart + n, 0.0, 1.0);
+    float ds = smoothstep(noisedStart, noisedStart + uBandwidth, uInvasion);
+
+    // Particle visible in the dissolving band (not at start or end of band)
+    float alpha = smoothstep(0.0, 0.15, ds)
+                * (1.0 - smoothstep(0.65, 1.0, ds));
+
+    // Small jitter that grows as ds increases (particles scatter as they dissolve)
+    float sa    = uScatter * smoothstep(0.05, 0.7, ds);
+    float angle = aRnd * 6.28318 + uTime * (0.12 + aRnd * 0.22);
+    vec2  jitter = vec2(cos(angle), sin(angle)) * sa;
+
+    vec3 pos = position;
+    pos.xy  += jitter;
+
+    // Slight per-particle brightness and density variation
+    vAlpha = alpha * (0.55 + aRnd * 0.45);
+
+    vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+    gl_Position  = projectionMatrix * mv;
+    gl_PointSize = uPointSize;
+  }
+`;
+
+const frgParticle = /* glsl */`
+  varying vec3  vCol;
+  varying float vAlpha;
+  void main() {
+    // Soft circular point
+    vec2  cxy = gl_PointCoord * 2.0 - 1.0;
+    float r   = dot(cxy, cxy);
+    if (r > 1.0) discard;
+    float soft = 1.0 - smoothstep(0.3, 1.0, r);
+    gl_FragColor = vec4(vCol, vAlpha * soft);
+  }
+`;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 4. GLSL — Image Plane
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const vtxPlane = /* glsl */`
+  varying vec2 vUV;
+  void main() {
+    vUV = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+// Image plane uses same dissolution logic as particles — consistent boundary
+const frgPlane = /* glsl */`
+  uniform sampler2D uTex;
+  uniform float     uInvasion;
+  uniform float     uBandwidth;
+  uniform float     uNoise;
+  uniform int       uMode;
+  varying vec2      vUV;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  void main() {
+    vec4 tex = texture2D(uTex, vUV);
+    if (tex.a < 0.01) discard;
+
+    // NOTE: plane vUV.y is flipped vs particle aUV.y
+    // For directional modes, compensate: vUV.y=1 is screen-top (=image-top)
+    float dfc = length(vUV - 0.5) * 1.4142;
+    float dissolveStart;
+    if      (uMode == 1) dissolveStart = dfc;              // center → edge
+    else if (uMode == 2) dissolveStart = vUV.x;            // left   → right
+    else if (uMode == 3) dissolveStart = 1.0 - vUV.y;     // top    → bottom (vUV.y=1 is top)
+    else                 dissolveStart = 1.0 - dfc;        // edge   → center (default)
+
+    float n = (hash(vUV * 3.7) - 0.5) * uNoise;
+    float noisedStart = clamp(dissolveStart + n, 0.0, 1.0);
+    float ds = smoothstep(noisedStart, noisedStart + uBandwidth, uInvasion);
+
+    // Image fades out as dissolution begins
+    float imgAlpha = tex.a * (1.0 - smoothstep(0.0, 0.42, ds));
+    if (imgAlpha < 0.004) discard;
+    gl_FragColor = vec4(tex.rgb, imgAlpha);
+  }
+`;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 5. Mesh Builders
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function buildParticleMesh(data, imgW, imgH, step) {
+  const pos = [], col = [], uv = [], rnd = [];
+
+  for (let y = 0; y < imgH; y += step) {
+    for (let x = 0; x < imgW; x += step) {
+      const i  = (y * imgW + x) * 4;
+      const r  = data[i    ] / 255;
+      const g  = data[i + 1] / 255;
+      const b  = data[i + 2] / 255;
+      const a  = data[i + 3] / 255;
+      // Skip near-transparent or near-black background pixels
+      const lm = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      if (a * lm < 0.02) continue;
+
+      // Map to world space; X scaled by aspect ratio, Y stays [-1, 1]
+      const wx = ((x / imgW) * 2.0 - 1.0) * imgAspect;
+      const wy = 1.0 - (y / imgH) * 2.0;
+      pos.push(wx, wy, 0);
+      col.push(r, g, b);
+      uv.push(x / imgW, y / imgH);
+      rnd.push(Math.random());
+    }
+  }
+
+  if (!pos.length) return null;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('aColor',   new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('aUV',      new THREE.Float32BufferAttribute(uv,  2));
+  geo.setAttribute('aRnd',     new THREE.Float32BufferAttribute(rnd, 1));
+
+  const mat = new THREE.ShaderMaterial({
+    vertexShader:   vtxParticle,
+    fragmentShader: frgParticle,
+    uniforms: {
+      uInvasion:  U.uInvasion,
+      uBandwidth: U.uBandwidth,
+      uScatter:   U.uScatter,
+      uPointSize: U.uPointSize,
+      uNoise:     U.uNoise,
+      uTime:      U.uTime,
+      uMode:      U.uMode,
+    },
+    transparent: true,
+    depthWrite:  false,
+    depthTest:   false,
+  });
+
+  document.getElementById('stat').textContent =
+    `粒子数: ${(pos.length / 3).toLocaleString()}`;
+  return new THREE.Points(geo, mat);
+}
+
+function buildImageMesh(texture) {
+  const geo = new THREE.PlaneGeometry(2 * imgAspect, 2);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader:   vtxPlane,
+    fragmentShader: frgPlane,
+    uniforms: {
+      uTex:       { value: texture },
+      uInvasion:  U.uInvasion,
+      uBandwidth: U.uBandwidth,
+      uNoise:     U.uNoise,
+      uMode:      U.uMode,
+    },
+    transparent: true,
+    depthWrite:  false,
+    depthTest:   false,
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 6. Scene State
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let ptsMesh   = null;
+let imgMesh   = null;
+let imgTex    = null;
+let imgCache  = null; // { data, w, h, offscreen }
+
+function rebuildParticles() {
+  if (!imgCache) return;
+  const { data, w, h } = imgCache;
+  const step = parseInt(document.getElementById('sStep').value);
+  if (ptsMesh) {
+    scene.remove(ptsMesh);
+    ptsMesh.geometry.dispose();
+    ptsMesh.material.dispose();
+  }
+  ptsMesh = buildParticleMesh(data, w, h, step);
+  if (ptsMesh) scene.add(ptsMesh);
+}
+
+function rebuildAll(data, w, h, offscreen) {
+  imgAspect = w / h;      // update before any mesh is built
+  resizeRenderer();       // resize canvas + camera frustum to match
+  // Cleanup
+  if (ptsMesh)  { scene.remove(ptsMesh); ptsMesh.geometry.dispose(); ptsMesh.material.dispose(); }
+  if (imgMesh)  { scene.remove(imgMesh); imgMesh.geometry.dispose(); imgMesh.material.dispose(); }
+  if (imgTex)   imgTex.dispose();
+
+  imgCache = { data, w, h, offscreen };
+  imgTex   = new THREE.CanvasTexture(offscreen);
+  imgMesh  = buildImageMesh(imgTex);
+  scene.add(imgMesh);                  // image first (behind)
+  rebuildParticles();                  // particles on top
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 7. Image Loader
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function loadImageSrc(src) {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const MAX   = 600;
+    const scale = Math.min(1, MAX / img.width, MAX / img.height);
+    const w     = Math.round(img.width  * scale);
+    const h     = Math.round(img.height * scale);
+    const oc    = document.createElement('canvas');
+    oc.width = w; oc.height = h;
+    const ctx = oc.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+    rebuildAll(data, w, h, oc);
+  };
+  img.src = src;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 8. Default Demo Image
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function makeDefaultImage() {
+  const W = 512, H = 512;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+
+  // Black base
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  // Dark purple background fog
+  const bg = ctx.createRadialGradient(W * .5, H * .55, 0, W * .5, H * .5, W * .65);
+  bg.addColorStop(0, '#180030');
+  bg.addColorStop(1, '#000000');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Left cyan light (like the reference image)
+  const cyan = ctx.createRadialGradient(W * .18, H * .58, 0, W * .18, H * .58, W * .5);
+  cyan.addColorStop(0,   'rgba(0, 220, 255, 0.90)');
+  cyan.addColorStop(0.4, 'rgba(0, 120, 210, 0.55)');
+  cyan.addColorStop(1,   'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = cyan;
+  ctx.fillRect(0, 0, W, H);
+
+  // Right purple-magenta light
+  const magenta = ctx.createRadialGradient(W * .82, H * .42, 0, W * .82, H * .42, W * .42);
+  magenta.addColorStop(0,   'rgba(220, 80, 255, 0.80)');
+  magenta.addColorStop(0.5, 'rgba(120, 0, 200, 0.40)');
+  magenta.addColorStop(1,   'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = magenta;
+  ctx.fillRect(0, 0, W, H);
+
+  // Face/skin oval silhouette (warm skin tone)
+  const skin = ctx.createRadialGradient(W * .5, H * .38, 0, W * .5, H * .42, W * .27);
+  skin.addColorStop(0,   '#f0c090');
+  skin.addColorStop(0.4, '#c07840');
+  skin.addColorStop(0.7, '#301500');
+  skin.addColorStop(1,   'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = skin;
+  ctx.fillRect(0, 0, W, H);
+
+  // Hair (dark)
+  const hair = ctx.createRadialGradient(W * .5, H * .2, 0, W * .5, H * .22, W * .22);
+  hair.addColorStop(0,   '#1a0a00');
+  hair.addColorStop(0.6, '#0a0500');
+  hair.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = hair;
+  ctx.fillRect(0, 0, W, H);
+
+  // Clothing/body (dark teal-ish)
+  const body = ctx.createRadialGradient(W * .5, H * .75, 0, W * .5, H * .75, W * .38);
+  body.addColorStop(0,   '#0d2030');
+  body.addColorStop(0.5, '#060f18');
+  body.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = body;
+  ctx.fillRect(0, 0, W, H);
+
+  // Bright title text
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 220, 255, 0.9)';
+  ctx.shadowBlur  = 20;
+  ctx.font        = 'bold 58px Georgia, serif';
+  ctx.textAlign   = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle   = '#ffffff';
+  ctx.fillText('Dissolve', W / 2, H * 0.18);
+  ctx.restore();
+
+  // Sub text
+  ctx.font      = '20px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(160, 220, 255, 0.80)';
+  ctx.fillText('粒子溶解效果演示', W / 2, H * 0.88);
+
+  // Scattered sparkle stars
+  for (let i = 0; i < 90; i++) {
+    const sx = Math.random() * W;
+    const sy = Math.random() * H;
+    const sr = 0.4 + Math.random() * 1.6;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.25 + Math.random() * 0.75})`;
+    ctx.fill();
+  }
+
+  return c.toDataURL();
+}
+
+loadImageSrc(makeDefaultImage());
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 9. Controls
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function bindSlider(sliderId, valId, uniform, scale, digits) {
+  const slider = document.getElementById(sliderId);
+  const label  = document.getElementById(valId);
+  slider.addEventListener('input', () => {
+    uniform.value = parseFloat(slider.value) * scale;
+    label.textContent = uniform.value.toFixed(digits);
+  });
+}
+bindSlider('sInvasion', 'vInvasion', U.uInvasion,  0.01,  2);
+bindSlider('sBw',       'vBw',       U.uBandwidth, 0.01,  2);
+bindSlider('sScatter',  'vScatter',  U.uScatter,   0.001, 3);
+bindSlider('sPtSize',   'vPtSize',   U.uPointSize, 0.1,   1);
+bindSlider('sNoise',    'vNoise',    U.uNoise,     0.01,  2);
+
+document.getElementById('sStep').addEventListener('input', e => {
+  document.getElementById('vStep').textContent = e.target.value;
+  rebuildParticles();
+});
+
+document.getElementById('imgFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) loadImageSrc(URL.createObjectURL(file));
+});
+
+// Auto-play
+let autoPlay = false, autoDir = 1, autoVal = 0.5;
+const btnAuto = document.getElementById('btnAuto');
+btnAuto.addEventListener('click', () => {
+  autoPlay = !autoPlay;
+  btnAuto.textContent = autoPlay ? '⏸ 暂停' : '▶ 自动播放';
+  btnAuto.classList.toggle('active', autoPlay);
+  if (autoPlay) autoVal = U.uInvasion.value;
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  autoPlay = false;
+  autoVal  = 0;
+  autoDir  = 1;
+  U.uInvasion.value = 0;
+  document.getElementById('sInvasion').value = 0;
+  document.getElementById('vInvasion').textContent = '0.00';
+  btnAuto.textContent = '▶ 自动播放';
+  btnAuto.classList.remove('active');
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Presets
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const PRESETS = [
+  {
+    name: '灰尘消散',
+    // 截图同款：径向从外向内，中密度粒子，小散开
+    mode: 0, invasion: 0.70, bandwidth: 0.30,
+    scatter: 0.057, ptSize: 4.0, step: 1, noise: 0.07,
+  },
+  {
+    name: '星云扩张',
+    // 从中心向外爆发，宽过渡带，粒子向外扩散
+    mode: 1, invasion: 0.52, bandwidth: 0.40,
+    scatter: 0.065, ptSize: 3.5, step: 2, noise: 0.16,
+  },
+  {
+    name: '线性扫除',
+    // 从左向右线性消除，窄过渡带，锐利边界
+    mode: 2, invasion: 0.50, bandwidth: 0.16,
+    scatter: 0.028, ptSize: 3.0, step: 2, noise: 0.05,
+  },
+  {
+    name: '雾化飘落',
+    // 从上向下雾化，超宽过渡带，粒子几乎不散开，梦幻感
+    mode: 3, invasion: 0.55, bandwidth: 0.48,
+    scatter: 0.015, ptSize: 2.5, step: 2, noise: 0.22,
+  },
+];
+
+function applyPreset(p) {
+  U.uInvasion.value  = p.invasion;
+  U.uBandwidth.value = p.bandwidth;
+  U.uScatter.value   = p.scatter;
+  U.uPointSize.value = p.ptSize;
+  U.uNoise.value     = p.noise;
+  U.uMode.value      = p.mode;
+
+  document.getElementById('sInvasion').value        = Math.round(p.invasion * 100);
+  document.getElementById('vInvasion').textContent  = p.invasion.toFixed(2);
+  document.getElementById('sBw').value              = Math.round(p.bandwidth * 100);
+  document.getElementById('vBw').textContent        = p.bandwidth.toFixed(2);
+  document.getElementById('sScatter').value         = Math.round(p.scatter * 1000);
+  document.getElementById('vScatter').textContent   = p.scatter.toFixed(3);
+  document.getElementById('sPtSize').value          = Math.round(p.ptSize * 10);
+  document.getElementById('vPtSize').textContent    = p.ptSize.toFixed(1);
+  document.getElementById('sStep').value            = p.step;
+  document.getElementById('vStep').textContent      = p.step;
+  document.getElementById('sNoise').value           = Math.round(p.noise * 100);
+  document.getElementById('vNoise').textContent     = p.noise.toFixed(2);
+
+  // Rebuild particles only if step changed
+  if (imgCache && parseInt(document.getElementById('sStep').value) !== p.step) {
+    rebuildParticles();
+  }
+
+  document.querySelectorAll('.preset-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === PRESETS.indexOf(p));
+  });
+}
+
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => applyPreset(PRESETS[+btn.dataset.idx]));
+});
+
+// Apply preset 0 on load to sync sliders
+applyPreset(PRESETS[0]);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 10. Render Loop
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const clock = new THREE.Clock();
+(function loop() {
+  requestAnimationFrame(loop);
+  const dt = clock.getDelta();
+  U.uTime.value += dt;
+
+  if (autoPlay) {
+    autoVal += dt * 0.14 * autoDir;
+    if (autoVal >=  1.12) { autoVal =  1.12; autoDir = -1; }
+    if (autoVal <= -0.12) { autoVal = -0.12; autoDir =  1; }
+    U.uInvasion.value = Math.max(0, Math.min(1, autoVal));
+    document.getElementById('sInvasion').value =
+      Math.round(U.uInvasion.value * 100);
+    document.getElementById('vInvasion').textContent =
+      U.uInvasion.value.toFixed(2);
+  }
+
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>

@@ -259,6 +259,7 @@ export class ParticleRenderer {
         uWaveStrength: { value: 0.026 }, uWaveScale: { value: 2.6 }, uWaveSpeed: { value: 0.5 },
         uInvasionRange: { value: 0.38 }, uEdgeSoftness: { value: 0.24 }, uIrregularity: { value: 0.32 },
         uNoiseScale: { value: 3.4 }, uOuterDispersion: { value: 0.7 }, uColorRetention: { value: 0.82 },
+        uInnerCrossStrength: { value: 0.72 },
       },
     });
 
@@ -305,6 +306,7 @@ export class ParticleRenderer {
     this.particleMaterial.uniforms.uNoiseScale.value = params.noiseScale;
     this.particleMaterial.uniforms.uOuterDispersion.value = params.outerDispersion;
     this.particleMaterial.uniforms.uColorRetention.value = params.colorRetention;
+    this.particleMaterial.uniforms.uInnerCrossStrength.value = params.innerCrossStrength;
     if (this.imageSurface) this.applySurfaceParams(this.imageSurface, params);
     this.bloomPass.strength = params.bloomStrength * (this.reduced ? 0.55 : 1);
     this.bloomPass.radius = params.bloomRadius;

@@ -29,6 +29,7 @@ export const DEFAULT_PARTICLE_PARAMS: ParticleParams = {
   noiseScale: 4.8,
   outerDispersion: 1.08,
   colorRetention: 0.46,
+  innerCrossStrength: 0.72,
 };
 
 export const PARTICLE_PRESETS: Record<PresetId, ParticleParams> = {
@@ -42,6 +43,7 @@ export const PARTICLE_PRESETS: Record<PresetId, ParticleParams> = {
     invasionRange: 0.32,
     edgeSoftness: 0.23,
     colorRetention: 0.78,
+    innerCrossStrength: 0.38,
     bloomStrength: 0,
     bloomThreshold: 0.74,
   },
@@ -57,6 +59,7 @@ export const PARTICLE_PRESETS: Record<PresetId, ParticleParams> = {
     irregularity: 0.42,
     outerDispersion: 0.86,
     colorRetention: 0.74,
+    innerCrossStrength: 0.3,
   },
   neon: {
     ...DEFAULT_PARTICLE_PARAMS,
@@ -73,6 +76,7 @@ export const PARTICLE_PRESETS: Record<PresetId, ParticleParams> = {
     noiseScale: 6.8,
     outerDispersion: 1.42,
     colorRetention: 0.16,
+    innerCrossStrength: 0.82,
     bloomStrength: 0,
     bloomRadius: 0.34,
     bloomThreshold: 0.68,
@@ -87,16 +91,17 @@ export const PARTICLE_PRESETS: Record<PresetId, ParticleParams> = {
     edgeSoftness: 0.18,
     irregularity: 0.68,
     colorRetention: 0.34,
+    innerCrossStrength: 0.68,
     bloomStrength: 0,
     bloomRadius: 0.3,
     bloomThreshold: 0.7,
   },
   reference: {
     ...DEFAULT_PARTICLE_PARAMS,
-    brightnessThreshold: 0.08,
+    brightnessThreshold: 0.03,
     contrast: 1.52,
     saturation: 0.22,
-    density: 0.62,
+    density: 0.8,
     particleSize: 1.44,
     scatter: 0.05,
     driftSpeed: 0.02,
@@ -110,6 +115,7 @@ export const PARTICLE_PRESETS: Record<PresetId, ParticleParams> = {
     noiseScale: 7.4,
     outerDispersion: 1.5,
     colorRetention: 0.1,
+    innerCrossStrength: 0.9,
     bloomStrength: 0,
     bloomRadius: 0.38,
     bloomThreshold: 0.66,
@@ -143,6 +149,7 @@ export const normalizeParams = (params: ParticleParams): ParticleParams => ({
   noiseScale: clamp(params.noiseScale, 1, 10),
   outerDispersion: clamp(params.outerDispersion, 0, 1.6),
   colorRetention: clamp(params.colorRetention, 0, 1),
+  innerCrossStrength: clamp(params.innerCrossStrength, 0, 1),
 });
 
 export const STRUCTURAL_PARAM_KEYS = new Set<keyof ParticleParams>([

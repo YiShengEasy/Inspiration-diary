@@ -29,6 +29,7 @@ export const particleVertexShader = /* glsl */ `
   uniform float uNoiseScale;
   uniform float uOuterDispersion;
   uniform float uColorRetention;
+  uniform float uInnerCrossStrength;
 
   float hash21(vec2 point) {
     point = fract(point * vec2(123.34, 456.21));
@@ -83,12 +84,17 @@ export const particleVertexShader = /* glsl */ `
     float innerInvasion = smoothstep(0.46, 0.88, invasion)
       * (1.0 - smoothstep(0.94, 1.0, invasion));
     float contentGate = smoothstep(0.06, 0.28, aContent);
-    float innerErosion = innerInvasion
+    // Soft presence for density falloff only — NOT used to gate innerErosion
+    float contentPresence = smoothstep(0.05, 0.22, aContent);
+    float srcLuminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    // Use contentGate (stricter) so pure background pixels never get particles
+    float innerErosion = smoothstep(0.38, 0.82, invasion)
       * contentGate
-      * clamp(aBoundary * 0.96 + aEdge * 0.24 + aContent * 0.18, 0.0, 1.0);
-    float erodedVoid = smoothstep(0.76, 1.0, invasion);
-    float particleRegion = innerErosion
-      * (1.0 - erodedVoid);
+      * clamp(aBoundary * 0.96 + aEdge * 0.28 + aContent * 0.22, 0.0, 1.0);
+    float erodedVoid = smoothstep(0.86, 1.0, invasion);
+    float particleRegion = innerErosion * (1.0 - erodedVoid);
+    // Push dissolution particles in front of image surface (fix z-layering)
+    transformed.z += particleRegion * 0.15;
     transformed.xy += fieldDirection * particleRegion
       * uOuterDispersion * distanceNoise * 0.075;
 
@@ -102,11 +108,21 @@ export const particleVertexShader = /* glsl */ `
       * uExit * (0.35 + invasion);
 
     float particlePresence = particleRegion;
-    float densityChance = mix(0.2, 0.9, innerInvasion)
-      * mix(0.65, 1.0, contentGate)
+    float innerEdgeBand = smoothstep(0.48, 0.76, invasion)
+      * (1.0 - smoothstep(0.84, 0.97, invasion))
+      * contentGate;
+    float crossNoiseA = valueNoise(fieldUv * 2.25 + loopOffset * 0.62 + randomVector.xy * 4.2);
+    float crossNoiseB = valueNoise(fieldUv.yx * 2.05 - loopOffset * 0.48 + randomVector.yz * 3.8);
+    float crossMix = clamp(abs(crossNoiseA - crossNoiseB) * 1.25 + aBoundary * 0.2, 0.0, 1.0);
+    float crossStrength = clamp(uInnerCrossStrength, 0.0, 1.0);
+    float colorCrossGate = step(0.43, 1.0 - crossMix + (1.0 - aRandom) * 0.16) * innerEdgeBand * crossStrength;
+    float blackCrossGate = step(0.53, crossMix + aRandom * 0.14) * innerEdgeBand * crossStrength;
+    float densityChance = mix(0.2, 0.9, smoothstep(0.38, 0.82, invasion))
+      * mix(0.55, 1.0, contentPresence)
       * mix(0.72, 1.0, aBoundary);
+    densityChance = min(0.98, densityChance + innerEdgeBand * 0.22 * crossStrength);
     float densityGate = step(aRandom, densityChance);
-    float originalLuminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    float originalLuminance = srcLuminance;
     float highlight = smoothstep(0.62, 0.96, originalLuminance)
       * clamp(aEdge * 1.35 + aBoundary * 0.82, 0.0, 1.0);
     float maxChannel = max(color.r, max(color.g, color.b));
@@ -119,15 +135,18 @@ export const particleVertexShader = /* glsl */ `
     float auraLift = mix(1.0, 1.32, smoothstep(0.35, 0.95, originalLuminance));
     float auraMix = erosionBoundary * (1.0 - contentGate) * (1.0 - uColorRetention) * 0.62;
     vColor = mix(vColor, auraColor * auraLift, auraMix);
-    float originalMix = innerInvasion * contentGate * 0.88;
+    float originalMix = innerErosion * 0.88;
     vColor = mix(vColor, color, originalMix);
+    vColor = mix(vColor, color, colorCrossGate * 0.96);
+    vColor = mix(vColor, vec3(0.0), blackCrossGate * 0.9);
     vColor *= mix(0.92, 1.12, erosionBoundary);
 
     vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     gl_PointSize = uPointSize * aScale * (5.0 / max(1.0, -mvPosition.z));
+    float crossPresence = clamp(max(colorCrossGate, blackCrossGate), 0.0, 1.0);
     vAlpha = smoothstep(0.0, 0.18, uProgress) * aOpacity * particlePresence
-      * densityGate * (1.0 - uExit);
+      * densityGate * (1.0 - uExit) * mix(0.82, 1.24, crossPresence * crossStrength);
     vTwinkle = 0.9 + sin(phase * 2.0) * 0.1 * mix(0.25, 1.0, particleRegion);
   }
 `;

@@ -30,6 +30,7 @@ export interface ParticleParams {
   noiseScale: number;
   outerDispersion: number;
   colorRetention: number;
+  innerCrossStrength: number;
 }
 
 export interface ParticleSource {

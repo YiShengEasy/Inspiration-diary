@@ -165,8 +165,8 @@ function retainSubstantialComponents(
     largest = Math.max(largest, tail);
     component += 1;
   }
-  const absoluteFloor = Math.min(24, Math.max(1, Math.floor(values.length * 0.0005)));
-  const minimumSize = Math.max(absoluteFloor, Math.floor(largest * 0.055));
+  const absoluteFloor = Math.min(12, Math.max(1, Math.floor(values.length * 0.0002)));
+  const minimumSize = Math.max(absoluteFloor, Math.floor(largest * 0.015));
   const gate = new Float32Array(values.length);
   for (let index = 0; index < values.length; index += 1) {
     const label = labels[index];
@@ -211,7 +211,7 @@ export function computeContentMask(
       (height - y - 0.5) / height,
     );
     // Keep the uploaded raster boundary from becoming the dissolve boundary.
-    const frameFade = smoothstep(edgeDistance, 0.015, 0.11);
+    const frameFade = smoothstep(edgeDistance, 0.008, 0.09);
     const brightnessPresence = smoothstep(
       luminance[index],
       params.brightnessThreshold * 0.5,
@@ -233,7 +233,7 @@ export function computeContentMask(
   const innerRadius = Math.min(12, Math.max(1, Math.round(minDimension * 0.006)));
   const outerRadius = Math.min(30, Math.max(2, Math.round(minDimension * 0.022)));
   const initialInner = boxBlur(raw, width, height, innerRadius);
-  const componentGate = retainSubstantialComponents(initialInner, width, height, 0.18);
+  const componentGate = retainSubstantialComponents(initialInner, width, height, 0.12);
   const filteredRaw = new Float32Array(raw.length);
   for (let index = 0; index < raw.length; index += 1) filteredRaw[index] = raw[index] * componentGate[index];
   const inner = boxBlur(filteredRaw, width, height, innerRadius);
@@ -248,7 +248,7 @@ export function computeContentMask(
       (width - x - 0.5) / width,
       (height - y - 0.5) / height,
     );
-    const frameFade = smoothstep(edgeDistance, 0.018, 0.13);
+    const frameFade = smoothstep(edgeDistance, 0.008, 0.1);
     const denseNeighborhood = smoothstep(inner[index], 0.055, 0.26);
     content[index] = frameFade * clamp01(Math.max(
       filteredRaw[index] * denseNeighborhood,

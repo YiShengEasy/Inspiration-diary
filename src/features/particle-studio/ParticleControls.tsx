@@ -30,6 +30,7 @@ const groups: Array<{ title: string; controls: Control[] }> = [
     { key: "noiseScale", label: "噪声尺度", min: 1, max: 10, step: 0.1 },
     { key: "outerDispersion", label: "侵蚀带离散度", min: 0, max: 1.6, step: 0.01 },
     { key: "colorRetention", label: "原色保留度", min: 0, max: 1, step: 0.01 },
+    { key: "innerCrossStrength", label: "内边缘交叉强度", min: 0, max: 1, step: 0.01 },
   ] },
   { title: "粒子动势", controls: [
     { key: "particleSize", label: "粒子大小", min: 0.6, max: 4.2, step: 0.1 },
