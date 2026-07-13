@@ -227,3 +227,30 @@ test("rejects wildcard object keys and oversized prefix reads", async () => {
     /between 1 and 16384/iu,
   );
 });
+
+test("reads a finalized document only through the bounded full-object path", async () => {
+  const bytes = Buffer.from("# bounded document");
+  const getCalls: unknown[][] = [];
+  const { dependencies } = createDependencies();
+  dependencies.objectClient = {
+    async head() {
+      return { res: { headers: { "content-length": String(bytes.length), "content-type": "text/markdown" } } };
+    },
+    async get(...args: unknown[]) {
+      getCalls.push(args);
+      return { content: bytes };
+    },
+    async copy() { return {}; },
+    async delete() { return {}; },
+  };
+  const gateway = createOssDirectUploadGateway(createConfig(), dependencies);
+
+  assert.deepEqual(
+    await gateway.readObject("media/user_42/document/2026/07/upload-7.md", 20 * 1024 * 1024),
+    Uint8Array.from(bytes),
+  );
+  assert.deepEqual(getCalls, [[
+    "media/user_42/document/2026/07/upload-7.md",
+    { headers: { Range: `bytes=0-${20 * 1024 * 1024}` } },
+  ]]);
+});

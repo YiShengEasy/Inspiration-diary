@@ -145,6 +145,9 @@ function fakeGateway(overrides: Partial<DirectUploadGateway> = {}): DirectUpload
     async readPrefix(_key, maxBytes) {
       return JPEG.subarray(0, maxBytes);
     },
+    async readObject(_key, maxBytes) {
+      return JPEG.subarray(0, maxBytes);
+    },
     async copy() {},
     async delete() {},
     ...overrides,

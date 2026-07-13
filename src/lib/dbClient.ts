@@ -21,6 +21,7 @@ import {
   WeeklyNote,
 } from "../types";
 import { authFetch } from "./authClient";
+import { isDirectUploadUnavailable, uploadDirect } from "./directUploadClient";
 
 // Detect if we are in PostgreSQL Mode
 const isPostgresMode = (import.meta as any).env.VITE_DATABASE_TYPE === "postgres";
@@ -349,6 +350,30 @@ export const MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024;
 export const MAX_IMAGE_ASSET_UPLOAD_BYTES = 25 * 1024 * 1024;
 export const MAX_DOCUMENT_UPLOAD_BYTES = 20 * 1024 * 1024;
 
+const DIRECT_UPLOAD_MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+  pdf: "application/pdf",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  txt: "text/plain",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+function withDirectUploadMime(file: File): File {
+  if (file.type) return file;
+  const extension = file.name.toLowerCase().split(".").pop() || "";
+  const mimeType = DIRECT_UPLOAD_MIME_BY_EXTENSION[extension];
+  if (!mimeType) return file;
+  return new File([file], file.name, { type: mimeType, lastModified: file.lastModified });
+}
+
 export function isSupportedVideoFile(file: File): boolean {
   const lowerName = file.name.toLowerCase();
   return file.type === "video/mp4"
@@ -376,6 +401,30 @@ export async function uploadVideoAsset(params: {
   }
   if (params.file.size > MAX_VIDEO_UPLOAD_BYTES) {
     throw new Error("视频不能超过 100MB。");
+  }
+
+  try {
+    const { uploadId } = await uploadDirect(withDirectUploadMime(params.file), "video");
+    const res = await authFetch("/api/videos/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        uploadId,
+        cardId: params.cardId,
+        newCardId: params.newCardId,
+        weekId: params.weekId,
+        dayIndex: params.dayIndex,
+        bookId: params.bookId,
+        durationMs: params.durationMs,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `视频上传失败：${res.statusText}`);
+    }
+    return res.json();
+  } catch (error) {
+    if (!isDirectUploadUnavailable(error)) throw error;
   }
 
   const form = new FormData();
@@ -444,7 +493,7 @@ export function isSupportedDocumentFile(file: File): boolean {
     || lowerName.endsWith(".docx");
 }
 
-export async function extractDocumentText(file: File): Promise<{ text: string; filename: string; kind: string; truncated: boolean }> {
+export async function extractDocumentText(file: File): Promise<{ text: string; filename: string; kind: string; truncated: boolean; uploadId?: string }> {
   if (!isPostgresMode) {
     if (file.name.toLowerCase().endsWith(".md") || file.type === "text/markdown" || file.type === "text/plain") {
       return { text: await file.text(), filename: file.name, kind: "text", truncated: false };
@@ -456,6 +505,28 @@ export async function extractDocumentText(file: File): Promise<{ text: string; f
   }
   if (file.size > MAX_DOCUMENT_UPLOAD_BYTES) {
     throw new Error("文档不能超过 20MB。");
+  }
+
+  try {
+    const { uploadId } = await uploadDirect(withDirectUploadMime(file), "document");
+    const res = await authFetch("/api/documents/extract-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uploadId, filename: file.name || "document" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `文档解析失败：${res.statusText}`);
+    }
+    return {
+      text: String(data.text || ""),
+      filename: String(data.filename || file.name || "文档"),
+      kind: String(data.kind || ""),
+      truncated: Boolean(data.truncated),
+      uploadId,
+    };
+  } catch (error) {
+    if (!isDirectUploadUnavailable(error)) throw error;
   }
 
   const form = new FormData();
@@ -488,6 +559,22 @@ export async function uploadImageAsset(params: {
   }
   if (params.file.size > MAX_IMAGE_ASSET_UPLOAD_BYTES) {
     throw new Error("图片不能超过 25MB。");
+  }
+
+  try {
+    const { uploadId } = await uploadDirect(withDirectUploadMime(params.file), "image_asset");
+    const res = await authFetch("/api/images/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uploadId, cardId: params.cardId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `图片上传失败：${res.statusText}`);
+    }
+    return res.json();
+  } catch (error) {
+    if (!isDirectUploadUnavailable(error)) throw error;
   }
 
   const form = new FormData();
@@ -582,6 +669,26 @@ export async function uploadComboImage(params: {
     throw new Error("图片不能超过 25MB。");
   }
 
+  try {
+    const { uploadId } = await uploadDirect(withDirectUploadMime(params.file), "combo_image");
+    const res = await authFetch(`/api/db/cards/${encodeURIComponent(params.cardId)}/combo/images`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        uploadId,
+        role: params.role,
+        sortOrder: params.sortOrder || 0,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `参考图上传失败：${res.statusText}`);
+    }
+    return data;
+  } catch (error) {
+    if (!isDirectUploadUnavailable(error)) throw error;
+  }
+
   const form = new FormData();
   form.append("image", params.file, params.file.name || "image.jpg");
   form.append("role", params.role);
@@ -613,6 +720,27 @@ export async function createComboGeneration(params: {
   }
   if (params.file.size > MAX_VIDEO_UPLOAD_BYTES) {
     throw new Error("视频不能超过 100MB。");
+  }
+
+  try {
+    const { uploadId } = await uploadDirect(withDirectUploadMime(params.file), "combo_video");
+    const res = await authFetch(`/api/db/cards/${encodeURIComponent(params.cardId)}/combo/generations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        uploadId,
+        promptNote: params.promptNote,
+        sortOrder: params.sortOrder || 0,
+        durationMs: params.durationMs,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `生成记录保存失败：${res.statusText}`);
+    }
+    return data;
+  } catch (error) {
+    if (!isDirectUploadUnavailable(error)) throw error;
   }
 
   const form = new FormData();
@@ -673,12 +801,15 @@ export async function deleteComboGeneration(cardId: string, generationId: string
 /**
  * Persists a polaroid aesthetic image card
  */
-export async function saveCard(card: ImageCard): Promise<void> {
+export async function saveCard(
+  card: ImageCard,
+  uploads: { uploadId?: string; documentUploadId?: string } = {},
+): Promise<void> {
   if (isPostgresMode) {
     const res = await authFetch(`/api/db/cards`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(card),
+      body: JSON.stringify({ ...card, ...uploads }),
     });
     if (!res.ok) {
       throw new Error(`Failed to save card via local API: ${res.statusText}`);

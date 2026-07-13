@@ -44,6 +44,8 @@ import { CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY, CUSTOM_TAG_LIBRARY_SETTINGS_KE
 import MarkdownContent from "./components/MarkdownContent";
 import OnDemandVideo from "./components/OnDemandVideo";
 import ProgressiveImage from "./components/ProgressiveImage";
+import { isDirectUploadUnavailable, uploadDirect } from "./lib/directUploadClient";
+import { createImageAnalysisCopy, DEFAULT_ANALYSIS_MAX_BYTES } from "./lib/imageAnalysisCopy";
 
 const ParticleStudio = React.lazy(() => import("./features/particle-studio/ParticleStudio"));
 
@@ -67,9 +69,19 @@ type SmartSuggestionGroup = {
 type UploadTargetOptions = {
   targetWeekId?: string;
   targetBookId?: string;
+  documentUploadId?: string;
 };
 
 type MainView = "board" | "books" | "tags" | "particles";
+
+function directImageMimeType(file: File): string {
+  if (file.type) return file.type;
+  const extension = file.name.toLowerCase().split(".").pop();
+  if (extension === "png") return "image/png";
+  if (extension === "webp") return "image/webp";
+  if (extension === "gif") return "image/gif";
+  return "image/jpeg";
+}
 
 export default function App() {
   const shouldShowMockTools = import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK_TOOLS !== "false";
@@ -760,28 +772,52 @@ export default function App() {
       ];
 	      const selectedFallback = fallbackOptions[Math.floor(Math.random() * fallbackOptions.length)];
 
-      const storeForm = new FormData();
-      storeForm.append("image", originalFile, originalFile.name || "inspiration-upload.jpg");
-      storeForm.append("source", "web");
+      let primaryUploadId: string | undefined;
+      let storedImage: Record<string, string>;
+      try {
+        const directFile = originalFile.type
+          ? originalFile
+          : new File([originalFile], originalFile.name || "inspiration-upload.jpg", {
+              type: directImageMimeType(originalFile),
+              lastModified: originalFile.lastModified,
+            });
+        const direct = await uploadDirect(directFile, "primary_image");
+        primaryUploadId = direct.uploadId;
+        const encodedKey = encodeURIComponent(direct.finalObjectKey);
+        storedImage = {
+          photoUid: direct.finalObjectKey,
+          photoHash: "",
+          storageProvider: "oss",
+          storageKey: direct.finalObjectKey,
+          imageUrl: `/api/objects/primary-detail/${encodedKey}`,
+          thumbnail240Url: `/api/objects/primary-thumb-240/${encodedKey}`,
+          thumbnailUrl: `/api/objects/primary-thumb/${encodedKey}`,
+          originalImageUrl: `/api/objects/primary/${encodedKey}`,
+        };
+      } catch (error) {
+        if (!isDirectUploadUnavailable(error)) throw error;
 
-	      const storeResponse = await authFetch("/api/store-image", {
-	        method: "POST",
-	        body: storeForm,
-	      });
+        const storeForm = new FormData();
+        storeForm.append("image", originalFile, originalFile.name || "inspiration-upload.jpg");
+        storeForm.append("source", "web");
+        const storeResponse = await authFetch("/api/store-image", {
+          method: "POST",
+          body: storeForm,
+        });
 
-	      if (!storeResponse.ok) {
-	        const rawErrorText = await storeResponse.text();
-	        let message = rawErrorText;
-	        try {
-	          const parsed = JSON.parse(rawErrorText);
-	          message = parsed.error || message;
-	        } catch {
-	          // Keep raw response text.
-	        }
-	        throw new Error(message || `PhotoPrism upload failed with status ${storeResponse.status}`);
-	      }
-
-	      const storedImage = await storeResponse.json();
+        if (!storeResponse.ok) {
+          const rawErrorText = await storeResponse.text();
+          let message = rawErrorText;
+          try {
+            const parsed = JSON.parse(rawErrorText);
+            message = parsed.error || message;
+          } catch {
+            // Keep raw response text.
+          }
+          throw new Error(message || `Image upload failed with status ${storeResponse.status}`);
+        }
+        storedImage = await storeResponse.json();
+      }
       const imageUrl = storedImage.imageUrl || "";
       const thumbnail240Url = storedImage.thumbnail240Url || storedImage.thumbnailUrl || imageUrl;
       const thumbnailUrl = storedImage.thumbnailUrl || "";
@@ -805,7 +841,7 @@ export default function App() {
         createdAt: Date.now(),
       };
 
-      await saveCard(newCard);
+	      await saveCard(newCard, primaryUploadId ? { uploadId: primaryUploadId } : undefined);
       if (targetBookId) {
         await setCardBookMembership(cardId, targetBookId, true);
         handleBookMembershipChanged();
@@ -819,7 +855,16 @@ export default function App() {
 
         try {
           const analyzeForm = new FormData();
-          analyzeForm.append("image", analysisBlob, "analysis.jpg");
+          let boundedAnalysisBlob = analysisBlob;
+          if (analysisBlob === originalFile || analysisBlob.size > DEFAULT_ANALYSIS_MAX_BYTES) {
+            try {
+              boundedAnalysisBlob = await createImageAnalysisCopy(originalFile);
+            } catch (error) {
+              console.warn("Image analysis skipped because a bounded copy could not be created:", error);
+              return;
+            }
+          }
+          analyzeForm.append("image", boundedAnalysisBlob, "analysis.jpg");
           const bookHints = await loadSmartBookHints("image");
           if (bookHints.length > 0) {
             analyzeForm.append("bookHints", JSON.stringify(bookHints));
@@ -965,7 +1010,12 @@ export default function App() {
         insightNote: mdInsightNote,
       };
 
-      await saveCard(newCard);
+      await saveCard(
+        newCard,
+        options.documentUploadId
+          ? { documentUploadId: options.documentUploadId }
+          : undefined,
+      );
       if (targetBookId) {
         await setCardBookMembership(cardId, targetBookId, true);
         handleBookMembershipChanged();
@@ -986,11 +1036,17 @@ export default function App() {
     });
   };
 
-  const handleUploadMdToBook = async (bookId: string, text: string, filename: string) => {
+  const handleUploadMdToBook = async (
+    bookId: string,
+    text: string,
+    filename: string,
+    documentUploadId?: string,
+  ) => {
     const today = new Date();
     await handleUploadMd(getDayIndexForDate(today), text, filename, {
       targetWeekId: getWeekIdentifier(today),
       targetBookId: bookId,
+      documentUploadId,
     });
   };
 

@@ -20,7 +20,16 @@ import { deliverOssObject, imageProcessFor, type ImageVariant, type MediaProcess
 import { createOssDirectUploadGateway } from "./src/server/direct-upload/ossGateway";
 import { createUploadSessionRepository } from "./src/server/direct-upload/repository";
 import { createDirectUploadRouter } from "./src/server/direct-upload/router";
-import { createDirectUploadService } from "./src/server/direct-upload/service";
+import {
+  createDirectUploadService,
+  DirectUploadServiceError,
+  type DirectUploadService,
+} from "./src/server/direct-upload/service";
+import {
+  claimBusinessUpload,
+  DirectUploadBusinessClaimError,
+} from "./src/server/direct-upload/businessClaims";
+import type { DirectUploadGateway } from "./src/server/direct-upload/ossGateway";
 import { findBookSuggestionCandidates } from "./src/lib/bookSuggestion";
 import type { BookSuggestionFeedbackAction, ImageCard } from "./src/types";
 
@@ -47,6 +56,7 @@ const PORT = runtimeConfig.port;
 const MAX_VIDEO_UPLOAD_BYTES = Number.parseInt(process.env.MAX_VIDEO_UPLOAD_BYTES || String(100 * 1024 * 1024), 10);
 const MAX_IMAGE_ASSET_UPLOAD_BYTES = Number.parseInt(process.env.MAX_IMAGE_ASSET_UPLOAD_BYTES || String(25 * 1024 * 1024), 10);
 const MAX_DOCUMENT_UPLOAD_BYTES = Number.parseInt(process.env.MAX_DOCUMENT_UPLOAD_BYTES || String(20 * 1024 * 1024), 10);
+const DIRECT_DOCUMENT_HARD_LIMIT_BYTES = 20 * 1024 * 1024;
 const MAX_DOCUMENT_TEXT_CHARS = Number.parseInt(process.env.MAX_DOCUMENT_TEXT_CHARS || "300000", 10);
 const OSS_IMAGE_PROCESSES: MediaProcesses = {
   "thumb-240": process.env.OSS_THUMB_240_PROCESS || "image/resize,w_240/quality,Q_70/format,webp",
@@ -74,6 +84,7 @@ const imageAssetStorage = createImageAssetStorage({
     imageAssetUploadRoot: IMAGE_ASSET_UPLOAD_ROOT,
   },
 });
+let directOssStorage: ReturnType<typeof createVideoStorage> | null = null;
 const SUPPORTED_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
 const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const upload = multer({
@@ -104,6 +115,7 @@ const documentUpload = multer({
     files: 1,
   },
 });
+let directDocumentExtractionActive = false;
 
 function getCompletionsUrl(baseUrl: string): string {
   let url = baseUrl.trim();
@@ -305,7 +317,7 @@ function imageStorageKeyToLocalPath(storageKey: string): string {
 async function deleteVideoStorageObject(storageProvider: string, storageKey: string): Promise<void> {
   if (!storageKey) return;
   if (storageProvider === "oss") {
-    await videoStorage.deleteObject(storageKey);
+    await (directOssStorage || videoStorage).deleteObject(storageKey);
     return;
   }
   await fs.unlink(storageKeyToLocalPath(storageKey)).catch(() => undefined);
@@ -314,7 +326,7 @@ async function deleteVideoStorageObject(storageProvider: string, storageKey: str
 async function deleteImageAssetStorageObject(storageProvider: string, storageKey: string): Promise<void> {
   if (!storageKey) return;
   if (storageProvider === "oss") {
-    await imageAssetStorage.deleteObject(storageKey);
+    await (directOssStorage || imageAssetStorage).deleteObject(storageKey);
     return;
   }
   await fs.unlink(imageStorageKeyToLocalPath(storageKey)).catch(() => undefined);
@@ -440,7 +452,7 @@ async function proxySignedObjectUrl(req: express.Request, res: express.Response,
 
 function mapVideoAssetRow(row: any, req: express.Request) {
   if (!row) return null;
-  const isOssVideo = row.storage_provider === "oss" && typeof row.storage_key === "string" && row.storage_key.startsWith("videos/");
+  const isOssVideo = row.storage_provider === "oss" && Boolean(row.storage_key);
   return {
     id: row.id,
     cardId: row.card_id || "",
@@ -603,7 +615,11 @@ function primaryObjectUrl(storageKey: string, req: express.Request, variant: Ima
 }
 
 function shouldUseOssPrimaryProxy(row: any) {
-  return runtimeConfig.primaryImageStorageProvider === "oss" && typeof row.photo_uid === "string" && row.photo_uid.startsWith("primary-images/");
+  if (typeof row.photo_uid !== "string") return false;
+  return (
+    (runtimeConfig.primaryImageStorageProvider === "oss" && row.photo_uid.startsWith("primary-images/")) ||
+    row.photo_uid.includes("/primary_image/")
+  );
 }
 
 function mapCardRows(rows: any[], req: express.Request) {
@@ -753,6 +769,8 @@ if (apiKey) {
 const { Pool } = pg;
 const dbType = runtimeConfig.databaseType;
 let pgPool: pg.Pool | null = null;
+let directUploadService: DirectUploadService | null = null;
+let directUploadGateway: DirectUploadGateway | null = null;
 
 if (dbType === "postgres") {
   console.log("Configuring server database for local/remote PostgreSQL...");
@@ -1099,9 +1117,14 @@ if (runtimeConfig.directUpload.mode === "off") {
     }),
   );
 } else if (pgPool) {
-  const directUploadService = createDirectUploadService({
+  directUploadGateway = createOssDirectUploadGateway(runtimeConfig);
+  directOssStorage = createVideoStorage({
+    ...runtimeConfig,
+    videoStorageProvider: "oss",
+  });
+  directUploadService = createDirectUploadService({
     repository: createUploadSessionRepository(pgPool),
-    gateway: createOssDirectUploadGateway(runtimeConfig),
+    gateway: directUploadGateway,
     config: {
       authorizationTtlSeconds: runtimeConfig.directUpload.authorizationTtlSeconds,
       videoStsTtlSeconds: runtimeConfig.directUpload.videoStsTtlSeconds,
@@ -1111,6 +1134,7 @@ if (runtimeConfig.directUpload.mode === "off") {
       maxDocumentBytes: runtimeConfig.directUpload.maxDocumentBytes,
       maxVideoBytes: runtimeConfig.directUpload.maxVideoBytes,
     },
+    log: (entry) => console.log(JSON.stringify(entry)),
   });
   app.use(
     "/api/uploads",
@@ -1120,6 +1144,407 @@ if (runtimeConfig.directUpload.mode === "off") {
       service: directUploadService,
     }),
   );
+}
+
+function getDirectUploadId(req: express.Request, field = "uploadId"): string {
+  if (!req.is("application/json")) return "";
+  const value = req.body?.[field];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function directBusinessId(prefix: string, uploadId: string): string {
+  return `${prefix}_${uploadId.replace(/[^a-zA-Z0-9_-]/g, "_")}`.slice(0, 80);
+}
+
+function sendDirectUploadBusinessError(
+  res: express.Response,
+  error: unknown,
+  fallbackMessage: string,
+) {
+  if (
+    error instanceof DirectUploadServiceError ||
+    error instanceof DirectUploadBusinessClaimError
+  ) {
+    return res.status(error.httpStatus).json({ error: error.message, code: error.code });
+  }
+  console.error(fallbackMessage, error);
+  return res.status(500).json({ error: fallbackMessage });
+}
+
+function requireDirectBusinessUpload(res: express.Response): DirectUploadService | null {
+  if (!directUploadService || !pgPool) {
+    res.status(404).json({ error: "Direct upload is not available." });
+    return null;
+  }
+  return directUploadService;
+}
+
+async function claimDirectImageAsset(req: AuthenticatedRequest, res: express.Response, uploadId: string) {
+  const service = requireDirectBusinessUpload(res);
+  if (!service || !pgPool) return;
+  const userId = req.user!.id;
+  const cardId = String(req.body.cardId || "").trim();
+  if (!cardId) return res.status(400).json({ error: "cardId is required." });
+  const assetId = directBusinessId("image", uploadId);
+  try {
+    const claimed = await claimBusinessUpload({
+      pool: pgPool,
+      service,
+      user: req.user!,
+      uploadId,
+      expectedKinds: ["image_asset"],
+      write: async (client, upload) => {
+        const card = await client.query("SELECT id, type FROM cards WHERE id = $1 AND user_id = $2", [cardId, userId]);
+        if (card.rowCount === 0) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Card not found.", 404);
+        if ((card.rows[0].type || "image") !== "video") {
+          throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "只有视频卡片可以绑定图片。", 400);
+        }
+        const result = await client.query(
+          `INSERT INTO image_assets (id, user_id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, created_at)
+           VALUES ($1, $2, $3, 'oss', $4, $5, $6, $7, $8)
+           ON CONFLICT (id) DO NOTHING
+           RETURNING id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, created_at`,
+          [assetId, userId, cardId, upload.finalObjectKey, upload.originalName, upload.declaredMimeType, upload.declaredSize, Date.now()],
+        );
+        if (!result.rows[0]) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Image upload was already assigned.", 409);
+        return result.rows[0];
+      },
+      readExisting: async (client, session) => {
+        const result = await client.query(
+          `SELECT id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, created_at
+           FROM image_assets WHERE id = $1 AND user_id = $2 AND card_id = $3 AND storage_key = $4`,
+          [assetId, userId, cardId, session.finalObjectKey || ""],
+        );
+        return result.rows[0] || null;
+      },
+    });
+    return res.json({ image: mapImageAssetRow(claimed.value, req) });
+  } catch (error) {
+    return sendDirectUploadBusinessError(res, error, "Image upload claim failed.");
+  }
+}
+
+async function claimDirectVideoAsset(req: AuthenticatedRequest, res: express.Response, uploadId: string) {
+  const service = requireDirectBusinessUpload(res);
+  if (!service || !pgPool) return;
+  const userId = req.user!.id;
+  const now = Date.now();
+  const assetId = directBusinessId("video", uploadId);
+  const cardIdInput = String(req.body.cardId || "").trim();
+  const shouldCreateCard = !cardIdInput;
+  const cardId = cardIdInput || String(req.body.newCardId || `card_${crypto.randomBytes(8).toString("hex")}_${now.toString(36)}`).trim();
+  const weekId = String(req.body.weekId || "").trim();
+  const dayIndex = Number.parseInt(String(req.body.dayIndex ?? "0"), 10);
+  const bookId = String(req.body.bookId || "").trim();
+  const durationMs = Number.parseInt(String(req.body.durationMs || "0"), 10) || 0;
+  if (shouldCreateCard && !weekId) {
+    return res.status(400).json({ error: "weekId is required for standalone video cards." });
+  }
+
+  const selectCard = async (client: Pick<pg.PoolClient, "query">) => client.query(
+    `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
+            ${comboSummarySelectSql},
+            (SELECT COALESCE(json_agg(va ORDER BY va.created_at DESC), '[]'::json)
+             FROM video_assets va WHERE va.user_id = cards.user_id AND va.card_id = cards.id) AS video_assets,
+            (SELECT COALESCE(json_agg(ia ORDER BY ia.created_at DESC), '[]'::json)
+             FROM image_assets ia WHERE ia.user_id = cards.user_id AND ia.card_id = cards.id) AS image_assets
+     FROM cards WHERE id = $1 AND user_id = $2`,
+    [cardId, userId],
+  );
+
+  try {
+    const claimed = await claimBusinessUpload({
+      pool: pgPool,
+      service,
+      user: req.user!,
+      uploadId,
+      expectedKinds: ["video"],
+      write: async (client, upload) => {
+        if (shouldCreateCard) {
+          const createdCard = await client.query(
+            `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note)
+             VALUES ($1, $2, $3, $4, '', '', '', '', $5, $6, 'paperclip', 0, $7, 'video', NULL, NULL, NULL, NULL)
+             ON CONFLICT (id)
+             DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, terms = EXCLUDED.terms,
+                           terms_text = EXCLUDED.terms_text, created_at = EXCLUDED.created_at, type = 'video'
+             WHERE cards.user_id = EXCLUDED.user_id
+             RETURNING id`,
+            [cardId, userId, weekId, Number.isFinite(dayIndex) ? dayIndex : 0, ["视频灵感", "待整理"], "视频灵感 待整理", now],
+          );
+          if (!createdCard.rows[0]) {
+            throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Card belongs to another user.", 409);
+          }
+        } else {
+          const card = await client.query("SELECT id FROM cards WHERE id = $1 AND user_id = $2", [cardId, userId]);
+          if (card.rowCount === 0) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Card not found.", 404);
+        }
+
+        const asset = await client.query(
+          `INSERT INTO video_assets (id, user_id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, created_at)
+           VALUES ($1, $2, $3, 'oss', $4, $5, $6, $7, $8, '', $9)
+           ON CONFLICT (id) DO NOTHING
+           RETURNING id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, created_at`,
+          [assetId, userId, cardId, upload.finalObjectKey, upload.originalName, upload.declaredMimeType, upload.declaredSize, durationMs, now],
+        );
+        if (!asset.rows[0]) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Video upload was already assigned.", 409);
+
+        if (bookId && shouldCreateCard) {
+          const book = await client.query("SELECT id FROM inspiration_books WHERE id = $1 AND user_id = $2", [bookId, userId]);
+          if (book.rowCount > 0) {
+            await client.query(
+              `INSERT INTO inspiration_book_cards (user_id, book_id, card_id, added_at)
+               VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, book_id, card_id) DO NOTHING`,
+              [userId, bookId, cardId, now],
+            );
+            await client.query("UPDATE inspiration_books SET updated_at = $1 WHERE id = $2 AND user_id = $3", [now, bookId, userId]);
+          }
+        }
+        const card = await selectCard(client);
+        return { asset: asset.rows[0], card: card.rows[0] };
+      },
+      readExisting: async (client, session) => {
+        const asset = await client.query(
+          `SELECT id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, created_at
+           FROM video_assets WHERE id = $1 AND user_id = $2 AND card_id = $3 AND storage_key = $4`,
+          [assetId, userId, cardId, session.finalObjectKey || ""],
+        );
+        if (!asset.rows[0]) return null;
+        const card = await selectCard(client);
+        return card.rows[0] ? { asset: asset.rows[0], card: card.rows[0] } : null;
+      },
+    });
+    return res.json({
+      card: mapCardRows([claimed.value.card], req)[0],
+      video: mapVideoAssetRow(claimed.value.asset, req),
+    });
+  } catch (error) {
+    return sendDirectUploadBusinessError(res, error, "Video upload claim failed.");
+  }
+}
+
+function normalizedCardInput(req: AuthenticatedRequest) {
+  const body = req.body || {};
+  const safeTerms = Array.isArray(body.terms) ? body.terms : [];
+  const termsText = [...safeTerms, body.mdName, body.mdSummary, body.insightNote]
+    .filter((value) => typeof value === "string" && value.trim())
+    .join(" ");
+  return {
+    id: String(body.id || "").trim(),
+    weekId: String(body.weekId || "").trim(),
+    dayIndex: Number.parseInt(String(body.dayIndex ?? "0"), 10) || 0,
+    terms: safeTerms,
+    termsText,
+    decoType: body.decoType,
+    angle: Number(body.angle || 0),
+    createdAt: Number(body.createdAt || Date.now()),
+    type: String(body.type || "image"),
+    mdContent: body.mdContent || null,
+    mdSummary: body.mdSummary || null,
+    mdName: body.mdName || null,
+    insightNote: body.insightNote || null,
+  };
+}
+
+async function upsertDirectCard(
+  client: Pick<pg.PoolClient, "query">,
+  userId: string,
+  input: ReturnType<typeof normalizedCardInput>,
+  primaryStorageKey: string,
+) {
+  if (!input.id || !input.weekId) {
+    throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Card id and weekId are required.", 400);
+  }
+  return client.query(
+    `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note)
+     VALUES ($1, $2, $3, $4, '', '', $5, '', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     ON CONFLICT (id)
+     DO UPDATE SET week_id = EXCLUDED.week_id, day_index = EXCLUDED.day_index, image_url = EXCLUDED.image_url,
+                   thumbnail_url = EXCLUDED.thumbnail_url, photo_uid = EXCLUDED.photo_uid, photo_hash = EXCLUDED.photo_hash,
+                   terms = EXCLUDED.terms, terms_text = EXCLUDED.terms_text, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle,
+                   created_at = EXCLUDED.created_at, type = EXCLUDED.type, md_content = EXCLUDED.md_content,
+                   md_summary = EXCLUDED.md_summary, md_name = EXCLUDED.md_name, insight_note = EXCLUDED.insight_note
+     WHERE cards.user_id = EXCLUDED.user_id
+     RETURNING id, photo_uid`,
+    [
+      input.id,
+      userId,
+      input.weekId,
+      input.dayIndex,
+      primaryStorageKey,
+      input.terms,
+      input.termsText,
+      input.decoType,
+      input.angle,
+      input.createdAt,
+      input.type,
+      input.mdContent,
+      input.mdSummary,
+      input.mdName,
+      input.insightNote,
+    ],
+  );
+}
+
+async function claimDirectPrimaryCard(req: AuthenticatedRequest, res: express.Response, uploadId: string) {
+  const service = requireDirectBusinessUpload(res);
+  if (!service || !pgPool) return;
+  const userId = req.user!.id;
+  const card = normalizedCardInput(req);
+  try {
+    await claimBusinessUpload({
+      pool: pgPool,
+      service,
+      user: req.user!,
+      uploadId,
+      expectedKinds: ["primary_image"],
+      write: async (client, upload) => {
+        const result = await upsertDirectCard(client, userId, card, upload.finalObjectKey || "");
+        if (!result.rows[0]) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Card belongs to another user.", 409);
+        return result.rows[0];
+      },
+      readExisting: async (client, session) => {
+        const result = await client.query(
+          "SELECT id, photo_uid FROM cards WHERE id = $1 AND user_id = $2 AND photo_uid = $3",
+          [card.id, userId, session.finalObjectKey || ""],
+        );
+        return result.rows[0] || null;
+      },
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    return sendDirectUploadBusinessError(res, error, "Card image claim failed.");
+  }
+}
+
+async function claimDirectDocumentCard(req: AuthenticatedRequest, res: express.Response, uploadId: string) {
+  const service = requireDirectBusinessUpload(res);
+  if (!service || !pgPool) return;
+  const userId = req.user!.id;
+  const card = normalizedCardInput(req);
+  const documentId = directBusinessId("document", uploadId);
+  try {
+    await claimBusinessUpload({
+      pool: pgPool,
+      service,
+      user: req.user!,
+      uploadId,
+      expectedKinds: ["document"],
+      write: async (client, upload) => {
+        const cardResult = await upsertDirectCard(client, userId, card, "");
+        if (!cardResult.rows[0]) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Card belongs to another user.", 409);
+        const asset = await client.query(
+          `INSERT INTO document_assets (id, user_id, card_id, storage_provider, storage_key, original_name, mime_type, size_bytes, created_at)
+           VALUES ($1, $2, $3, 'oss', $4, $5, $6, $7, $8)
+           ON CONFLICT (id) DO NOTHING
+           RETURNING id, storage_key`,
+          [documentId, userId, card.id, upload.finalObjectKey, upload.originalName, upload.declaredMimeType, upload.declaredSize, Date.now()],
+        );
+        if (!asset.rows[0]) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Document upload was already assigned.", 409);
+        return asset.rows[0];
+      },
+      readExisting: async (client, session) => {
+        const result = await client.query(
+          `SELECT id, storage_key FROM document_assets
+           WHERE id = $1 AND user_id = $2 AND card_id = $3 AND storage_key = $4`,
+          [documentId, userId, card.id, session.finalObjectKey || ""],
+        );
+        return result.rows[0] || null;
+      },
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    return sendDirectUploadBusinessError(res, error, "Document claim failed.");
+  }
+}
+
+async function claimDirectComboImage(req: AuthenticatedRequest, res: express.Response, uploadId: string) {
+  const service = requireDirectBusinessUpload(res);
+  if (!service || !pgPool) return;
+  const userId = req.user!.id;
+  const cardId = req.params.id;
+  const role = normalizeComboImageRole(req.body.role);
+  const sortOrder = Number.parseInt(String(req.body.sortOrder || "0"), 10) || 0;
+  const imageId = directBusinessId("combo_img", uploadId);
+  try {
+    const claimed = await claimBusinessUpload({
+      pool: pgPool,
+      service,
+      user: req.user!,
+      uploadId,
+      expectedKinds: ["combo_image"],
+      write: async (client, upload) => {
+        const card = await client.query("SELECT id FROM cards WHERE id = $1 AND user_id = $2 AND type = 'combo'", [cardId, userId]);
+        if (card.rowCount === 0) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Combo card not found.", 404);
+        const result = await client.query(
+          `INSERT INTO combo_images (id, user_id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at)
+           VALUES ($1, $2, $3, $4, 'oss', $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (id) DO NOTHING
+           RETURNING id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at`,
+          [imageId, userId, cardId, role, upload.finalObjectKey, upload.originalName, upload.declaredMimeType, upload.declaredSize, sortOrder, Date.now()],
+        );
+        if (!result.rows[0]) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Combo image was already assigned.", 409);
+        await refreshComboCardSearchText(client as pg.PoolClient, userId, cardId);
+        return result.rows[0];
+      },
+      readExisting: async (client, session) => {
+        const result = await client.query(
+          `SELECT id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at
+           FROM combo_images WHERE id = $1 AND user_id = $2 AND card_id = $3 AND storage_key = $4`,
+          [imageId, userId, cardId, session.finalObjectKey || ""],
+        );
+        return result.rows[0] || null;
+      },
+    });
+    return res.json({ image: mapComboImageRow(claimed.value, req) });
+  } catch (error) {
+    return sendDirectUploadBusinessError(res, error, "Combo image upload claim failed.");
+  }
+}
+
+async function claimDirectComboGeneration(req: AuthenticatedRequest, res: express.Response, uploadId: string) {
+  const service = requireDirectBusinessUpload(res);
+  if (!service || !pgPool) return;
+  const userId = req.user!.id;
+  const cardId = req.params.id;
+  const promptNote = String(req.body.promptNote || req.body.prompt || "").trim();
+  const sortOrder = Number.parseInt(String(req.body.sortOrder || "0"), 10) || 0;
+  const durationMs = Number.parseInt(String(req.body.durationMs || "0"), 10) || 0;
+  const generationId = directBusinessId("combo_gen", uploadId);
+  try {
+    const claimed = await claimBusinessUpload({
+      pool: pgPool,
+      service,
+      user: req.user!,
+      uploadId,
+      expectedKinds: ["combo_video"],
+      write: async (client, upload) => {
+        const card = await client.query("SELECT id FROM cards WHERE id = $1 AND user_id = $2 AND type = 'combo'", [cardId, userId]);
+        if (card.rowCount === 0) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Combo card not found.", 404);
+        const now = Date.now();
+        const result = await client.query(
+          `INSERT INTO combo_generations (id, user_id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'oss', $5, $6, $7, $8, $9, '', $10, $11, $11)
+           ON CONFLICT (id) DO NOTHING
+           RETURNING id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at`,
+          [generationId, userId, cardId, promptNote, upload.finalObjectKey, upload.originalName, upload.declaredMimeType, upload.declaredSize, durationMs, sortOrder, now],
+        );
+        if (!result.rows[0]) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Combo generation was already assigned.", 409);
+        await refreshComboCardSearchText(client as pg.PoolClient, userId, cardId);
+        return result.rows[0];
+      },
+      readExisting: async (client, session) => {
+        const result = await client.query(
+          `SELECT id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at
+           FROM combo_generations WHERE id = $1 AND user_id = $2 AND card_id = $3 AND storage_key = $4`,
+          [generationId, userId, cardId, session.finalObjectKey || ""],
+        );
+        return result.rows[0] || null;
+      },
+    });
+    return res.json({ generation: mapComboGenerationRow(claimed.value, req) });
+  } catch (error) {
+    return sendDirectUploadBusinessError(res, error, "Combo generation upload claim failed.");
+  }
 }
 
 app.get("/api/miniprogram/me", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
@@ -1150,6 +1575,60 @@ app.post("/api/miniprogram/tool-usage", requirePostgresAuth, async (_req, res) =
 
 app.post("/api/documents/extract-text", requirePostgresAuth, documentUpload.single("document"), async (req, res) => {
   try {
+    const directUploadId = getDirectUploadId(req);
+    if (directUploadId) {
+      if (!directUploadService || !directUploadGateway) {
+        return res.status(404).json({ error: "Direct upload is not available." });
+      }
+      if (directDocumentExtractionActive) {
+        return res.status(429).json({ error: "已有文档正在解析，请稍后重试。" });
+      }
+      directDocumentExtractionActive = true;
+      try {
+        const authReq = req as AuthenticatedRequest;
+        const session = await directUploadService.get(authReq.user!, directUploadId);
+        if (session.mediaKind !== "document") {
+          return res.status(415).json({ error: "Upload media kind is not a document." });
+        }
+        if (session.status !== "finalized" || !session.finalObjectKey) {
+          return res.status(409).json({ error: "Document upload is not finalized." });
+        }
+        if (session.size > DIRECT_DOCUMENT_HARD_LIMIT_BYTES) {
+          return res.status(413).json({ error: "文档不能超过 20MB。" });
+        }
+        const bytes = await directUploadGateway.readObject(
+          session.finalObjectKey,
+          DIRECT_DOCUMENT_HARD_LIMIT_BYTES,
+        );
+        if (bytes.byteLength !== session.size || bytes.byteLength > DIRECT_DOCUMENT_HARD_LIMIT_BYTES) {
+          return res.status(413).json({ error: "文档大小校验失败。" });
+        }
+        const filename = String(req.body?.filename || "文档").trim();
+        const buffer = Buffer.from(bytes);
+        const file = {
+          fieldname: "document",
+          originalname: filename,
+          encoding: "7bit",
+          mimetype: session.mimeType,
+          size: buffer.length,
+          buffer,
+          destination: "",
+          filename,
+          path: "",
+          stream: Readable.from(buffer),
+        } satisfies Express.Multer.File;
+        const extracted = await extractDocumentText(file, filename);
+        return res.json({
+          filename,
+          mimeType: session.mimeType,
+          sizeBytes: session.size,
+          ...extracted,
+        });
+      } finally {
+        directDocumentExtractionActive = false;
+      }
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: "请上传文档文件。" });
     }
@@ -1164,6 +1643,9 @@ app.post("/api/documents/extract-text", requirePostgresAuth, documentUpload.sing
     });
   } catch (err: any) {
     console.error("Document text extraction error:", err);
+    if (err instanceof DirectUploadServiceError) {
+      return res.status(err.httpStatus).json({ error: err.message, code: err.code });
+    }
     return res.status(400).json({ error: err.message || "文档文本提取失败。" });
   }
 });
@@ -1476,6 +1958,10 @@ app.post("/api/videos/upload", requirePostgresAuth, videoUpload.single("video"),
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   const authReq = req as AuthenticatedRequest;
+  const directUploadId = getDirectUploadId(req);
+  if (directUploadId) {
+    return claimDirectVideoAsset(authReq, res, directUploadId);
+  }
   const file = req.file;
   if (!file) {
     return res.status(400).json({ error: "Missing video upload." });
@@ -1603,6 +2089,10 @@ app.post("/api/images/upload", requirePostgresAuth, imageAssetUpload.single("ima
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
   const authReq = req as AuthenticatedRequest;
+  const directUploadId = getDirectUploadId(req);
+  if (directUploadId) {
+    return claimDirectImageAsset(authReq, res, directUploadId);
+  }
   const file = req.file;
   if (!file) {
     return res.status(400).json({ error: "Missing image upload." });
@@ -2828,6 +3318,10 @@ app.post("/api/db/cards/:id/combo/images", requirePostgresAuth, imageAssetUpload
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
+  const directUploadId = getDirectUploadId(req);
+  if (directUploadId) {
+    return claimDirectComboImage(req, res, directUploadId);
+  }
   const file = req.file;
   if (!file) {
     return res.status(400).json({ error: "Image file is required." });
@@ -2931,6 +3425,10 @@ app.delete("/api/db/cards/:id/combo/images/:imageId", requirePostgresAuth, async
 app.post("/api/db/cards/:id/combo/generations", requirePostgresAuth, videoUpload.single("video"), async (req: AuthenticatedRequest, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
+  }
+  const directUploadId = getDirectUploadId(req);
+  if (directUploadId) {
+    return claimDirectComboGeneration(req, res, directUploadId);
   }
   const file = req.file;
   if (!file) {
@@ -3039,8 +3537,19 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
+  const authReq = req as AuthenticatedRequest;
+  const directUploadId = getDirectUploadId(req);
+  const documentUploadId = getDirectUploadId(req, "documentUploadId");
+  if (directUploadId && documentUploadId) {
+    return res.status(400).json({ error: "Only one primary upload may be claimed per card request." });
+  }
+  if (directUploadId) {
+    return claimDirectPrimaryCard(authReq, res, directUploadId);
+  }
+  if (documentUploadId) {
+    return claimDirectDocumentCard(authReq, res, documentUploadId);
+  }
   try {
-    const authReq = req as AuthenticatedRequest;
     const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, photoHash, terms, decoType, angle, createdAt, type, mdContent, mdSummary, mdName, insightNote } = req.body;
     const safeTerms = Array.isArray(terms) ? terms : [];
     const normalizedImageUrl = normalizeInternalProxyUrl(imageUrl || "");
@@ -3194,7 +3703,7 @@ async function handleStoredImageDelivery(
     if (asset.storage_provider === "oss") {
       return await deliverOssObject({
         mode: runtimeConfig.mediaDeliveryMode,
-        storage: imageAssetStorage,
+        storage: directOssStorage || imageAssetStorage,
         storageKey: asset.storage_key,
         process: imageProcessFor(variant, OSS_IMAGE_PROCESSES),
         response: res,
@@ -3285,7 +3794,7 @@ app.get("/api/videos/:videoId/poster", requirePostgresAuthOrSignedPhoto, async (
     if (asset.storage_provider === "oss") {
       return await deliverOssObject({
         mode: runtimeConfig.mediaDeliveryMode,
-        storage: videoStorage,
+        storage: directOssStorage || videoStorage,
         storageKey: asset.storage_key,
         process: OSS_VIDEO_POSTER_PROCESS,
         response: res,
@@ -3329,7 +3838,7 @@ app.get("/api/combo-generations/:generationId/poster", requirePostgresAuthOrSign
     if (asset.storage_provider === "oss") {
       return await deliverOssObject({
         mode: runtimeConfig.mediaDeliveryMode,
-        storage: videoStorage,
+        storage: directOssStorage || videoStorage,
         storageKey: asset.storage_key,
         process: OSS_VIDEO_POSTER_PROCESS,
         response: res,
@@ -3373,7 +3882,7 @@ app.get("/api/videos/:videoId", requirePostgresAuthOrSignedPhoto, async (req, re
     if (asset.storage_provider === "oss") {
       return await deliverOssObject({
         mode: runtimeConfig.mediaDeliveryMode,
-        storage: videoStorage,
+        storage: directOssStorage || videoStorage,
         storageKey: asset.storage_key,
         response: res,
         proxy: (signedUrl) => proxySignedObjectUrl(req, res, signedUrl),
@@ -3441,7 +3950,7 @@ app.get("/api/combo-generations/:generationId/video", requirePostgresAuthOrSigne
     if (asset.storage_provider === "oss") {
       return await deliverOssObject({
         mode: runtimeConfig.mediaDeliveryMode,
-        storage: videoStorage,
+        storage: directOssStorage || videoStorage,
         storageKey: asset.storage_key,
         response: res,
         proxy: (signedUrl) => proxySignedObjectUrl(req, res, signedUrl),
@@ -3578,7 +4087,9 @@ async function handlePrimaryObjectDelivery(req: express.Request, res: express.Re
   }
   try {
     const storageKey = decodeURIComponent(req.params.storageKey || "");
-    if (!storageKey || storageKey.includes("..") || !storageKey.startsWith("primary-images/")) {
+    const legacyPrimaryKey = /^primary-images\/[0-9]{4}\/[0-9]{2}\/[A-Za-z0-9._-]+$/u.test(storageKey);
+    const directPrimaryKey = /^media\/[A-Za-z0-9_-]+\/primary_image\/[0-9]{4}\/[0-9]{2}\/[A-Za-z0-9._-]+$/u.test(storageKey);
+    if (!legacyPrimaryKey && !directPrimaryKey) {
       return res.status(400).json({ error: "Invalid object key." });
     }
 
@@ -3604,7 +4115,7 @@ async function handlePrimaryObjectDelivery(req: express.Request, res: express.Re
       return res.status(404).json({ error: "Object not found." });
     }
 
-    const primaryStorage = createVideoStorage({
+    const primaryStorage = directOssStorage || createVideoStorage({
       ...runtimeConfig,
       videoStorageProvider: "oss",
     });

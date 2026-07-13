@@ -13,7 +13,12 @@ interface InspirationBooksViewProps {
   onUpdateTerms: (cardId: string, terms: string[]) => void;
   onBookMembershipChanged: () => void;
   onUploadImageToBook: (bookId: string, originalFile: File, analysisBlob?: Blob) => Promise<void>;
-  onUploadMdToBook: (bookId: string, text: string, filename: string) => Promise<void>;
+  onUploadMdToBook: (
+    bookId: string,
+    text: string,
+    filename: string,
+    documentUploadId?: string,
+  ) => Promise<void>;
   onUploadVideoToBook: (bookId: string, file: File) => Promise<void>;
 }
 
@@ -320,7 +325,12 @@ export default function InspirationBooksView({
       throw new Error("文档内容为空。");
     }
 
-    await onUploadMdToBook(bookId, text, extracted.filename || file.name);
+    await onUploadMdToBook(
+      bookId,
+      text,
+      extracted.filename || file.name,
+      extracted.uploadId,
+    );
   };
 
   const processBookImageFile = (bookId: string, file: File) => {

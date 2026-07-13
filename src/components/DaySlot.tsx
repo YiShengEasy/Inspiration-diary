@@ -12,7 +12,12 @@ interface DaySlotProps {
   subLabel: string;
   cards: ImageCard[];
   onUploadImage: (dayIndex: number, originalFile: File, analysisBlob?: Blob) => Promise<void>;
-  onUploadMd?: (dayIndex: number, text: string, filename: string) => Promise<void>;
+  onUploadMd?: (
+    dayIndex: number,
+    text: string,
+    filename: string,
+    options?: { documentUploadId?: string },
+  ) => Promise<void>;
   onUploadVideo?: (dayIndex: number, file: File) => Promise<void>;
   onCreateComboCard?: (dayIndex: number) => void;
   onDeleteCard: (id: string) => void;
@@ -125,7 +130,12 @@ export default function DaySlot({
       throw new Error("当前页面不支持文档导入。");
     }
 
-    await onUploadMd(dayIndex, text, extracted.filename || file.name);
+    await onUploadMd(
+      dayIndex,
+      text,
+      extracted.filename || file.name,
+      extracted.uploadId ? { documentUploadId: extracted.uploadId } : undefined,
+    );
   };
 
   const processVideoFileCore = async (file: File) => {

@@ -7,6 +7,7 @@ import type { StsMultipartGrant } from "./types.ts";
 
 const MAX_GRANT_TTL_SECONDS = 15 * 60;
 const MAX_PREFIX_BYTES = 16 * 1024;
+const MAX_FULL_OBJECT_BYTES = 20 * 1024 * 1024;
 
 export const OSS_MULTIPART_UPLOAD_ACTIONS = [
   "oss:PutObject",
@@ -31,6 +32,7 @@ export interface DirectUploadGateway {
   }): Promise<TemporaryOssCredentials>;
   head(objectKey: string): Promise<{ size: number; contentType?: string }>;
   readPrefix(objectKey: string, maxBytes: number): Promise<Uint8Array>;
+  readObject(objectKey: string, maxBytes: number): Promise<Uint8Array>;
   copy(sourceKey: string, destinationKey: string): Promise<void>;
   delete(objectKey: string): Promise<void>;
 }
@@ -273,6 +275,32 @@ export function createOssDirectUploadGateway(
         headers: { Range: `bytes=0-${maxBytes - 1}` },
       });
       return toUint8Array(result.content);
+    },
+
+    async readObject(objectKey, maxBytes) {
+      assertSafeObjectKey(objectKey);
+      if (
+        !Number.isSafeInteger(maxBytes) ||
+        maxBytes < 1 ||
+        maxBytes > MAX_FULL_OBJECT_BYTES
+      ) {
+        throw new Error(`Object size limit must be between 1 and ${MAX_FULL_OBJECT_BYTES}`);
+      }
+      const metadata = await objectClient.head(objectKey);
+      const rawSize = readHeader(metadata.res.headers, "content-length");
+      const size = Number(rawSize);
+      if (!Number.isSafeInteger(size) || size < 0 || size > maxBytes) {
+        throw new Error("OSS object exceeds the allowed read size");
+      }
+      const result = await objectClient.get(objectKey, {
+        // Asking for one extra byte catches a concurrent object replacement.
+        headers: { Range: `bytes=0-${maxBytes}` },
+      });
+      const bytes = toUint8Array(result.content);
+      if (bytes.byteLength !== size || bytes.byteLength > maxBytes) {
+        throw new Error("OSS object size changed during the bounded read");
+      }
+      return bytes;
     },
 
     async copy(sourceKey, destinationKey) {

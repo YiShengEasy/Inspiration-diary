@@ -79,6 +79,7 @@ export interface DirectUploadServiceDependencies {
   config: DirectUploadServiceConfig;
   now?: () => number;
   uuid?: () => string;
+  log?: (entry: Record<string, unknown>) => void;
 }
 
 export interface DirectUploadService {
@@ -214,7 +215,27 @@ export function createDirectUploadService(
   const { repository, gateway, config } = dependencies;
   const now = dependencies.now ?? Date.now;
   const uuid = dependencies.uuid ?? randomUUID;
+  const log = dependencies.log ?? (() => undefined);
   const configuredSizeLimits = sizeLimits(config);
+
+  function emit(
+    event: string,
+    upload: Pick<UploadSession, "id" | "userId" | "mediaKind" | "declaredSize">,
+    startedAt: number,
+    status: string,
+    errorCode?: string,
+  ): void {
+    log({
+      event,
+      uploadId: upload.id,
+      userId: upload.userId,
+      kind: upload.mediaKind,
+      durationMs: Math.max(0, now() - startedAt),
+      status,
+      bytes: upload.declaredSize,
+      ...(errorCode ? { errorCode } : {}),
+    });
+  }
 
   async function failLocked(
     client: UploadRepositoryClient,
@@ -231,6 +252,7 @@ export function createDirectUploadService(
       failureCode,
       now: now(),
     });
+    emit("direct_upload_failure", upload, now(), "failed", failureCode);
     return { error };
   }
 
@@ -291,13 +313,15 @@ export function createDirectUploadService(
             objectKey: upload.pendingObjectKey,
             expiresSeconds: config.videoStsTtlSeconds,
           });
-          return {
+          const response: UploadAuthorizationResponse = {
             uploadId: upload.id,
             objectKey: upload.pendingObjectKey,
             expiresAt: Math.min(upload.expiresAt, sts.expiresAt),
             strategy: "sts-multipart",
             sts,
           };
+          emit("direct_upload_authorize", upload, createdAt, "authorized");
+          return response;
         }
 
         const signedPut = await gateway.createSignedPut({
@@ -305,16 +329,19 @@ export function createDirectUploadService(
           mimeType: upload.declaredMimeType,
           expiresSeconds: config.authorizationTtlSeconds,
         });
-        return {
+        const response: UploadAuthorizationResponse = {
           uploadId: upload.id,
           objectKey: upload.pendingObjectKey,
           expiresAt: upload.expiresAt,
           strategy: "signed-put",
           signedPut,
         };
+        emit("direct_upload_authorize", upload, createdAt, "authorized");
+        return response;
       } catch (error) {
         await repository.markFailed(upload.id, user.id, "grant_failed", now());
         await deleteQuietly(gateway, [upload.pendingObjectKey]);
+        emit("direct_upload_authorize", upload, createdAt, "failed", "grant_failed");
         throw serviceError(
           "storage_error",
           "Could not create the temporary upload grant",
@@ -325,6 +352,7 @@ export function createDirectUploadService(
     },
 
     async complete(user, uploadId) {
+      const startedAt = now();
       const outcome = await repository.withLockedForOwner<CompletionOutcome>(
         uploadId,
         user.id,
@@ -505,6 +533,7 @@ export function createDirectUploadService(
       );
 
       if (isDeferredError(outcome)) throw outcome.error;
+      emit("direct_upload_complete", outcome.session, startedAt, outcome.session.status);
       return publicSession(outcome.session);
     },
 
@@ -561,6 +590,7 @@ export function createDirectUploadService(
     },
 
     async claim(client, user, uploadId, writer) {
+      const startedAt = now();
       const repositoryClient: UploadRepositoryClient = client;
       const upload = await repository.getLockedForOwner(
         repositoryClient,
@@ -569,6 +599,7 @@ export function createDirectUploadService(
       );
       if (!upload) throw notFound();
       if (upload.status === "claimed") {
+        emit("direct_upload_claim", upload, startedAt, "claimed");
         return { session: publicSession(upload), created: false };
       }
       if (upload.status === "expired") {
@@ -591,6 +622,7 @@ export function createDirectUploadService(
         now: now(),
       });
       if (!claimed) throw notFound();
+      emit("direct_upload_claim", claimed, startedAt, "claimed");
       return { session: publicSession(claimed), created: true, value };
     },
   };
