@@ -4,6 +4,7 @@ export type DatabaseType = "firestore" | "postgres";
 export type PrimaryImageStorageProvider = "photoprism" | "oss";
 export type AssetStorageProvider = "local" | "oss";
 export type MediaDeliveryMode = "proxy" | "oss";
+export type FeatureAudience = "off" | "admin" | "all";
 
 export interface RuntimeConfig {
   appEnv: AppEnv;
@@ -36,6 +37,18 @@ export interface RuntimeConfig {
     publicBaseUrl: string;
     signedUrlTtlSeconds: number;
   };
+  directUpload: {
+    mode: FeatureAudience;
+    stsRoleArn: string;
+    authorizationTtlSeconds: number;
+    videoStsTtlSeconds: number;
+    activeSessionsPerUser: number;
+    authorizationsPerMinute: number;
+    maxImageBytes: number;
+    maxDocumentBytes: number;
+    maxVideoBytes: number;
+    maxAnalysisBytes: number;
+  };
   thirdPartyAi: {
     baseUrl: string;
     apiKey: string;
@@ -56,6 +69,13 @@ function readBoolean(name: string, fallback: boolean): boolean {
 function readNumber(name: string, fallback: number): number {
   const parsed = Number.parseInt(readEnv(name), 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readPositiveInteger(name: string, fallback: number): number {
+  const value = readEnv(name);
+  if (!/^\d+$/.test(value)) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function parseAppEnv(value: string): AppEnv {
@@ -83,6 +103,11 @@ function parseAssetStorageProvider(value: string): AssetStorageProvider {
 
 function parseMediaDeliveryMode(value: string): MediaDeliveryMode {
   return value === "oss" ? "oss" : "proxy";
+}
+
+function parseFeatureAudience(value: string): FeatureAudience {
+  if (value === "admin" || value === "all") return value;
+  return "off";
 }
 
 export function getRuntimeConfig(): RuntimeConfig {
@@ -123,6 +148,18 @@ export function getRuntimeConfig(): RuntimeConfig {
       publicBaseUrl: readEnv("OSS_PUBLIC_BASE_URL"),
       signedUrlTtlSeconds: readNumber("OSS_SIGNED_URL_TTL_SECONDS", 900),
     },
+    directUpload: {
+      mode: parseFeatureAudience(readEnv("WEB_DIRECT_OSS_UPLOAD_MODE")),
+      stsRoleArn: readEnv("OSS_STS_ROLE_ARN"),
+      authorizationTtlSeconds: readPositiveInteger("UPLOAD_AUTH_TTL_SECONDS", 900),
+      videoStsTtlSeconds: readPositiveInteger("UPLOAD_VIDEO_STS_TTL_SECONDS", 900),
+      activeSessionsPerUser: readPositiveInteger("UPLOAD_ACTIVE_SESSIONS_PER_USER", 5),
+      authorizationsPerMinute: readPositiveInteger("UPLOAD_AUTHORIZATIONS_PER_MINUTE", 20),
+      maxImageBytes: readPositiveInteger("UPLOAD_MAX_IMAGE_BYTES", 26_214_400),
+      maxDocumentBytes: readPositiveInteger("UPLOAD_MAX_DOCUMENT_BYTES", 20_971_520),
+      maxVideoBytes: readPositiveInteger("UPLOAD_MAX_VIDEO_BYTES", 104_857_600),
+      maxAnalysisBytes: readPositiveInteger("UPLOAD_MAX_ANALYSIS_BYTES", 5_242_880),
+    },
     thirdPartyAi: {
       baseUrl: readEnv("THIRD_PARTY_BASE_URL") || readEnv("OPENAI_COMPATIBLE_BASE_URL"),
       apiKey: readEnv("THIRD_PARTY_API_KEY") || readEnv("OPENAI_API_KEY"),
@@ -134,6 +171,34 @@ export function getRuntimeConfig(): RuntimeConfig {
 export function validateRuntimeConfig(config = getRuntimeConfig()): string[] {
   const errors: string[] = [];
   const mediaDeliveryMode = readEnv("MEDIA_DELIVERY_MODE");
+  const directUploadMode = readEnv("WEB_DIRECT_OSS_UPLOAD_MODE");
+
+  if (directUploadMode && !["off", "admin", "all"].includes(directUploadMode)) {
+    errors.push("WEB_DIRECT_OSS_UPLOAD_MODE must be off, admin, or all.");
+  }
+
+  for (const name of [
+    "UPLOAD_AUTH_TTL_SECONDS",
+    "UPLOAD_VIDEO_STS_TTL_SECONDS",
+    "UPLOAD_ACTIVE_SESSIONS_PER_USER",
+    "UPLOAD_AUTHORIZATIONS_PER_MINUTE",
+    "UPLOAD_MAX_IMAGE_BYTES",
+    "UPLOAD_MAX_DOCUMENT_BYTES",
+    "UPLOAD_MAX_VIDEO_BYTES",
+    "UPLOAD_MAX_ANALYSIS_BYTES",
+  ]) {
+    const value = readEnv(name);
+    if (value && (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) <= 0)) {
+      errors.push(`${name} must be a positive integer.`);
+    }
+  }
+
+  if (config.directUpload.authorizationTtlSeconds > 900) {
+    errors.push("UPLOAD_AUTH_TTL_SECONDS must not exceed 900 seconds.");
+  }
+  if (config.directUpload.videoStsTtlSeconds > 900) {
+    errors.push("UPLOAD_VIDEO_STS_TTL_SECONDS must not exceed 900 seconds.");
+  }
 
   if (mediaDeliveryMode && mediaDeliveryMode !== "proxy" && mediaDeliveryMode !== "oss") {
     errors.push("MEDIA_DELIVERY_MODE must be proxy or oss.");
@@ -162,6 +227,15 @@ export function validateRuntimeConfig(config = getRuntimeConfig()): string[] {
     if (!config.oss.accessKeyId) errors.push("OSS_ACCESS_KEY_ID is required when any storage provider is oss.");
     if (!config.oss.accessKeySecret) errors.push("OSS_ACCESS_KEY_SECRET is required when any storage provider is oss.");
     if (!config.oss.publicBaseUrl) errors.push("OSS_PUBLIC_BASE_URL is required when any storage provider is oss.");
+  }
+
+  if (
+    config.deploymentProfile === "production" &&
+    requiresOss &&
+    config.directUpload.mode !== "off" &&
+    !config.directUpload.stsRoleArn
+  ) {
+    errors.push("OSS_STS_ROLE_ARN is required for direct upload in a production OSS deployment.");
   }
 
   if (config.appEnv === "production") {
