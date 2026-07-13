@@ -6,6 +6,9 @@ import express, { type Express } from "express";
 import type pg from "pg";
 
 import type { AuthenticatedRequest, AuthUser } from "../src/server/auth.ts";
+import { createBooksRouter } from "../src/server/books/router.ts";
+import { createCardReadRouter } from "../src/server/cards/readRouter.ts";
+import { createCardUpsertRouter } from "../src/server/cards/upsertRouter.ts";
 import { createMiniprogramRouter } from "../src/server/miniprogram/router.ts";
 import { createNotesRouter } from "../src/server/notes/router.ts";
 import { createRequirePostgresAuth } from "../src/server/postgresAuth.ts";
@@ -128,4 +131,135 @@ test("mini-program router keeps profile counts scoped to the authenticated user"
   assert.equal(response.status, 200);
   assert.equal((response.body as { stats: { inspirationCount: number } }).stats.inspirationCount, 9);
   assert.equal(values.every((entry) => entry[0] === USER.id), true);
+});
+
+test("books router preserves the mounted path and tenant-bound list query", async () => {
+  const values: unknown[][] = [];
+  const pool = {
+    async query(_text: string, queryValues: unknown[] = []) {
+      values.push(queryValues);
+      return { rows: [{ id: "book-1" }] };
+    },
+  } as unknown as pg.Pool;
+  const app = authenticatedApp();
+  app.use("/api/db", createBooksRouter({
+    pool,
+    comboSummarySelectForCard: "NULL::json AS combo_images, NULL::json AS combo_generations",
+    comboSummarySelectForCoverCard: "NULL::json AS combo_images, NULL::json AS combo_generations",
+    mapCardRows: () => [],
+    mapBookRow: (row) => ({
+      id: (row as { id: string }).id,
+      title: "Book",
+      description: "",
+      createdAt: 1,
+      updatedAt: 1,
+      cardCount: 0,
+      coverCardId: "",
+      coverCard: null,
+    }),
+  }));
+
+  const response = await requestJson(app, { method: "GET", path: "/api/db/books" });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, [{
+    id: "book-1",
+    title: "Book",
+    description: "",
+    createdAt: 1,
+    updatedAt: 1,
+    cardCount: 0,
+    coverCardId: "",
+    coverCard: null,
+  }]);
+  assert.deepEqual(values, [[USER.id]]);
+});
+
+test("card read router keeps pagination and tenant scope in the list contract", async () => {
+  const values: unknown[][] = [];
+  const pool = {
+    async query(text: string, queryValues: unknown[] = []) {
+      values.push([...queryValues]);
+      if (text.startsWith("SELECT COUNT")) return { rows: [{ total: 1 }] };
+      return { rows: [{ id: "card-1" }] };
+    },
+  } as unknown as pg.Pool;
+  const app = authenticatedApp();
+  app.use("/api/db", createCardReadRouter({
+    pool,
+    comboSummarySelect: "NULL::uuid AS combo_cover_image_id, 0::int AS combo_image_count, 0::int AS combo_generation_count",
+    comboSummarySelectForCard: "NULL::uuid AS combo_cover_image_id, 0::int AS combo_image_count, 0::int AS combo_generation_count",
+    mapCardRows: (rows) => rows.map((row) => ({
+      id: (row as { id: string }).id,
+      weekId: "2026-W29",
+      dayIndex: 0,
+      imageUrl: "",
+      terms: [],
+      decoType: "tape",
+      angle: 0,
+      createdAt: 1,
+    })),
+    mapVideoAssetRow: () => null,
+    mapImageAssetRow: () => null,
+  }));
+
+  const response = await requestJson(app, { method: "GET", path: "/api/db/cards?page=1&pageSize=12" });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body, {
+    cards: [{
+      id: "card-1",
+      weekId: "2026-W29",
+      dayIndex: 0,
+      imageUrl: "",
+      terms: [],
+      decoType: "tape",
+      angle: 0,
+      createdAt: 1,
+    }],
+    total: 1,
+    page: 1,
+    pageSize: 12,
+    totalPages: 1,
+  });
+  assert.deepEqual(values, [[USER.id], [USER.id, 12, 0]]);
+});
+
+test("card upsert keeps persistence and knowledge refresh in one transaction", async () => {
+  const commands: string[] = [];
+  const client = {
+    async query(text: string) {
+      const command = text.trim().split(/\s+/u)[0]!.toUpperCase();
+      commands.push(command);
+      return command === "INSERT" ? { rows: [{ id: "card-1" }] } : { rows: [] };
+    },
+    release() { commands.push("RELEASE"); },
+  };
+  const pool = {
+    async connect() { return client; },
+  } as unknown as pg.Pool;
+  const app = authenticatedApp();
+  app.use("/api/db", createCardUpsertRouter({
+    pool,
+    getDirectUploadId: () => "",
+    claimDirectPrimaryCard: async () => undefined,
+    claimDirectDocumentCard: async () => undefined,
+    normalizeInternalProxyUrl: (value) => value || "",
+    refreshKnowledgeCard: async () => { commands.push("KNOWLEDGE"); },
+  }));
+
+  const response = await requestJson(app, {
+    method: "POST",
+    path: "/api/db/cards",
+    body: {
+      id: "card-1",
+      weekId: "2026-W29",
+      dayIndex: 0,
+      terms: ["knowledge"],
+      decoType: "tape",
+      angle: 0,
+      type: "md",
+      mdContent: "content",
+    },
+  });
+  assert.deepEqual(response, { status: 200, body: { success: true } });
+  assert.deepEqual(commands, ["BEGIN", "INSERT", "KNOWLEDGE", "COMMIT", "RELEASE"]);
 });
