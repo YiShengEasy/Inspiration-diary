@@ -30,6 +30,9 @@ import {
   DirectUploadBusinessClaimError,
 } from "./src/server/direct-upload/businessClaims";
 import type { DirectUploadGateway } from "./src/server/direct-upload/ossGateway";
+import { createKnowledgeRouter } from "./src/server/knowledge/router";
+import { createKnowledgeService } from "./src/server/knowledge/service";
+import { getRuntimeCapabilities } from "./src/server/runtimeCapabilities";
 import { findBookSuggestionCandidates } from "./src/lib/bookSuggestion";
 import type { BookSuggestionFeedbackAction, ImageCard } from "./src/types";
 
@@ -602,6 +605,37 @@ async function refreshComboCardSearchText(client: Pick<pg.PoolClient, "query">, 
     .join(" ");
 
   await client.query("UPDATE cards SET terms_text = $1 WHERE id = $2 AND user_id = $3", [termsText, cardId, userId]);
+  await refreshKnowledgeCard(client, userId, cardId);
+}
+
+async function refreshKnowledgeCard(
+  client: Pick<pg.PoolClient, "query">,
+  userId: string,
+  cardId: string,
+): Promise<void> {
+  if (!runtimeConfig.knowledgeBaseEnabled) return;
+  const result = await createKnowledgeService(client).indexCard(userId, cardId);
+  if (result.status === "not_found") {
+    throw new Error("Knowledge source card was not found after persistence.");
+  }
+}
+
+async function withDatabaseTransaction<T>(
+  pool: pg.Pool,
+  operation: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await operation(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 function primaryObjectUrl(storageKey: string, req: express.Request, variant: ImageVariant) {
@@ -1146,6 +1180,19 @@ if (runtimeConfig.directUpload.mode === "off") {
   );
 }
 
+app.get("/api/runtime-capabilities", requirePostgresAuth, (_req, res) => {
+  return res.json(getRuntimeCapabilities(runtimeConfig));
+});
+
+app.use(
+  "/api/knowledge",
+  requirePostgresAuth,
+  createKnowledgeRouter({
+    mode: runtimeConfig.knowledgeBaseEnabled,
+    ...(pgPool ? { pool: pgPool } : {}),
+  }),
+);
+
 function getDirectUploadId(req: express.Request, field = "uploadId"): string {
   if (!req.is("application/json")) return "";
   const value = req.body?.[field];
@@ -1299,6 +1346,7 @@ async function claimDirectVideoAsset(req: AuthenticatedRequest, res: express.Res
             await client.query("UPDATE inspiration_books SET updated_at = $1 WHERE id = $2 AND user_id = $3", [now, bookId, userId]);
           }
         }
+        await refreshKnowledgeCard(client, userId, cardId);
         const card = await selectCard(client);
         return { asset: asset.rows[0], card: card.rows[0] };
       },
@@ -1354,7 +1402,7 @@ async function upsertDirectCard(
   if (!input.id || !input.weekId) {
     throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Card id and weekId are required.", 400);
   }
-  return client.query(
+  const result = await client.query(
     `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note)
      VALUES ($1, $2, $3, $4, '', '', $5, '', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      ON CONFLICT (id)
@@ -1383,6 +1431,8 @@ async function upsertDirectCard(
       input.insightNote,
     ],
   );
+  if (result.rows[0]) await refreshKnowledgeCard(client, userId, input.id);
+  return result;
 }
 
 async function claimDirectPrimaryCard(req: AuthenticatedRequest, res: express.Response, uploadId: string) {
@@ -1440,6 +1490,7 @@ async function claimDirectDocumentCard(req: AuthenticatedRequest, res: express.R
           [documentId, userId, card.id, upload.finalObjectKey, upload.originalName, upload.declaredMimeType, upload.declaredSize, Date.now()],
         );
         if (!asset.rows[0]) throw new DirectUploadBusinessClaimError("claimed_business_record_missing", "Document upload was already assigned.", 409);
+        await refreshKnowledgeCard(client, userId, card.id);
         return asset.rows[0];
       },
       readExisting: async (client, session) => {
@@ -2052,6 +2103,8 @@ app.post("/api/videos/upload", requirePostgresAuth, videoUpload.single("video"),
         await client.query("UPDATE inspiration_books SET updated_at = $1 WHERE id = $2 AND user_id = $3", [now, bookId, userId]);
       }
     }
+
+    await refreshKnowledgeCard(client, userId, cardId);
 
     const cardResult = await client.query(
       `SELECT id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note, is_favorite, favorited_at,
@@ -3237,6 +3290,7 @@ app.post("/api/db/combo-cards", requirePostgresAuth, async (req: AuthenticatedRe
       }
     }
 
+    await refreshKnowledgeCard(client, userId, id);
     await client.query("COMMIT");
 
     const cardResult = await pgPool.query(
@@ -3354,14 +3408,17 @@ app.post("/api/db/cards/:id/combo/images", requirePostgresAuth, imageAssetUpload
       storageKey,
     });
 
-    const result = await pgPool.query(
-      `INSERT INTO combo_images (id, user_id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at`,
-      [imageId, userId, cardId, role, storedImage.storageProvider, storedImage.storageKey, storedImage.originalName, storedImage.mimeType, storedImage.sizeBytes, sortOrder, now]
-    );
-    await refreshComboCardSearchText(pgPool, userId, cardId);
-    return res.json({ image: mapComboImageRow(result.rows[0], req) });
+    const image = await withDatabaseTransaction(pgPool, async (client) => {
+      const result = await client.query(
+        `INSERT INTO combo_images (id, user_id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         RETURNING id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at`,
+        [imageId, userId, cardId, role, storedImage!.storageProvider, storedImage!.storageKey, storedImage!.originalName, storedImage!.mimeType, storedImage!.sizeBytes, sortOrder, now]
+      );
+      await refreshComboCardSearchText(client, userId, cardId);
+      return result.rows[0];
+    });
+    return res.json({ image: mapComboImageRow(image, req) });
   } catch (err: any) {
     if (storedImage) {
       await deleteImageAssetStorageObject(storedImage.storageProvider, storedImage.storageKey).catch(() => undefined);
@@ -3379,18 +3436,21 @@ app.put("/api/db/cards/:id/combo/images/:imageId", requirePostgresAuth, async (r
     const userId = req.user!.id;
     const role = normalizeComboImageRole(req.body.role);
     const sortOrder = Number.parseInt(String(req.body.sortOrder || "0"), 10) || 0;
-    const result = await pgPool.query(
-      `UPDATE combo_images
-       SET role = $1, sort_order = $2
-       WHERE id = $3 AND card_id = $4 AND user_id = $5
-       RETURNING id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at`,
-      [role, sortOrder, req.params.imageId, req.params.id, userId]
-    );
-    if (!result.rows[0]) {
+    const image = await withDatabaseTransaction(pgPool, async (client) => {
+      const result = await client.query(
+        `UPDATE combo_images
+         SET role = $1, sort_order = $2
+         WHERE id = $3 AND card_id = $4 AND user_id = $5
+         RETURNING id, card_id, role, storage_provider, storage_key, original_name, mime_type, size_bytes, sort_order, created_at`,
+        [role, sortOrder, req.params.imageId, req.params.id, userId]
+      );
+      if (result.rows[0]) await refreshComboCardSearchText(client, userId, req.params.id);
+      return result.rows[0] || null;
+    });
+    if (!image) {
       return res.status(404).json({ error: "Combo image not found." });
     }
-    await refreshComboCardSearchText(pgPool, userId, req.params.id);
-    return res.json({ image: mapComboImageRow(result.rows[0], req) });
+    return res.json({ image: mapComboImageRow(image, req) });
   } catch (err: any) {
     console.error("Combo image update error:", err);
     return res.status(500).json({ error: err.message || "Failed to update combo image." });
@@ -3403,18 +3463,20 @@ app.delete("/api/db/cards/:id/combo/images/:imageId", requirePostgresAuth, async
   }
   try {
     const userId = req.user!.id;
-    const result = await pgPool.query(
-      `DELETE FROM combo_images
-       WHERE id = $1 AND card_id = $2 AND user_id = $3
-       RETURNING storage_provider, storage_key`,
-      [req.params.imageId, req.params.id, userId]
-    );
-    const asset = result.rows[0];
+    const asset = await withDatabaseTransaction(pgPool, async (client) => {
+      const result = await client.query(
+        `DELETE FROM combo_images
+         WHERE id = $1 AND card_id = $2 AND user_id = $3
+         RETURNING storage_provider, storage_key`,
+        [req.params.imageId, req.params.id, userId]
+      );
+      if (result.rows[0]) await refreshComboCardSearchText(client, userId, req.params.id);
+      return result.rows[0] || null;
+    });
     if (!asset) {
       return res.status(404).json({ error: "Combo image not found." });
     }
     await deleteImageAssetStorageObject(asset.storage_provider, asset.storage_key).catch(() => undefined);
-    await refreshComboCardSearchText(pgPool, userId, req.params.id);
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Combo image delete error:", err);
@@ -3463,14 +3525,17 @@ app.post("/api/db/cards/:id/combo/generations", requirePostgresAuth, videoUpload
       storageKey,
     });
 
-    const result = await pgPool.query(
-      `INSERT INTO combo_generations (id, user_id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, '', $11, $12, $12)
-       RETURNING id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at`,
-      [generationId, userId, cardId, promptNote, storedVideo.storageProvider, storedVideo.storageKey, storedVideo.originalName, storedVideo.mimeType, storedVideo.sizeBytes, durationMs, sortOrder, now]
-    );
-    await refreshComboCardSearchText(pgPool, userId, cardId);
-    return res.json({ generation: mapComboGenerationRow(result.rows[0], req) });
+    const generation = await withDatabaseTransaction(pgPool, async (client) => {
+      const result = await client.query(
+        `INSERT INTO combo_generations (id, user_id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, '', $11, $12, $12)
+         RETURNING id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at`,
+        [generationId, userId, cardId, promptNote, storedVideo!.storageProvider, storedVideo!.storageKey, storedVideo!.originalName, storedVideo!.mimeType, storedVideo!.sizeBytes, durationMs, sortOrder, now]
+      );
+      await refreshComboCardSearchText(client, userId, cardId);
+      return result.rows[0];
+    });
+    return res.json({ generation: mapComboGenerationRow(generation, req) });
   } catch (err: any) {
     if (storedVideo) {
       await deleteVideoStorageObject(storedVideo.storageProvider, storedVideo.storageKey).catch(() => undefined);
@@ -3489,18 +3554,21 @@ app.put("/api/db/cards/:id/combo/generations/:generationId", requirePostgresAuth
     const promptNote = String(req.body.promptNote || "").trim();
     const sortOrder = Number.parseInt(String(req.body.sortOrder || "0"), 10) || 0;
     const durationMs = Number.parseInt(String(req.body.durationMs || "0"), 10) || 0;
-    const result = await pgPool.query(
-      `UPDATE combo_generations
-       SET prompt_note = $1, sort_order = $2, duration_ms = $3, updated_at = $4
-       WHERE id = $5 AND card_id = $6 AND user_id = $7
-       RETURNING id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at`,
-      [promptNote, sortOrder, durationMs, Date.now(), req.params.generationId, req.params.id, userId]
-    );
-    if (!result.rows[0]) {
+    const generation = await withDatabaseTransaction(pgPool, async (client) => {
+      const result = await client.query(
+        `UPDATE combo_generations
+         SET prompt_note = $1, sort_order = $2, duration_ms = $3, updated_at = $4
+         WHERE id = $5 AND card_id = $6 AND user_id = $7
+         RETURNING id, card_id, prompt_note, storage_provider, storage_key, original_name, mime_type, size_bytes, duration_ms, poster_url, sort_order, created_at, updated_at`,
+        [promptNote, sortOrder, durationMs, Date.now(), req.params.generationId, req.params.id, userId]
+      );
+      if (result.rows[0]) await refreshComboCardSearchText(client, userId, req.params.id);
+      return result.rows[0] || null;
+    });
+    if (!generation) {
       return res.status(404).json({ error: "Combo generation not found." });
     }
-    await refreshComboCardSearchText(pgPool, userId, req.params.id);
-    return res.json({ generation: mapComboGenerationRow(result.rows[0], req) });
+    return res.json({ generation: mapComboGenerationRow(generation, req) });
   } catch (err: any) {
     console.error("Combo generation update error:", err);
     return res.status(500).json({ error: err.message || "Failed to update combo generation." });
@@ -3513,18 +3581,20 @@ app.delete("/api/db/cards/:id/combo/generations/:generationId", requirePostgresA
   }
   try {
     const userId = req.user!.id;
-    const result = await pgPool.query(
-      `DELETE FROM combo_generations
-       WHERE id = $1 AND card_id = $2 AND user_id = $3
-       RETURNING storage_provider, storage_key`,
-      [req.params.generationId, req.params.id, userId]
-    );
-    const asset = result.rows[0];
+    const asset = await withDatabaseTransaction(pgPool, async (client) => {
+      const result = await client.query(
+        `DELETE FROM combo_generations
+         WHERE id = $1 AND card_id = $2 AND user_id = $3
+         RETURNING storage_provider, storage_key`,
+        [req.params.generationId, req.params.id, userId]
+      );
+      if (result.rows[0]) await refreshComboCardSearchText(client, userId, req.params.id);
+      return result.rows[0] || null;
+    });
     if (!asset) {
       return res.status(404).json({ error: "Combo generation not found." });
     }
     await deleteVideoStorageObject(asset.storage_provider, asset.storage_key).catch(() => undefined);
-    await refreshComboCardSearchText(pgPool, userId, req.params.id);
     return res.json({ success: true });
   } catch (err: any) {
     console.error("Combo generation delete error:", err);
@@ -3549,7 +3619,9 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
   if (documentUploadId) {
     return claimDirectDocumentCard(authReq, res, documentUploadId);
   }
+  const client = await pgPool.connect();
   try {
+    await client.query("BEGIN");
     const { id, weekId, dayIndex, imageUrl, thumbnailUrl, photoUid, photoHash, terms, decoType, angle, createdAt, type, mdContent, mdSummary, mdName, insightNote } = req.body;
     const safeTerms = Array.isArray(terms) ? terms : [];
     const normalizedImageUrl = normalizeInternalProxyUrl(imageUrl || "");
@@ -3557,7 +3629,7 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
     const termsText = [...safeTerms, mdName, mdSummary, insightNote]
       .filter((value) => typeof value === "string" && value.trim())
       .join(" ");
-    await pgPool.query(
+    const result = await client.query(
       `INSERT INTO cards (id, user_id, week_id, day_index, image_url, thumbnail_url, photo_uid, photo_hash, terms, terms_text, deco_type, angle, created_at, type, md_content, md_summary, md_name, insight_note)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        ON CONFLICT (id)
@@ -3566,7 +3638,8 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
                      terms = EXCLUDED.terms, terms_text = EXCLUDED.terms_text, deco_type = EXCLUDED.deco_type, angle = EXCLUDED.angle, 
                      created_at = EXCLUDED.created_at, type = EXCLUDED.type, md_content = EXCLUDED.md_content,
                      md_summary = EXCLUDED.md_summary, md_name = EXCLUDED.md_name, insight_note = EXCLUDED.insight_note
-       WHERE cards.user_id = EXCLUDED.user_id`,
+       WHERE cards.user_id = EXCLUDED.user_id
+       RETURNING id`,
       [
         id,
         authReq.user!.id,
@@ -3588,10 +3661,19 @@ app.post("/api/db/cards", requirePostgresAuth, async (req, res) => {
         insightNote || null,
       ]
     );
+    if (!result.rows[0]) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Card belongs to another user." });
+    }
+    await refreshKnowledgeCard(client, authReq.user!.id, id);
+    await client.query("COMMIT");
     return res.json({ success: true });
   } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => undefined);
     console.error("Error executing upsert card query:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -4356,6 +4438,12 @@ app.delete("/api/db/cards/:id", requirePostgresAuth, async (req, res) => {
       "SELECT storage_provider, storage_key FROM combo_generations WHERE user_id = $1 AND card_id = $2",
       [userId, req.params.id]
     );
+    if (runtimeConfig.knowledgeBaseEnabled) {
+      await client.query(
+        "DELETE FROM knowledge_nodes WHERE user_id = $1 AND entity_type = 'card' AND entity_id = $2",
+        [userId, req.params.id],
+      );
+    }
     const result = await client.query("DELETE FROM cards WHERE id = $1 AND user_id = $2", [req.params.id, userId]);
     if (result.rowCount === 0) {
       await client.query("ROLLBACK");
@@ -4416,20 +4504,28 @@ app.put("/api/db/cards/:id/terms", requirePostgresAuth, async (req, res) => {
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
+  const client = await pgPool.connect();
   try {
     const authReq = req as AuthenticatedRequest;
     const { terms } = req.body;
-    const result = await pgPool.query(
+    await client.query("BEGIN");
+    const result = await client.query(
       "UPDATE cards SET terms = $1, terms_text = CONCAT_WS(' ', array_to_string($1::text[], ' '), md_name, md_summary, insight_note) WHERE id = $2 AND user_id = $3",
       [terms, req.params.id, authReq.user!.id]
     );
     if (result.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Card not found" });
     }
+    await refreshKnowledgeCard(client, authReq.user!.id, req.params.id);
+    await client.query("COMMIT");
     return res.json({ success: true });
   } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => undefined);
     console.error("Error executing update card tag terms query:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -4437,10 +4533,12 @@ app.put("/api/db/cards/:id/insight-note", requirePostgresAuth, async (req, res) 
   if (!pgPool) {
     return res.status(503).json({ error: "PostgreSQL is not configured." });
   }
+  const client = await pgPool.connect();
   try {
     const authReq = req as AuthenticatedRequest;
     const insightNote = String(req.body.insightNote || "").trim().slice(0, 4000);
-    const result = await pgPool.query(
+    await client.query("BEGIN");
+    const result = await client.query(
       `UPDATE cards
        SET insight_note = $1,
            terms_text = CONCAT_WS(' ', array_to_string(terms, ' '), md_name, md_summary, $1::text)
@@ -4448,12 +4546,18 @@ app.put("/api/db/cards/:id/insight-note", requirePostgresAuth, async (req, res) 
       [insightNote || null, req.params.id, authReq.user!.id]
     );
     if (result.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Card not found" });
     }
+    await refreshKnowledgeCard(client, authReq.user!.id, req.params.id);
+    await client.query("COMMIT");
     return res.json({ success: true });
   } catch (err: any) {
+    await client.query("ROLLBACK").catch(() => undefined);
     console.error("Error updating insight note:", err);
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

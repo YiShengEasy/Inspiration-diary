@@ -20,6 +20,9 @@
     "lint": "tsc --noEmit",
     "test:particle": "tsx --test tests/particle-studio.test.ts",
     "test:server": "tsx --test tests/database-migrations.test.ts tests/direct-upload*.test.ts tests/image-analysis-copy.test.ts",
+    "test:knowledge": "tsx --test tests/knowledge-*.test.ts",
+    "test:ui": "vitest run",
+    "test": "npm run test:particle && npm run test:server && npm run test:knowledge && npm run test:ui",
     "db:migrate": "tsx scripts/migrate-database.ts",
     "db:migrate:status": "tsx scripts/migrate-database.ts --status",
     "uploads:cleanup": "tsx scripts/cleanup-upload-sessions.ts",
@@ -39,6 +42,7 @@
     "@tailwindcss/vite": "^4.1.14",
     "@types/pg": "^8.20.0",
     "@vitejs/plugin-react": "^5.0.4",
+    "@xyflow/react": "^12.11.2",
     "ali-oss": "^6.23.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
@@ -62,6 +66,9 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/ali-oss": "^6.23.3",
     "@types/compression": "^1.8.1",
     "@types/express": "^4.17.21",
@@ -70,9 +77,11 @@
     "@types/three": "^0.185.1",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "jsdom": "^27.0.1",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "vitest": "^3.2.7"
   }
 }

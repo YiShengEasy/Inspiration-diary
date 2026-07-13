@@ -14,6 +14,8 @@ export interface RuntimeConfig {
   databaseUrl: string;
   databaseSsl: boolean;
   authCookieSecure: boolean;
+  knowledgeBaseEnabled: boolean;
+  knowledgeAiRelationsEnabled: boolean;
   primaryImageStorageProvider: PrimaryImageStorageProvider;
   videoStorageProvider: AssetStorageProvider;
   imageAssetStorageProvider: AssetStorageProvider;
@@ -64,6 +66,14 @@ function readBoolean(name: string, fallback: boolean): boolean {
   const value = readEnv(name).toLowerCase();
   if (!value) return fallback;
   return value === "true" || value === "1" || value === "yes";
+}
+
+function readStrictBoolean(name: string, fallback: boolean): boolean {
+  const value = readEnv(name);
+  if (!value) return fallback;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return fallback;
 }
 
 function readNumber(name: string, fallback: number): number {
@@ -125,6 +135,8 @@ export function getRuntimeConfig(): RuntimeConfig {
     databaseUrl: readEnv("DATABASE_URL") || "postgresql://postgres:postgres@localhost:5432/notebook",
     databaseSsl: readBoolean("DATABASE_SSL", false),
     authCookieSecure: readBoolean("AUTH_COOKIE_SECURE", appEnv === "production"),
+    knowledgeBaseEnabled: readStrictBoolean("KNOWLEDGE_BASE_ENABLED", false),
+    knowledgeAiRelationsEnabled: readStrictBoolean("KNOWLEDGE_AI_RELATIONS_ENABLED", false),
     primaryImageStorageProvider,
     videoStorageProvider,
     imageAssetStorageProvider,
@@ -172,6 +184,13 @@ export function validateRuntimeConfig(config = getRuntimeConfig()): string[] {
   const errors: string[] = [];
   const mediaDeliveryMode = readEnv("MEDIA_DELIVERY_MODE");
   const directUploadMode = readEnv("WEB_DIRECT_OSS_UPLOAD_MODE");
+
+  for (const name of ["KNOWLEDGE_BASE_ENABLED", "KNOWLEDGE_AI_RELATIONS_ENABLED"]) {
+    const value = readEnv(name);
+    if (value && value !== "true" && value !== "false") {
+      errors.push(`${name} must be true or false.`);
+    }
+  }
 
   if (directUploadMode && !["off", "admin", "all"].includes(directUploadMode)) {
     errors.push("WEB_DIRECT_OSS_UPLOAD_MODE must be off, admin, or all.");

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { X, Eye, EyeOff, Save, Key, Cpu, HelpCircle, Globe, Settings2, Loader2, CheckCircle2, AlertTriangle, PlayCircle } from "lucide-react";
 import { authFetch } from "../lib/authClient";
 
@@ -16,6 +16,7 @@ interface SettingsModalProps {
   thirdPartyBaseUrl: string;
   thirdPartyModel: string;
   thirdPartyThinking: boolean;
+  knowledgeAutoAdd: boolean;
   onSave: (config: {
     customApiKey: string;
     customGeminiBaseUrl: string;
@@ -28,6 +29,7 @@ interface SettingsModalProps {
     thirdPartyBaseUrl: string;
     thirdPartyModel: string;
     thirdPartyThinking: boolean;
+    knowledgeAutoAdd: boolean;
   }) => void;
 }
 
@@ -59,6 +61,7 @@ export default function SettingsModal({
   thirdPartyBaseUrl,
   thirdPartyModel,
   thirdPartyThinking,
+  knowledgeAutoAdd,
   onSave,
 }: SettingsModalProps) {
   const [provider, setProvider] = useState(customProvider || "gemini");
@@ -90,6 +93,7 @@ export default function SettingsModal({
   const [thirdPartyUrl, setThirdPartyUrl] = useState(thirdPartyBaseUrl);
   const [thirdPartyModelName, setThirdPartyModelName] = useState(thirdPartyModel);
   const [thinkingEnabled, setThinkingEnabled] = useState(thirdPartyThinking);
+  const [autoAddToKnowledge, setAutoAddToKnowledge] = useState(knowledgeAutoAdd);
   const [showThirdPartyKey, setShowThirdPartyKey] = useState(false);
 
   const [showGeminiKey, setShowGeminiKey] = useState(false);
@@ -107,6 +111,10 @@ export default function SettingsModal({
     sentImage?: string;
     sentPrompt?: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (isOpen) setAutoAddToKnowledge(knowledgeAutoAdd);
+  }, [isOpen, knowledgeAutoAdd]);
 
   if (!isOpen) return null;
 
@@ -191,6 +199,7 @@ export default function SettingsModal({
       thirdPartyBaseUrl: thirdPartyUrl.trim(),
       thirdPartyModel: thirdPartyModelName.trim(),
       thirdPartyThinking: thinkingEnabled,
+      knowledgeAutoAdd: autoAddToKnowledge,
     });
 
     setIsSaved(true);
@@ -275,6 +284,32 @@ export default function SettingsModal({
         {/* Scrollable Content */}
         <div className="relative z-10 flex-1 overflow-y-auto px-6 pb-6">
           <form onSubmit={handleSave} className="space-y-4 pt-5">
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-900/10 bg-amber-500/5 p-3 dark:border-amber-100/10 dark:bg-amber-500/10">
+              <div>
+                <label htmlFor="knowledge-auto-add" className="block text-xs font-semibold text-stone-700 dark:text-stone-200">
+                  上传后自动加入知识库
+                </label>
+                <p className="mt-0.5 text-[10px] leading-relaxed text-stone-400 dark:text-stone-500">
+                  关闭后只影响后续上传，已有知识节点不会被移除。
+                </p>
+              </div>
+              <button
+                id="knowledge-auto-add"
+                type="button"
+                role="switch"
+                aria-checked={autoAddToKnowledge}
+                onClick={() => setAutoAddToKnowledge((current) => !current)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                  autoAddToKnowledge ? "bg-amber-600" : "bg-stone-300 dark:bg-stone-700"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                    autoAddToKnowledge ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
             {provider === "gemini" ? (
               <>
                 {/* --- Gemini Section --- */}

@@ -48,6 +48,7 @@ import { isDirectUploadUnavailable, uploadDirect } from "./lib/directUploadClien
 import { createImageAnalysisCopy, DEFAULT_ANALYSIS_MAX_BYTES } from "./lib/imageAnalysisCopy";
 
 const ParticleStudio = React.lazy(() => import("./features/particle-studio/ParticleStudio"));
+const KnowledgeBaseView = React.lazy(() => import("./features/knowledge-base/KnowledgeBaseView"));
 
 const ALL_CARDS_PAGE_SIZE = 12;
 const SMART_BOOK_SUGGEST_IMAGES_KEY = "smart_book_suggest_images";
@@ -72,7 +73,7 @@ type UploadTargetOptions = {
   documentUploadId?: string;
 };
 
-type MainView = "board" | "books" | "tags" | "particles";
+type MainView = "board" | "books" | "tags" | "particles" | "knowledge";
 
 function directImageMimeType(file: File): string {
   if (file.type) return file.type;
@@ -99,6 +100,8 @@ export default function App() {
   const [favoriteOnly, setFavoriteOnly] = useState<boolean>(false);
   const [favoriteUpdatingCardIds, setFavoriteUpdatingCardIds] = useState<Set<string>>(() => new Set());
   const [mainView, setMainView] = useState<MainView>("board");
+  const [knowledgeBaseEnabled, setKnowledgeBaseEnabled] = useState<boolean>(false);
+  const [knowledgeAutoAdd, setKnowledgeAutoAdd] = useState<boolean>(true);
   const [bookRefreshToken, setBookRefreshToken] = useState<number>(0);
   const [customTagGroups, setCustomTagGroups] = useState<CustomTagGroup[]>([]);
   const [customTagLibraryEnabled, setCustomTagLibraryEnabled] = useState<boolean>(true);
@@ -189,6 +192,8 @@ export default function App() {
     setAllCardsTotalPages(1);
     setAllCardsPage(1);
     setMainView("board");
+    setKnowledgeBaseEnabled(false);
+    setKnowledgeAutoAdd(true);
     setZoomedCard(null);
   }, []);
 
@@ -217,6 +222,30 @@ export default function App() {
     return () => window.removeEventListener("auth:required", handler);
   }, [clearAuthenticatedState]);
 
+  useEffect(() => {
+    if (!authUser) return;
+    let alive = true;
+
+    authFetch("/api/runtime-capabilities")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("运行能力加载失败");
+        const body = await response.json() as { knowledgeBase?: unknown };
+        if (alive) setKnowledgeBaseEnabled(body.knowledgeBase === true);
+      })
+      .catch((error) => {
+        console.error("Failed to load runtime capabilities:", error);
+        if (alive) setKnowledgeBaseEnabled(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!knowledgeBaseEnabled && mainView === "knowledge") setMainView("board");
+  }, [knowledgeBaseEnabled, mainView]);
+
   // Calculate the week identifier (e.g., "2026-W25")
   const getWeekIdentifier = (date: Date): string => {
     const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -242,6 +271,7 @@ export default function App() {
     if (!authUser) return;
 
     loadSettings().then((dbSettings) => {
+      setKnowledgeAutoAdd(dbSettings.knowledge_auto_add !== "false");
       if (Object.keys(dbSettings).length === 0) return;
       if (dbSettings.custom_provider) { setCustomProvider(dbSettings.custom_provider); localStorage.setItem("custom_provider", dbSettings.custom_provider); }
       if (dbSettings.custom_gemini_api_key !== undefined) { setCustomApiKey(dbSettings.custom_gemini_api_key); localStorage.setItem("custom_gemini_api_key", dbSettings.custom_gemini_api_key); }
@@ -1866,6 +1896,23 @@ export default function App() {
               <span>粒子 3D</span>
             </button>
 
+            {knowledgeBaseEnabled && (
+              <button
+                type="button"
+                onClick={() => setMainView((current) => current === "knowledge" ? "board" : "knowledge")}
+                className={`inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-xs font-bold shadow-sm transition-all hover:-translate-y-0.5 active:scale-95 ${
+                  mainView === "knowledge"
+                    ? "bg-amber-700 text-white dark:bg-amber-300 dark:text-stone-950"
+                    : "border border-amber-700/20 bg-amber-500/10 text-amber-900 hover:bg-amber-500/20 dark:border-amber-300/20 dark:text-amber-200"
+                }`}
+                title={mainView === "knowledge" ? "返回灵感画板" : "打开知识库"}
+                aria-pressed={mainView === "knowledge"}
+              >
+                <Globe size={14} />
+                <span>{mainView === "knowledge" ? "返回画板" : "知识库"}</span>
+              </button>
+            )}
+
             <button
               onClick={() => setShowSettings(true)}
               className="p-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-950 dark:text-amber-350 transition-colors shadow-sm cursor-pointer border border-amber-500/20 flex items-center justify-center gap-1.5 text-xs font-semibold"
@@ -2364,6 +2411,16 @@ export default function App() {
             onUploadMdToBook={handleUploadMdToBook}
             onUploadVideoToBook={handleUploadVideoToBook}
           />
+        ) : mainView === "knowledge" ? (
+          <React.Suspense
+            fallback={(
+              <div className="grid min-h-[50vh] place-items-center text-stone-500 dark:text-stone-300">
+                <Loader2 className="animate-spin" size={22} />
+              </div>
+            )}
+          >
+            <KnowledgeBaseView onBack={() => setMainView("board")} />
+          </React.Suspense>
         ) : (
           <CustomTagLibraryView
             groups={customTagGroups}
@@ -2391,6 +2448,7 @@ export default function App() {
           thirdPartyBaseUrl={thirdPartyBaseUrl}
           thirdPartyModel={thirdPartyModel}
           thirdPartyThinking={thirdPartyThinking}
+          knowledgeAutoAdd={knowledgeAutoAdd}
           onSave={(config) => {
             localStorage.setItem("custom_provider", config.customProvider);
             localStorage.setItem("custom_gemini_api_key", config.customApiKey);
@@ -2416,6 +2474,7 @@ export default function App() {
               custom_thirdparty_base_url: config.thirdPartyBaseUrl,
               custom_thirdparty_model: config.thirdPartyModel,
               custom_thirdparty_thinking: String(config.thirdPartyThinking),
+              knowledge_auto_add: String(config.knowledgeAutoAdd),
             });
 
             setCustomProvider(config.customProvider);
@@ -2429,6 +2488,7 @@ export default function App() {
             setThirdPartyBaseUrl(config.thirdPartyBaseUrl);
             setThirdPartyModel(config.thirdPartyModel);
             setThirdPartyThinking(config.thirdPartyThinking);
+            setKnowledgeAutoAdd(config.knowledgeAutoAdd);
           }}
         />
       )}
