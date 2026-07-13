@@ -177,12 +177,12 @@ test("caps signed upload and video STS grants at fifteen minutes", () => {
   );
 });
 
-test("requires an STS role for production OSS when direct upload is enabled", () => {
+test("requires an STS role when direct upload is enabled", () => {
   for (const mode of ["admin", "all"] as const) {
     withEnv(productionOssEnv(mode), () => {
       const errors = validateRuntimeConfig(getRuntimeConfig());
       assert.ok(
-        errors.includes("OSS_STS_ROLE_ARN is required for direct upload in a production OSS deployment."),
+        errors.includes("OSS_STS_ROLE_ARN is required when direct upload is enabled."),
       );
     });
   }
@@ -195,9 +195,11 @@ test("does not require an STS role while direct upload is off", () => {
   });
 });
 
-test("does not require production STS configuration in local development", () => {
+test("requires PostgreSQL, OSS configuration, and STS when enabled locally", () => {
   withEnv({ WEB_DIRECT_OSS_UPLOAD_MODE: "admin" }, () => {
     const errors = validateRuntimeConfig(getRuntimeConfig());
-    assert.ok(!errors.some((error) => error.startsWith("OSS_STS_ROLE_ARN")));
+    assert.ok(errors.includes("DATABASE_TYPE must be postgres when direct upload is enabled."));
+    assert.ok(errors.includes("OSS_STS_ROLE_ARN is required when direct upload is enabled."));
+    assert.ok(errors.includes("OSS_REGION is required when any storage provider is oss."));
   });
 });

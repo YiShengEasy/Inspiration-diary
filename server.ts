@@ -17,6 +17,10 @@ import { getMiniToken, loadMiniSessionUser } from "./src/server/miniprogramAuth"
 import { getRuntimeConfig, validateRuntimeConfig } from "./src/server/runtimeConfig";
 import { createImageAssetStorage, createVideoStorage, storePrimaryImage } from "./src/server/storage";
 import { deliverOssObject, imageProcessFor, type ImageVariant, type MediaProcesses } from "./src/server/mediaDelivery";
+import { createOssDirectUploadGateway } from "./src/server/direct-upload/ossGateway";
+import { createUploadSessionRepository } from "./src/server/direct-upload/repository";
+import { createDirectUploadRouter } from "./src/server/direct-upload/router";
+import { createDirectUploadService } from "./src/server/direct-upload/service";
 import { findBookSuggestionCandidates } from "./src/lib/bookSuggestion";
 import type { BookSuggestionFeedbackAction, ImageCard } from "./src/types";
 
@@ -1080,6 +1084,43 @@ const requirePostgresAuth = async (req: AuthenticatedRequest, res: express.Respo
   }
   return requireAuth(pgPool)(req, res, next);
 };
+
+if (runtimeConfig.directUpload.mode === "off") {
+  app.use(
+    "/api/uploads",
+    createDirectUploadRouter({
+      mode: "off",
+      service: {
+        authorize: async () => undefined,
+        complete: async () => undefined,
+        get: async () => undefined,
+        abort: async () => undefined,
+      },
+    }),
+  );
+} else if (pgPool) {
+  const directUploadService = createDirectUploadService({
+    repository: createUploadSessionRepository(pgPool),
+    gateway: createOssDirectUploadGateway(runtimeConfig),
+    config: {
+      authorizationTtlSeconds: runtimeConfig.directUpload.authorizationTtlSeconds,
+      videoStsTtlSeconds: runtimeConfig.directUpload.videoStsTtlSeconds,
+      activeSessionsPerUser: runtimeConfig.directUpload.activeSessionsPerUser,
+      authorizationsPerMinute: runtimeConfig.directUpload.authorizationsPerMinute,
+      maxImageBytes: runtimeConfig.directUpload.maxImageBytes,
+      maxDocumentBytes: runtimeConfig.directUpload.maxDocumentBytes,
+      maxVideoBytes: runtimeConfig.directUpload.maxVideoBytes,
+    },
+  });
+  app.use(
+    "/api/uploads",
+    requirePostgresAuth,
+    createDirectUploadRouter({
+      mode: runtimeConfig.directUpload.mode,
+      service: directUploadService,
+    }),
+  );
+}
 
 app.get("/api/miniprogram/me", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
   try {

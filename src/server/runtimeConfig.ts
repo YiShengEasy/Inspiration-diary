@@ -218,7 +218,8 @@ export function validateRuntimeConfig(config = getRuntimeConfig()): string[] {
   const requiresOss =
     config.primaryImageStorageProvider === "oss" ||
     config.videoStorageProvider === "oss" ||
-    config.imageAssetStorageProvider === "oss";
+    config.imageAssetStorageProvider === "oss" ||
+    config.directUpload.mode !== "off";
 
   if (requiresOss) {
     if (!config.oss.region) errors.push("OSS_REGION is required when any storage provider is oss.");
@@ -229,13 +230,12 @@ export function validateRuntimeConfig(config = getRuntimeConfig()): string[] {
     if (!config.oss.publicBaseUrl) errors.push("OSS_PUBLIC_BASE_URL is required when any storage provider is oss.");
   }
 
-  if (
-    config.deploymentProfile === "production" &&
-    requiresOss &&
-    config.directUpload.mode !== "off" &&
-    !config.directUpload.stsRoleArn
-  ) {
-    errors.push("OSS_STS_ROLE_ARN is required for direct upload in a production OSS deployment.");
+  if (config.directUpload.mode !== "off" && config.databaseType !== "postgres") {
+    errors.push("DATABASE_TYPE must be postgres when direct upload is enabled.");
+  }
+
+  if (config.directUpload.mode !== "off" && !config.directUpload.stsRoleArn) {
+    errors.push("OSS_STS_ROLE_ARN is required when direct upload is enabled.");
   }
 
   if (config.appEnv === "production") {
