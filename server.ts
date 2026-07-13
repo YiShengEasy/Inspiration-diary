@@ -10,10 +10,9 @@ import pg from "pg";
 import multer from "multer";
 import mammoth from "mammoth";
 import compression from "compression";
-import { createAuthRouter, requireAuth, type AuthenticatedRequest } from "./src/server/auth";
+import { createAuthRouter, type AuthenticatedRequest } from "./src/server/auth";
 import { fetchPhotoPrismImage } from "./src/server/photoprism";
 import { normalizeImageUpload } from "./src/server/upload";
-import { getMiniToken, loadMiniSessionUser } from "./src/server/miniprogramAuth";
 import { getRuntimeConfig, validateRuntimeConfig } from "./src/server/runtimeConfig";
 import { createImageAssetStorage, createVideoStorage, storePrimaryImage } from "./src/server/storage";
 import { deliverOssObject, imageProcessFor, type ImageVariant, type MediaProcesses } from "./src/server/mediaDelivery";
@@ -33,6 +32,11 @@ import type { DirectUploadGateway } from "./src/server/direct-upload/ossGateway"
 import { createKnowledgeRouter } from "./src/server/knowledge/router";
 import { createKnowledgeService } from "./src/server/knowledge/service";
 import { getRuntimeCapabilities } from "./src/server/runtimeCapabilities";
+import { withDatabaseTransaction } from "./src/server/database/transaction";
+import { createMiniprogramRouter } from "./src/server/miniprogram/router";
+import { createNotesRouter } from "./src/server/notes/router";
+import { createRequirePostgresAuth } from "./src/server/postgresAuth";
+import { createSettingsRouter } from "./src/server/settings/router";
 import { findBookSuggestionCandidates } from "./src/lib/bookSuggestion";
 import type { BookSuggestionFeedbackAction, ImageCard } from "./src/types";
 
@@ -620,24 +624,6 @@ async function refreshKnowledgeCard(
   }
 }
 
-async function withDatabaseTransaction<T>(
-  pool: pg.Pool,
-  operation: (client: pg.PoolClient) => Promise<T>,
-): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await operation(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
 function primaryObjectUrl(storageKey: string, req: express.Request, variant: ImageVariant) {
   const routeByVariant: Record<ImageVariant, string> = {
     "thumb-240": "primary-thumb-240",
@@ -1114,28 +1100,7 @@ if (pgPool) {
   app.use("/api/auth", createAuthRouter(pgPool));
 }
 
-function getCurrentWeekId(): string {
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
-  const days = Math.floor(
-    (Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - start.getTime()) / 86400000
-  );
-  const week = Math.ceil((days + start.getUTCDay() + 1) / 7);
-  return `${now.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-}
-
-const requirePostgresAuth = async (req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) => {
-  if (!pgPool) return res.status(503).json({ error: "PostgreSQL is not configured." });
-  const miniToken = getMiniToken(req);
-  if (miniToken) {
-    const miniUser = await loadMiniSessionUser(pgPool, miniToken);
-    if (!miniUser) return res.status(401).json({ error: "登录已过期" });
-    req.user = miniUser;
-    req.sessionId = miniToken;
-    return next();
-  }
-  return requireAuth(pgPool)(req, res, next);
-};
+const requirePostgresAuth = createRequirePostgresAuth(pgPool);
 
 if (runtimeConfig.directUpload.mode === "off") {
   app.use(
@@ -1598,31 +1563,11 @@ async function claimDirectComboGeneration(req: AuthenticatedRequest, res: expres
   }
 }
 
-app.get("/api/miniprogram/me", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const userId = req.user!.id;
-    const [inspirationCount, weekCount] = await Promise.all([
-      pgPool!.query("SELECT COUNT(*)::int AS count FROM cards WHERE user_id = $1", [userId]),
-      pgPool!.query("SELECT COUNT(*)::int AS count FROM cards WHERE user_id = $1 AND week_id = $2", [userId, getCurrentWeekId()]),
-    ]);
-    return res.json({
-      user: req.user,
-      stats: {
-        inspirationCount: inspirationCount.rows[0]?.count || 0,
-        weekRecordCount: weekCount.rows[0]?.count || 0,
-        toolUsageCount: 0,
-      },
-      sync: { status: "ready" },
-    });
-  } catch (err: unknown) {
-    console.error("Mini program me error:", err);
-    return res.status(500).json({ error: "加载我的信息失败" });
-  }
-});
-
-app.post("/api/miniprogram/tool-usage", requirePostgresAuth, async (_req, res) => {
-  return res.json({ success: true });
-});
+if (pgPool) {
+  app.use("/api/miniprogram", requirePostgresAuth, createMiniprogramRouter(pgPool));
+} else {
+  app.use("/api/miniprogram", requirePostgresAuth);
+}
 
 app.post("/api/documents/extract-text", requirePostgresAuth, documentUpload.single("document"), async (req, res) => {
   try {
@@ -2723,55 +2668,11 @@ app.post("/api/test-model", requirePostgresAuth, async (req, res) => {
   }
 });
 
-// 1. Fetch weekly note
-app.get("/api/db/notes/:weekId", requirePostgresAuth, async (req, res) => {
-  if (!pgPool) {
-    return res.status(503).json({ error: "PostgreSQL is not configured. Specify DATABASE_TYPE=postgres" });
-  }
-  try {
-    const authReq = req as AuthenticatedRequest;
-    const result = await pgPool.query(
-      "SELECT week_id, note, height, updated_at FROM notes WHERE user_id = $1 AND week_id = $2",
-      [authReq.user!.id, req.params.weekId]
-    );
-    if (result.rows.length > 0) {
-      const row = result.rows[0];
-      return res.json({
-        weekId: row.week_id,
-        note: row.note,
-        height: row.height,
-        updatedAt: Number(row.updated_at),
-      });
-    } else {
-      return res.status(404).json({ error: "Note not found" });
-    }
-  } catch (err: any) {
-    console.error("Error executing fetch note query:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-// 2. Persist/update weekly note
-app.post("/api/db/notes", requirePostgresAuth, async (req, res) => {
-  if (!pgPool) {
-    return res.status(503).json({ error: "PostgreSQL is not configured." });
-  }
-  try {
-    const authReq = req as AuthenticatedRequest;
-    const { weekId, note, height } = req.body;
-    await pgPool.query(
-      `INSERT INTO notes (user_id, week_id, note, height, updated_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (user_id, week_id)
-       DO UPDATE SET note = EXCLUDED.note, height = EXCLUDED.height, updated_at = EXCLUDED.updated_at`,
-      [authReq.user!.id, weekId, note, height, Date.now()]
-    );
-    return res.json({ success: true });
-  } catch (err: any) {
-    console.error("Error executing upsert note query:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
+if (pgPool) {
+  app.use("/api/db", requirePostgresAuth, createNotesRouter(pgPool));
+} else {
+  app.use("/api/db/notes", requirePostgresAuth);
+}
 
 // 3. Fetch image cards for week ID
 app.get("/api/db/weeks/:weekId/summary", requirePostgresAuth, async (req: AuthenticatedRequest, res) => {
@@ -4561,47 +4462,11 @@ app.put("/api/db/cards/:id/insight-note", requirePostgresAuth, async (req, res) 
   }
 });
 
-// 7. Fetch all settings
-app.get("/api/db/settings", requirePostgresAuth, async (req, res) => {
-  if (!pgPool) {
-    return res.status(503).json({ error: "PostgreSQL is not configured." });
-  }
-  try {
-    const authReq = req as AuthenticatedRequest;
-    const result = await pgPool.query("SELECT key, value FROM settings WHERE user_id = $1", [authReq.user!.id]);
-    const settings: Record<string, string> = {};
-    result.rows.forEach((row) => {
-      settings[row.key] = row.value;
-    });
-    return res.json(settings);
-  } catch (err: any) {
-    console.error("Error fetching settings:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-// 8. Upsert settings (batch)
-app.post("/api/db/settings", requirePostgresAuth, async (req, res) => {
-  if (!pgPool) {
-    return res.status(503).json({ error: "PostgreSQL is not configured." });
-  }
-  try {
-    const authReq = req as AuthenticatedRequest;
-    const entries = Object.entries(req.body as Record<string, string>);
-    const now = Date.now();
-    for (const [key, value] of entries) {
-      await pgPool.query(
-        `INSERT INTO settings (user_id, key, value, updated_at) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
-        [authReq.user!.id, key, value, now]
-      );
-    }
-    return res.json({ success: true });
-  } catch (err: any) {
-    console.error("Error saving settings:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
+if (pgPool) {
+  app.use("/api/db", requirePostgresAuth, createSettingsRouter(pgPool));
+} else {
+  app.use("/api/db/settings", requirePostgresAuth);
+}
 
 app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (err instanceof multer.MulterError) {

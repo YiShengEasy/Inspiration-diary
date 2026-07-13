@@ -19,7 +19,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:particle": "tsx --test tests/particle-studio.test.ts",
-    "test:server": "tsx --test tests/database-migrations.test.ts tests/direct-upload*.test.ts tests/image-analysis-copy.test.ts",
+    "test:server": "tsx --test tests/database-migrations.test.ts tests/direct-upload*.test.ts tests/image-analysis-copy.test.ts tests/server-*.test.ts",
     "test:knowledge": "tsx --test tests/knowledge-*.test.ts",
     "test:ui": "vitest run",
     "test": "npm run test:particle && npm run test:server && npm run test:knowledge && npm run test:ui",
