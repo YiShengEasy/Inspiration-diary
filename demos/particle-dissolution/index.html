@@ -205,6 +205,8 @@ const vtxParticle = /* glsl */`
   uniform float uWaveStr;
   uniform float uWaveFreq;
   uniform int   uEffect;
+  uniform float uImgAspect;
+  uniform vec2  uMouse;
 
   attribute vec3  aColor;  // original image color at this pixel
   attribute vec2  aUV;     // normalized position in image (0-1)
@@ -213,6 +215,10 @@ const vtxParticle = /* glsl */`
   varying vec3  vCol;
   varying float vAlpha;
   varying float vDs;
+
+  vec2 uvToWorld(vec2 uv) {
+    return vec2((uv.x * 2.0 - 1.0) * uImgAspect, 1.0 - uv.y * 2.0);
+  }
 
   // Simple hash-based value noise
   float hash(vec2 p) {
@@ -258,7 +264,8 @@ const vtxParticle = /* glsl */`
     vec2  jitter = vec2(cos(angle), sin(angle)) * sa;
 
     vec3 pos = position;
-    pos.xy  += jitter;
+    vec2 base = position.xy;
+    pos.xy += jitter;
 
     // Wave motion for intact particles (they ripple like water surface)
     float wt = uTime * 1.5;
@@ -275,12 +282,89 @@ const vtxParticle = /* glsl */`
       pos.x += sin(aRnd * 23.17 + uTime * 2.8 + aUV.y * 5.0) * 0.045 * age;
     }
 
+    // Effects 2-6: keep particles anchored to image UV, then apply style motion.
+    if (uEffect >= 2) {
+      alpha = mix(0.95, 0.40, smoothstep(0.8, 1.0, uInvasion));
+      vec2 ctrMouse = uvToWorld(uMouse);
+      vec2 ctrImg   = vec2(0.0, 0.0);
+      vec2 d, dir;
+      float r, inv;
+
+      if (uEffect == 2) {
+        // Black hole: inward pull + swirl, but still based on original silhouette.
+        d = base - ctrMouse;
+        r = length(d) + 0.0001;
+        inv = smoothstep(0.0, 1.0, uInvasion);
+        float spin = uTime * (0.7 + uWaveFreq * 0.12) + aRnd * 3.0;
+        float ang  = atan(d.y, d.x) - spin * inv;
+        float nr   = mix(r, r * (1.0 - 0.86 * inv), inv);
+        vec2 whirl = ctrMouse + vec2(cos(ang), sin(ang)) * nr;
+        pos.xy = mix(base, whirl, 0.88 * inv);
+        pos.xy += normalize(ctrMouse - pos.xy) * (0.07 * inv / (r + 0.25));
+        vDs = clamp(r / (uImgAspect + 1.0), 0.0, 1.0);
+      } else if (uEffect == 3) {
+        // Digital rain: each source pixel falls in its own column.
+        inv = smoothstep(0.0, 1.0, uInvasion);
+        float colId = floor(aUV.x * 64.0);
+        float speed = 0.25 + fract(colId * 0.173 + aRnd) * 1.2;
+        float phase = fract(aUV.y + aRnd * 0.7 + uTime * speed * max(inv, 0.02));
+        float fall  = phase * inv * 1.7;
+        pos.xy = base;
+        pos.y -= fall;
+        pos.x += (fract(colId * 0.37) - 0.5) * 0.01;
+        alpha *= (0.45 + 0.55 * (1.0 - phase));
+        gl_PointSize = uPointSize * (1.0 + (1.0 - phase) * 0.8);
+        vDs = phase;
+      } else if (uEffect == 4) {
+        // Crystal shatter: tile-based shards expand from the original image.
+        inv = smoothstep(0.0, 1.0, uInvasion);
+        vec2 cell = floor(aUV * 7.0);
+        vec2 cellUV = (cell + 0.5) / 7.0;
+        vec2 cellCtr = uvToWorld(cellUV);
+        vec2 local = base - cellCtr;
+        float pr = hash(cell + vec2(3.17, 9.91));
+        float pa = pr * 6.28318;
+        vec2 burst = vec2(cos(pa), sin(pa));
+        float amt = inv * (0.18 + pr * 1.0);
+        float spin = (uTime * (0.8 + pr * 2.0)) * inv;
+        mat2 rotM = mat2(cos(spin), -sin(spin), sin(spin), cos(spin));
+        pos.xy = cellCtr + rotM * local * (1.0 + inv * 1.1) + burst * amt;
+        alpha *= 1.0 - smoothstep(0.82, 1.0, inv);
+        vDs = inv;
+      } else if (uEffect == 5) {
+        // Galaxy spiral: preserve radial ordering of source pixels.
+        d = base - ctrImg;
+        r = length(d) + 0.0001;
+        inv = smoothstep(0.0, 1.0, uInvasion);
+        float ang = atan(d.y, d.x) + inv * (2.0 + r * 4.5) + uTime * 0.35;
+        float nr  = mix(r, r * (1.0 + 0.75 * inv), 0.85);
+        pos.xy = vec2(cos(ang), sin(ang)) * nr;
+        pos.xy *= (1.0 + 0.15 * sin(uTime * 1.7 + aRnd * 11.0) * inv);
+        alpha *= 0.85 + 0.15 * sin(uTime * 3.0 + aRnd * 19.0);
+        vDs = clamp(r * 0.7, 0.0, 1.0);
+      } else if (uEffect == 6) {
+        // Magnetic field: attraction + tangential orbit around cursor.
+        d = ctrMouse - base;
+        r = length(d) + 0.0001;
+        dir = d / r;
+        inv = smoothstep(0.0, 1.0, uInvasion);
+        vec2 tanDir = vec2(-dir.y, dir.x);
+        float field = uWaveStr / (r * r * 3.2 + 0.1);
+        float pull  = clamp(field * inv * 0.65, 0.0, 0.35);
+        float orb   = sin(uTime * 4.0 + aRnd * 20.0) * pull * 0.6;
+        pos.xy = base + dir * pull + tanDir * orb;
+        alpha *= 0.8 + 0.2 * smoothstep(0.6, 0.0, r);
+        vDs = clamp(r / (uImgAspect + 1.0), 0.0, 1.0);
+      }
+    }
+
     // Slight per-particle brightness and density variation
     vAlpha = alpha * (0.55 + aRnd * 0.45);
+    if (uEffect >= 2) vAlpha = clamp(vAlpha, 0.08, 1.0);
+    if (uEffect != 3) gl_PointSize = uPointSize;
 
     vec4 mv = modelViewMatrix * vec4(pos, 1.0);
     gl_Position  = projectionMatrix * mv;
-    gl_PointSize = uPointSize;
   }
 `;
 
@@ -363,9 +447,6 @@ const frgPlane = /* glsl */`
     // NOTE: plane vUV.y is flipped vs particle aUV.y
     // For directional modes, compensate: vUV.y=1 is screen-top (=image-top)
 
-    // Effects that use only particles
-    if (uEffect == 3 || uEffect == 4 || uEffect == 5) discard;
-
     // Black hole: gravitational lens (singularity at mouse)
     if (uEffect == 2) {
       vec2  ctr    = vec2(uMouse.x, 1.0 - uMouse.y);
@@ -376,9 +457,73 @@ const frgPlane = /* glsl */`
       vec2  lensUV = clamp(ctr + d * (1.0 - lens), 0.001, 0.999);
       vec4  t      = texture2D(uTex, lensUV);
       if (t.a < 0.01) discard;
-      float fade   = 1.0 - smoothstep(0.5, 1.0, uInvasion);
-      vec3  col    = mix(t.rgb, vec3(0.2,0.4,1.0)*(t.rgb+0.08), lens*0.9);
-      gl_FragColor = vec4(col, t.a * fade);
+      float acc    = smoothstep(0.02, 0.35, uInvasion) * (1.0 - smoothstep(0.85, 1.0, r));
+      vec3  ring   = vec3(0.25, 0.55, 1.0) * (0.2 + acc * 0.9);
+      vec3  col    = mix(t.rgb, t.rgb * ring, lens * 0.78);
+      gl_FragColor = vec4(col, t.a);
+      return;
+    }
+
+    // Digital rain: keep source image and add vertical scan/trail stylization.
+    if (uEffect == 3) {
+      float inv = smoothstep(0.0, 1.0, uInvasion);
+      float colId = floor(vUV.x * 82.0);
+      float speed = 0.4 + fract(colId * 0.173) * 1.8;
+      float phase = fract(vUV.y + uTime * speed * max(inv, 0.03));
+      float trail = smoothstep(0.0, 0.30, phase) * (1.0 - smoothstep(0.78, 1.0, phase));
+
+      vec2 driftUV = vUV;
+      driftUV.y = fract(vUV.y + trail * inv * 0.05);
+      driftUV = clamp(driftUV, 0.001, 0.999);
+      vec4 base = texture2D(uTex, driftUV);
+      if (base.a < 0.01) discard;
+
+      float glyph = step(0.72, fract(sin(colId * 37.0 + floor(vUV.y * 120.0) + uTime * 14.0) * 43758.5));
+      vec3 rainGlow = vec3(0.32, 1.0, 0.58) * (trail * glyph * inv * 0.55);
+      vec3 col = base.rgb + rainGlow;
+      gl_FragColor = vec4(col, base.a);
+      return;
+    }
+
+    // Crystal shatter: faceted refraction while preserving original image content.
+    if (uEffect == 4) {
+      float inv = smoothstep(0.0, 1.0, uInvasion);
+      vec2 grid = vec2(18.0, 18.0);
+      vec2 cid  = floor(vUV * grid);
+      vec2 fuv  = fract(vUV * grid) - 0.5;
+      float h   = hash(cid + vec2(5.3, 1.7));
+      float ang = (h - 0.5) * 1.4 * inv;
+      mat2 rm   = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+      vec2 off  = (rm * fuv - fuv) * 0.08 * inv;
+      vec2 suv  = clamp(vUV + off, 0.001, 0.999);
+      vec4 base = texture2D(uTex, suv);
+      if (base.a < 0.01) discard;
+
+      float edge = smoothstep(0.36, 0.48, max(abs(fuv.x), abs(fuv.y)));
+      vec3  edgeCol = vec3(0.72, 0.92, 1.0) * edge * inv * 0.45;
+      vec3  col = base.rgb * (1.0 + inv * 0.12) + edgeCol;
+      gl_FragColor = vec4(col, base.a);
+      return;
+    }
+
+    // Galaxy spiral: rotational warp from source image (not particle-only).
+    if (uEffect == 5) {
+      float inv = smoothstep(0.0, 1.0, uInvasion);
+      vec2  ctr = vec2(0.5, 0.5);
+      vec2  d   = vUV - ctr;
+      float r   = length(d) + 0.001;
+      float ang = atan(d.y, d.x);
+      float pulse = 1.0 + 0.28 * inv * (0.5 + 0.5 * sin(uTime * 1.2));
+      float arm   = 0.015 * inv * sin(ang * 5.0 + r * 26.0 - uTime * 1.8);
+      float nr    = r * pulse + arm;
+      vec2  suv   = ctr + normalize(d) * nr;
+      suv = clamp(suv, 0.001, 0.999);
+      vec4 base = texture2D(uTex, suv);
+      if (base.a < 0.01) discard;
+
+      float star = 0.5 + 0.5 * sin((ang + r * 22.0) * 6.0 - uTime * 2.0);
+      vec3 glow = vec3(0.6, 0.7, 1.0) * star * inv * (1.0 - smoothstep(0.25, 0.75, r)) * 0.28;
+      gl_FragColor = vec4(base.rgb + glow, base.a);
       return;
     }
 
@@ -563,6 +708,7 @@ function rebuildParticles() {
   if (ptsMesh) {
     sceneGroup.add(ptsMesh);
     if (U.uEffect.value === 1) ptsMesh.material.blending = THREE.AdditiveBlending;
+    ptsMesh.visible = U.uEffect.value <= 1;
   }
 }
 
@@ -856,6 +1002,7 @@ function applyPreset(p) {
     rebuildParticles();
   } else if (ptsMesh) {
     ptsMesh.material.blending = eff === 1 ? THREE.AdditiveBlending : THREE.NormalBlending;
+    ptsMesh.visible = eff <= 1;
   }
 
   document.querySelectorAll('.preset-btn').forEach((btn, i) => {

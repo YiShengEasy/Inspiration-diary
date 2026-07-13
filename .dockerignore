@@ -4,6 +4,8 @@ coverage
 .git
 .DS_Store
 *.log
+# Host-only visual fixture is an absolute symlink outside the Docker context.
+public/__particle-fixture.jpg
 .env
 .env.*
 !.env.example
