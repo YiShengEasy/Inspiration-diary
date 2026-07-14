@@ -5,7 +5,7 @@ import { test } from "node:test";
 import express, { type Express } from "express";
 
 import type { AuthenticatedRequest, AuthUser } from "../src/server/auth.ts";
-import type { KnowledgeNode } from "../src/server/knowledge/repository.ts";
+import type { KnowledgeLink, KnowledgeNode } from "../src/server/knowledge/repository.ts";
 import { createKnowledgeRouter } from "../src/server/knowledge/router.ts";
 import type { KnowledgeNodeDetail, KnowledgeService } from "../src/server/knowledge/service.ts";
 
@@ -42,8 +42,28 @@ function makeDetail(node = makeNode()): KnowledgeNodeDetail {
   return { node, markdown: "知识正文" };
 }
 
+function makeLink(overrides: Partial<KnowledgeLink> = {}): KnowledgeLink {
+  return {
+    id: "33333333-3333-4333-8333-333333333333",
+    userId: MEMBER.id,
+    sourceNodeId: makeNode().id,
+    targetNodeId: "44444444-4444-4444-8444-444444444444",
+    relationType: "related",
+    origin: "manual",
+    context: null,
+    createdAt: 1_784_000_000_200,
+    updatedAt: 1_784_000_000_200,
+    ...overrides,
+  };
+}
+
 function createService(overrides: Partial<KnowledgeService> = {}): KnowledgeService {
   const node = makeNode();
+  const targetNode = makeNode({
+    id: "44444444-4444-4444-8444-444444444444",
+    title: "关联知识",
+  });
+  const link = makeLink({ sourceNodeId: node.id, targetNodeId: targetNode.id });
   return {
     async isAutoAddEnabled() { return true; },
     async indexCard() { return { status: "unchanged", node }; },
@@ -58,6 +78,32 @@ function createService(overrides: Partial<KnowledgeService> = {}): KnowledgeServ
     async updateNode() { return { status: "updated", node }; },
     async syncWikilinks() {},
     async getBacklinks() { return []; },
+    async listCandidates() {
+      return [{
+        node: targetNode,
+        score: 0.72,
+        evidence: {
+          sharedTags: ["知识"],
+          sameBook: false,
+          sharedPropertyRatio: 0,
+          creationProximity: 1,
+        },
+      }];
+    },
+    async acceptCandidate() { return makeLink({ ...link, origin: "tag_suggestion" }); },
+    async dismissCandidate() { return true; },
+    async createManualLink() { return link; },
+    async deleteLink() { return true; },
+    async getLocalGraph() {
+      return {
+        nodes: [
+          { node, distance: 0 },
+          { node: targetNode, distance: 1 },
+        ],
+        edges: [{ ...link, suggested: false }],
+        truncated: false,
+      };
+    },
     ...overrides,
   };
 }
@@ -109,7 +155,7 @@ function createApp(input: {
 
 async function requestJson(
   app: Express,
-  input: { method: "GET" | "POST" | "PUT"; path: string; body?: unknown },
+  input: { method: "GET" | "POST" | "PUT" | "DELETE"; path: string; body?: unknown },
 ): Promise<{ status: number; body: unknown }> {
   const server = app.listen(0, "127.0.0.1");
   try {
@@ -262,14 +308,122 @@ test("backfill is tenant-bound, capped at 100 rows, and resumable", async () => 
   assert.deepEqual(transactionLog, ["BEGIN", "SELECT", "COMMIT", "RELEASE"]);
 });
 
-test("keeps later relation and graph endpoints explicitly outside this checkpoint", async () => {
-  const { app } = createApp({ enabled: true, service: createService(), user: MEMBER });
-  for (const request of [
-    { method: "GET" as const, path: `/api/knowledge/nodes/${makeNode().id}/candidates` },
-    { method: "GET" as const, path: `/api/knowledge/nodes/${makeNode().id}/graph` },
-    { method: "POST" as const, path: "/api/knowledge/links", body: {} },
-  ]) {
-    const response = await requestJson(app, request);
-    assert.deepEqual(response, { status: 501, body: { error: "该知识库能力将在后续迭代开放" } });
-  }
+test("exposes candidates, graph and manual relation endpoints with tenant scope", async () => {
+  const calls: string[] = [];
+  const service = createService({
+    async listCandidates(userId, nodeId) {
+      calls.push(`candidates:${userId}:${nodeId}`);
+      return [{
+        node: makeNode({ id: "44444444-4444-4444-8444-444444444444", title: "关联知识" }),
+        score: 0.72,
+        evidence: {
+          sharedTags: ["知识"],
+          sameBook: false,
+          sharedPropertyRatio: 0,
+          creationProximity: 1,
+        },
+      }];
+    },
+    async acceptCandidate(userId, sourceNodeId, targetNodeId) {
+      calls.push(`accept:${userId}:${sourceNodeId}:${targetNodeId}`);
+      return makeLink({ sourceNodeId, targetNodeId, origin: "tag_suggestion" });
+    },
+    async dismissCandidate(userId, sourceNodeId, targetNodeId) {
+      calls.push(`dismiss:${userId}:${sourceNodeId}:${targetNodeId}`);
+      return true;
+    },
+    async getLocalGraph(userId, nodeId, depth) {
+      calls.push(`graph:${userId}:${nodeId}:${depth}`);
+      return {
+        nodes: [
+          { node: makeNode({ id: nodeId }), distance: 0 },
+          { node: makeNode({ id: "44444444-4444-4444-8444-444444444444", title: "关联知识" }), distance: 1 },
+        ],
+        edges: [{
+          id: "edge-1",
+          sourceNodeId: nodeId,
+          targetNodeId: "44444444-4444-4444-8444-444444444444",
+          relationType: "related",
+          origin: "tag_suggestion",
+          suggested: true,
+        }],
+        truncated: false,
+      };
+    },
+    async createManualLink(input) {
+      calls.push(`link:${input.userId}:${input.sourceNodeId}:${input.targetNodeId}:${input.relationType}:${input.context}`);
+      return makeLink({
+        sourceNodeId: input.sourceNodeId,
+        targetNodeId: input.targetNodeId,
+        relationType: input.relationType,
+        context: input.context ?? null,
+      });
+    },
+    async deleteLink(userId, linkId) {
+      calls.push(`delete:${userId}:${linkId}`);
+      return true;
+    },
+  });
+  const nodeId = makeNode().id;
+  const targetId = "44444444-4444-4444-8444-444444444444";
+  const { app, transactionLog } = createApp({ enabled: true, service, user: MEMBER });
+
+  const candidates = await requestJson(app, {
+    method: "GET",
+    path: `/api/knowledge/nodes/${nodeId}/candidates`,
+  });
+  assert.equal(candidates.status, 200);
+  assert.equal((candidates.body as { candidates: unknown[] }).candidates.length, 1);
+
+  const accepted = await requestJson(app, {
+    method: "POST",
+    path: `/api/knowledge/nodes/${nodeId}/candidates/${targetId}/accept`,
+  });
+  assert.equal(accepted.status, 201);
+
+  const dismissed = await requestJson(app, {
+    method: "POST",
+    path: `/api/knowledge/nodes/${nodeId}/candidates/${targetId}/dismiss`,
+  });
+  assert.deepEqual(dismissed, { status: 200, body: { dismissed: true } });
+
+  const graph = await requestJson(app, {
+    method: "GET",
+    path: `/api/knowledge/nodes/${nodeId}/graph?depth=2`,
+  });
+  assert.equal(graph.status, 200);
+  assert.equal((graph.body as { nodes: unknown[] }).nodes.length, 2);
+
+  const linked = await requestJson(app, {
+    method: "POST",
+    path: "/api/knowledge/links",
+    body: {
+      sourceNodeId: nodeId,
+      targetNodeId: targetId,
+      relationType: "supports",
+      context: "手工整理",
+    },
+  });
+  assert.equal(linked.status, 201);
+
+  const deleted = await requestJson(app, {
+    method: "DELETE",
+    path: "/api/knowledge/links/link-1",
+  });
+  assert.deepEqual(deleted, { status: 200, body: { success: true } });
+
+  assert.deepEqual(calls, [
+    `candidates:${MEMBER.id}:${nodeId}`,
+    `accept:${MEMBER.id}:${nodeId}:${targetId}`,
+    `dismiss:${MEMBER.id}:${nodeId}:${targetId}`,
+    `graph:${MEMBER.id}:${nodeId}:2`,
+    `link:${MEMBER.id}:${nodeId}:${targetId}:supports:手工整理`,
+    `delete:${MEMBER.id}:link-1`,
+  ]);
+  assert.deepEqual(transactionLog, [
+    "BEGIN", "COMMIT", "RELEASE",
+    "BEGIN", "COMMIT", "RELEASE",
+    "BEGIN", "COMMIT", "RELEASE",
+    "BEGIN", "COMMIT", "RELEASE",
+  ]);
 });

@@ -4,6 +4,7 @@ import type {
   KnowledgeProperties,
   KnowledgeRelationType,
 } from "./types.ts";
+import type { CandidateNode } from "./candidates.ts";
 
 export interface KnowledgeQueryResult<Row> {
   rows: Row[];
@@ -100,6 +101,16 @@ interface KnowledgeFeedbackRow {
   lower_fingerprint: string;
   higher_fingerprint: string;
   created_at: number | string;
+}
+
+interface KnowledgeCandidateNodeRow {
+  id: string;
+  tags: string[];
+  properties: KnowledgeProperties;
+  created_at: number | string;
+  content_fingerprint: string;
+  is_active: boolean;
+  book_ids: string[] | null;
 }
 
 interface KnowledgeBacklinkRow extends KnowledgeLinkRow {
@@ -292,8 +303,11 @@ export interface KnowledgeRepository {
   setNodeActive(userId: string, nodeId: string, active: boolean, now: number): Promise<KnowledgeNode | null>;
   softDeleteNode(userId: string, nodeId: string, now: number): Promise<KnowledgeNode | null>;
   listLinksForNode(userId: string, nodeId: string): Promise<KnowledgeLink[]>;
+  listLinksTouchingNodes(userId: string, nodeIds: string[]): Promise<KnowledgeLink[]>;
   listBacklinks(userId: string, targetNodeId: string): Promise<Array<{ link: KnowledgeLink; source: KnowledgeNode }>>;
   listLinkedNodeIds(userId: string, nodeId: string): Promise<string[]>;
+  listActiveNodesByIds(userId: string, nodeIds: string[]): Promise<KnowledgeNode[]>;
+  listCandidateNodes(userId: string): Promise<CandidateNode[]>;
   putLink(input: PutKnowledgeLinkInput): Promise<KnowledgeLink | null>;
   deleteLink(userId: string, linkId: string): Promise<boolean>;
   replaceWikilinkLinks(userId: string, sourceNodeId: string, targets: WikilinkTarget[], now: number): Promise<KnowledgeLink[]>;
@@ -566,6 +580,24 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
       return result.rows.map(mapLink);
     },
 
+    async listLinksTouchingNodes(userId, nodeIds) {
+      if (nodeIds.length === 0) return [];
+      const result = await client.query<KnowledgeLinkRow>(
+        `SELECT l.id, l.user_id, l.source_node_id, l.target_node_id,
+                l.relation_type, l.origin, l.context, l.created_at, l.updated_at
+         FROM knowledge_links l
+         JOIN knowledge_nodes source ON source.id = l.source_node_id AND source.user_id = $1
+         JOIN knowledge_nodes target ON target.id = l.target_node_id AND target.user_id = $1
+         WHERE l.user_id = $1
+           AND (l.source_node_id = ANY($2::text[]) OR l.target_node_id = ANY($2::text[]))
+           AND source.is_active = TRUE AND source.deleted_at IS NULL
+           AND target.is_active = TRUE AND target.deleted_at IS NULL
+         ORDER BY l.updated_at DESC, l.id ASC`,
+        [userId, nodeIds],
+      );
+      return result.rows.map(mapLink);
+    },
+
     async listBacklinks(userId, targetNodeId) {
       const result = await client.query<KnowledgeBacklinkRow>(
         `SELECT
@@ -621,6 +653,52 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
         [userId, nodeId],
       );
       return result.rows.map((row) => row.linked_node_id);
+    },
+
+    async listActiveNodesByIds(userId, nodeIds) {
+      if (nodeIds.length === 0) return [];
+      const result = await client.query<KnowledgeNodeRow>(
+        `SELECT ${NODE_COLUMNS}
+         FROM knowledge_nodes
+         WHERE user_id = $1 AND id = ANY($2::text[])
+           AND is_active = TRUE AND deleted_at IS NULL
+         ORDER BY updated_at DESC, id ASC`,
+        [userId, nodeIds],
+      );
+      return result.rows.map(mapNode);
+    },
+
+    async listCandidateNodes(userId) {
+      const result = await client.query<KnowledgeCandidateNodeRow>(
+        `SELECT
+           n.id, n.tags, n.properties, n.created_at, n.content_fingerprint,
+           n.is_active,
+           CASE
+             WHEN n.entity_type = 'book' AND n.entity_id IS NOT NULL
+               THEN ARRAY[n.entity_id]
+             WHEN n.entity_type = 'card' AND n.entity_id IS NOT NULL
+               THEN COALESCE((
+                 SELECT array_agg(bc.book_id ORDER BY bc.book_id)
+                 FROM inspiration_book_cards bc
+                 WHERE bc.user_id = n.user_id AND bc.card_id = n.entity_id
+               ), '{}')
+             ELSE '{}'
+           END AS book_ids
+         FROM knowledge_nodes n
+         WHERE n.user_id = $1 AND n.is_active = TRUE AND n.deleted_at IS NULL
+         ORDER BY n.updated_at DESC, n.id ASC
+         LIMIT 500`,
+        [userId],
+      );
+      return result.rows.map((row) => ({
+        id: row.id,
+        tags: row.tags,
+        properties: row.properties,
+        createdAt: safeInteger(row.created_at, "knowledge_nodes.created_at"),
+        contentFingerprint: row.content_fingerprint,
+        isActive: row.is_active,
+        bookIds: row.book_ids ?? [],
+      }));
     },
 
     putLink,

@@ -1,5 +1,11 @@
 import { createContentFingerprint } from "./fingerprint.ts";
 import {
+  canonicalNodePair,
+  findKnowledgeCandidates,
+  type CandidateNode,
+  type KnowledgeCandidate,
+} from "./candidates.ts";
+import {
   projectBookRow,
   projectCardRow,
   projectWeeklyNoteRow,
@@ -11,6 +17,7 @@ import {
 import { validateKnowledgeProperties } from "./properties.ts";
 import {
   createKnowledgeRepository,
+  type KnowledgeLink,
   type KnowledgeNode,
   type KnowledgeNodePage,
   type KnowledgeQueryable,
@@ -18,7 +25,7 @@ import {
   type OptimisticNodeUpdateResult,
 } from "./repository.ts";
 import { createKnowledgeSlug } from "./slug.ts";
-import type { KnowledgeEntityType, KnowledgeProperties } from "./types.ts";
+import type { KnowledgeEntityType, KnowledgeLinkOrigin, KnowledgeProperties, KnowledgeRelationType } from "./types.ts";
 import { normalizeKnowledgeTitle, parseWikilinks } from "./wikilinks.ts";
 
 export type JoinableKnowledgeEntityType = Exclude<KnowledgeEntityType, "concept">;
@@ -26,6 +33,30 @@ export type JoinableKnowledgeEntityType = Exclude<KnowledgeEntityType, "concept"
 export interface KnowledgeNodeDetail {
   node: KnowledgeNode;
   markdown: string;
+}
+
+export interface KnowledgeCandidateDetail extends Omit<KnowledgeCandidate, "node"> {
+  node: KnowledgeNode;
+}
+
+export interface KnowledgeGraphNode {
+  node: KnowledgeNode;
+  distance: 0 | 1 | 2;
+}
+
+export interface KnowledgeGraphEdge {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  relationType: KnowledgeRelationType;
+  origin: KnowledgeLinkOrigin;
+  suggested: boolean;
+}
+
+export interface KnowledgeGraph {
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+  truncated: boolean;
 }
 
 export interface IndexCardResult {
@@ -57,6 +88,19 @@ export interface KnowledgeService {
   updateNode(input: UpdateKnowledgeNodeRequest): Promise<OptimisticNodeUpdateResult>;
   syncWikilinks(userId: string, sourceNode: KnowledgeNode, markdown: string, now?: number): Promise<void>;
   getBacklinks(userId: string, nodeId: string): ReturnType<ReturnType<typeof createKnowledgeRepository>["listBacklinks"]>;
+  listCandidates(userId: string, nodeId: string, limit?: number): Promise<KnowledgeCandidateDetail[] | null>;
+  acceptCandidate(userId: string, sourceNodeId: string, targetNodeId: string, now?: number): Promise<KnowledgeLink | null>;
+  dismissCandidate(userId: string, sourceNodeId: string, targetNodeId: string, now?: number): Promise<boolean>;
+  createManualLink(input: {
+    userId: string;
+    sourceNodeId: string;
+    targetNodeId: string;
+    relationType: KnowledgeRelationType;
+    context?: string | null;
+    now?: number;
+  }): Promise<KnowledgeLink | null>;
+  deleteLink(userId: string, linkId: string): Promise<boolean>;
+  getLocalGraph(userId: string, nodeId: string, depth?: 1 | 2): Promise<KnowledgeGraph | null>;
 }
 
 export interface KnowledgeServiceOptions {
@@ -86,6 +130,34 @@ function projectionFingerprint(projection: KnowledgeProjection): string {
     markdown: projection.markdown ?? "",
   });
 }
+
+function candidateFingerprintForPair(source: CandidateNode, target: CandidateNode): {
+  lowerNodeId: string;
+  higherNodeId: string;
+  lowerFingerprint: string;
+  higherFingerprint: string;
+} {
+  const pair = canonicalNodePair(source.id, target.id);
+  return {
+    ...pair,
+    lowerFingerprint: pair.lowerNodeId === source.id ? source.contentFingerprint : target.contentFingerprint,
+    higherFingerprint: pair.higherNodeId === source.id ? source.contentFingerprint : target.contentFingerprint,
+  };
+}
+
+function linkToGraphEdge(link: KnowledgeLink): KnowledgeGraphEdge {
+  return {
+    id: link.id,
+    sourceNodeId: link.sourceNodeId,
+    targetNodeId: link.targetNodeId,
+    relationType: link.relationType,
+    origin: link.origin,
+    suggested: false,
+  };
+}
+
+const GRAPH_MAX_NODES = 50;
+const GRAPH_MAX_EDGES = 100;
 
 async function loadCardProjection(
   client: KnowledgeQueryable,
@@ -351,6 +423,42 @@ export function createKnowledgeService(
     return { node, markdown: await loadSourceMarkdown(client, userId, node) };
   }
 
+  async function findCandidateDetails(
+    userId: string,
+    nodeId: string,
+    limit = 10,
+  ): Promise<Array<KnowledgeCandidateDetail & { candidateNode: CandidateNode }> | null> {
+    const sourceNode = await repository.getNodeById(userId, nodeId, true);
+    if (!sourceNode) return null;
+    const candidateNodes = await repository.listCandidateNodes(userId);
+    const sourceCandidate = candidateNodes.find((node) => node.id === nodeId);
+    if (!sourceCandidate) return null;
+    const [linkedNodeIds, feedback] = await Promise.all([
+      repository.listLinkedNodeIds(userId, nodeId),
+      repository.listFeedbackForNode(userId, nodeId),
+    ]);
+    const candidates = findKnowledgeCandidates(sourceCandidate, candidateNodes, {
+      formalLinkedNodeIds: linkedNodeIds,
+      feedback,
+      limit,
+    });
+    const nodes = await repository.listActiveNodesByIds(
+      userId,
+      candidates.map((candidate) => candidate.node.id),
+    );
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    return candidates.flatMap((candidate) => {
+      const node = nodeById.get(candidate.node.id);
+      if (!node) return [];
+      return [{
+        node,
+        score: candidate.score,
+        evidence: candidate.evidence,
+        candidateNode: candidate.node,
+      }];
+    });
+  }
+
   return {
     isAutoAddEnabled,
 
@@ -465,6 +573,132 @@ export function createKnowledgeService(
 
     getBacklinks(userId, nodeId) {
       return repository.listBacklinks(userId, nodeId);
+    },
+
+    async listCandidates(userId, nodeId, limit) {
+      const candidates = await findCandidateDetails(userId, nodeId, limit);
+      return candidates
+        ? candidates.map(({ candidateNode: _candidateNode, ...candidate }) => candidate)
+        : null;
+    },
+
+    async acceptCandidate(userId, sourceNodeId, targetNodeId, now = currentTime()) {
+      const candidates = await findCandidateDetails(userId, sourceNodeId, 10);
+      if (!candidates) return null;
+      const accepted = candidates.find((candidate) => candidate.node.id === targetNodeId);
+      if (!accepted) return null;
+      const sourceCandidate = (await repository.listCandidateNodes(userId)).find((node) => node.id === sourceNodeId);
+      if (!sourceCandidate) return null;
+      const feedback = candidateFingerprintForPair(sourceCandidate, accepted.candidateNode);
+      const link = await repository.putLink({
+        userId,
+        sourceNodeId,
+        targetNodeId,
+        relationType: "related",
+        origin: "tag_suggestion",
+        context: accepted.evidence.sharedTags.length
+          ? `shared_tags:${accepted.evidence.sharedTags.join(",")}`
+          : null,
+        now,
+      });
+      if (!link) return null;
+      await repository.putSuggestionFeedback({
+        userId,
+        action: "accepted",
+        now,
+        ...feedback,
+      });
+      return link;
+    },
+
+    async dismissCandidate(userId, sourceNodeId, targetNodeId, now = currentTime()) {
+      const candidateNodes = await repository.listCandidateNodes(userId);
+      const source = candidateNodes.find((node) => node.id === sourceNodeId);
+      const target = candidateNodes.find((node) => node.id === targetNodeId);
+      if (!source || !target || source.id === target.id) return false;
+      const feedback = candidateFingerprintForPair(source, target);
+      const result = await repository.putSuggestionFeedback({
+        userId,
+        action: "dismissed",
+        now,
+        ...feedback,
+      });
+      return Boolean(result);
+    },
+
+    createManualLink(input) {
+      return repository.putLink({
+        userId: input.userId,
+        sourceNodeId: input.sourceNodeId,
+        targetNodeId: input.targetNodeId,
+        relationType: input.relationType,
+        origin: "manual",
+        context: input.context ?? null,
+        now: input.now ?? currentTime(),
+      });
+    },
+
+    deleteLink(userId, linkId) {
+      return repository.deleteLink(userId, linkId);
+    },
+
+    async getLocalGraph(userId, nodeId, depth = 1) {
+      const source = await repository.getNodeById(userId, nodeId, true);
+      if (!source) return null;
+      const firstLinks = await repository.listLinksForNode(userId, nodeId);
+      const firstNeighborIds = new Set(firstLinks.flatMap((link) => [
+        link.sourceNodeId,
+        link.targetNodeId,
+      ]).filter((id) => id !== nodeId));
+      const linkById = new Map(firstLinks.map((link) => [link.id, link]));
+      if (depth === 2 && firstNeighborIds.size > 0) {
+        const secondLinks = await repository.listLinksTouchingNodes(userId, [...firstNeighborIds]);
+        for (const link of secondLinks) linkById.set(link.id, link);
+      }
+      const formalLinks = [...linkById.values()];
+      const nodeIds = new Set<string>([nodeId]);
+      for (const link of formalLinks) {
+        nodeIds.add(link.sourceNodeId);
+        nodeIds.add(link.targetNodeId);
+      }
+      const candidates = await findCandidateDetails(userId, nodeId, 10);
+      const suggestedEdges: KnowledgeGraphEdge[] = [];
+      for (const candidate of candidates ?? []) {
+        if (nodeIds.size < GRAPH_MAX_NODES) nodeIds.add(candidate.node.id);
+        suggestedEdges.push({
+          id: `suggested:${nodeId}:${candidate.node.id}`,
+          sourceNodeId: nodeId,
+          targetNodeId: candidate.node.id,
+          relationType: "related",
+          origin: "tag_suggestion",
+          suggested: true,
+        });
+      }
+      const nodes = await repository.listActiveNodesByIds(userId, [...nodeIds]);
+      const distanceById = new Map<string, 0 | 1 | 2>([[nodeId, 0]]);
+      for (const id of firstNeighborIds) distanceById.set(id, 1);
+      if (depth === 2) {
+        for (const link of formalLinks) {
+          const sourceDistance = distanceById.get(link.sourceNodeId);
+          const targetDistance = distanceById.get(link.targetNodeId);
+          if (sourceDistance === 1 && !targetDistance) distanceById.set(link.targetNodeId, 2);
+          if (targetDistance === 1 && !sourceDistance) distanceById.set(link.sourceNodeId, 2);
+        }
+      }
+      const sortedNodes = nodes
+        .map((node) => ({ node, distance: distanceById.get(node.id) ?? (node.id === nodeId ? 0 : 1) }))
+        .sort((first, second) => first.distance - second.distance || first.node.updatedAt - second.node.updatedAt || first.node.id.localeCompare(second.node.id))
+        .slice(0, GRAPH_MAX_NODES);
+      const keptNodeIds = new Set(sortedNodes.map((entry) => entry.node.id));
+      const formalEdges = formalLinks.map(linkToGraphEdge);
+      const edges = [...formalEdges, ...suggestedEdges]
+        .filter((edge) => keptNodeIds.has(edge.sourceNodeId) && keptNodeIds.has(edge.targetNodeId))
+        .slice(0, GRAPH_MAX_EDGES);
+      return {
+        nodes: sortedNodes,
+        edges,
+        truncated: nodes.length > GRAPH_MAX_NODES || formalEdges.length + suggestedEdges.length > GRAPH_MAX_EDGES,
+      };
     },
   };
 }

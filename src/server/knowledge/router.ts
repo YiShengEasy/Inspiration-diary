@@ -15,6 +15,7 @@ import {
   serializeKnowledgeNodeSummary,
 } from "./serializers.ts";
 import type { KnowledgeEntityType } from "./types.ts";
+import type { KnowledgeRelationType } from "./types.ts";
 
 interface ReleasableKnowledgeQueryable extends KnowledgeQueryable {
   release?(): void;
@@ -43,6 +44,15 @@ const JOINABLE_ENTITY_TYPES = new Set<JoinableKnowledgeEntityType>([
   "card",
   "book",
   "weekly_note",
+]);
+const RELATION_TYPES = new Set<KnowledgeRelationType>([
+  "mentions",
+  "related",
+  "references",
+  "derived_from",
+  "belongs_to",
+  "contrasts",
+  "supports",
 ]);
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -73,6 +83,12 @@ function parseEntityType(value: unknown): KnowledgeEntityType | null {
 function parseJoinableEntityType(value: unknown): JoinableKnowledgeEntityType | null {
   return typeof value === "string" && JOINABLE_ENTITY_TYPES.has(value as JoinableKnowledgeEntityType)
     ? value as JoinableKnowledgeEntityType
+    : null;
+}
+
+function parseRelationType(value: unknown): KnowledgeRelationType | null {
+  return typeof value === "string" && RELATION_TYPES.has(value as KnowledgeRelationType)
+    ? value as KnowledgeRelationType
     : null;
 }
 
@@ -387,14 +403,118 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
     }
   });
 
-  const notImplemented = (_req: AuthenticatedRequest, res: Response) =>
-    res.status(501).json({ error: "该知识库能力将在后续迭代开放" });
-  router.get("/nodes/:id/candidates", notImplemented);
-  router.post("/nodes/:id/candidates/:targetId/accept", notImplemented);
-  router.post("/nodes/:id/candidates/:targetId/dismiss", notImplemented);
-  router.get("/nodes/:id/graph", notImplemented);
-  router.post("/links", notImplemented);
-  router.delete("/links/:id", notImplemented);
+  router.get("/nodes/:id/candidates", async (req: AuthenticatedRequest, res: Response) => {
+    const nodeId = boundedText(req.params.id, 128);
+    if (!nodeId) return res.status(400).json({ error: "节点参数无效" });
+    try {
+      const candidates = await defaultService!.listCandidates(
+        req.user!.id,
+        nodeId,
+        boundedInteger(req.query.limit, 10, 1, 10),
+      );
+      if (!candidates) return res.status(404).json({ error: "知识节点不存在" });
+      return res.json({
+        candidates: candidates.map((candidate) => ({
+          node: serializeKnowledgeNodeSummary(candidate.node),
+          score: candidate.score,
+          evidence: candidate.evidence,
+        })),
+      });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.post("/nodes/:id/candidates/:targetId/accept", async (req: AuthenticatedRequest, res: Response) => {
+    const nodeId = boundedText(req.params.id, 128);
+    const targetId = boundedText(req.params.targetId, 128);
+    if (!nodeId || !targetId) return res.status(400).json({ error: "候选参数无效" });
+    try {
+      const link = await runMutation((service) =>
+        service.acceptCandidate(req.user!.id, nodeId, targetId));
+      return link
+        ? res.status(201).json({ link: serializeKnowledgeLink(link) })
+        : res.status(404).json({ error: "候选关系不存在" });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.post("/nodes/:id/candidates/:targetId/dismiss", async (req: AuthenticatedRequest, res: Response) => {
+    const nodeId = boundedText(req.params.id, 128);
+    const targetId = boundedText(req.params.targetId, 128);
+    if (!nodeId || !targetId) return res.status(400).json({ error: "候选参数无效" });
+    try {
+      const dismissed = await runMutation((service) =>
+        service.dismissCandidate(req.user!.id, nodeId, targetId));
+      return dismissed
+        ? res.json({ dismissed: true })
+        : res.status(404).json({ error: "候选关系不存在" });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.get("/nodes/:id/graph", async (req: AuthenticatedRequest, res: Response) => {
+    const nodeId = boundedText(req.params.id, 128);
+    if (!nodeId) return res.status(400).json({ error: "节点参数无效" });
+    const depth = boundedInteger(req.query.depth, 1, 1, 2) as 1 | 2;
+    try {
+      const graph = await defaultService!.getLocalGraph(req.user!.id, nodeId, depth);
+      if (!graph) return res.status(404).json({ error: "知识节点不存在" });
+      return res.json({
+        nodes: graph.nodes.map(({ node, distance }) => ({
+          ...serializeKnowledgeNodeSummary(node),
+          distance,
+        })),
+        edges: graph.edges,
+        truncated: graph.truncated,
+      });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.post("/links", async (req: AuthenticatedRequest, res: Response) => {
+    const body = record(req.body);
+    const sourceNodeId = boundedText(body?.sourceNodeId, 128);
+    const targetNodeId = boundedText(body?.targetNodeId, 128);
+    const relationType = parseRelationType(body?.relationType);
+    const context = body?.context === undefined || body.context === null
+      ? null
+      : boundedText(body.context, 500, true);
+    if (!body || !sourceNodeId || !targetNodeId || !relationType || context === null && body.context !== undefined && body.context !== null) {
+      return res.status(400).json({ error: "关系参数无效" });
+    }
+    try {
+      const link = await runMutation((service) =>
+        service.createManualLink({
+          userId: req.user!.id,
+          sourceNodeId,
+          targetNodeId,
+          relationType,
+          context,
+        }));
+      return link
+        ? res.status(201).json({ link: serializeKnowledgeLink(link) })
+        : res.status(404).json({ error: "知识节点不存在" });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.delete("/links/:id", async (req: AuthenticatedRequest, res: Response) => {
+    const linkId = boundedText(req.params.id, 128);
+    if (!linkId) return res.status(400).json({ error: "关系参数无效" });
+    try {
+      const success = await runMutation((service) => service.deleteLink(req.user!.id, linkId));
+      return success
+        ? res.json({ success: true })
+        : res.status(404).json({ error: "知识关系不存在" });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
 
   return router;
 }
