@@ -589,7 +589,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
          JOIN knowledge_nodes source ON source.id = l.source_node_id AND source.user_id = $1
          JOIN knowledge_nodes target ON target.id = l.target_node_id AND target.user_id = $1
          WHERE l.user_id = $1
-           AND (l.source_node_id = ANY($2::text[]) OR l.target_node_id = ANY($2::text[]))
+           AND (l.source_node_id = ANY($2::uuid[]) OR l.target_node_id = ANY($2::uuid[]))
            AND source.is_active = TRUE AND source.deleted_at IS NULL
            AND target.is_active = TRUE AND target.deleted_at IS NULL
          ORDER BY l.updated_at DESC, l.id ASC`,
@@ -660,7 +660,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
       const result = await client.query<KnowledgeNodeRow>(
         `SELECT ${NODE_COLUMNS}
          FROM knowledge_nodes
-         WHERE user_id = $1 AND id = ANY($2::text[])
+         WHERE user_id = $1 AND id = ANY($2::uuid[])
            AND is_active = TRUE AND deleted_at IS NULL
          ORDER BY updated_at DESC, id ASC`,
         [userId, nodeIds],

@@ -1549,10 +1549,7 @@ function requirePostgresAuthOrSignedPhoto(req: express.Request, res: express.Res
   requirePostgresAuth(req as AuthenticatedRequest, res, next);
 }
 
-const primaryMediaStorage = directOssStorage || createVideoStorage({
-  ...runtimeConfig,
-  videoStorageProvider: "oss",
-});
+const primaryMediaStorage = directOssStorage || videoStorage;
 
 app.use("/api", createAssetMediaRouter({
   pool: pgPool,
