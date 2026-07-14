@@ -4,11 +4,13 @@ import { getRuntimeConfig, validateRuntimeConfig } from "../src/server/runtimeCo
 import { createOssStorageProvider } from "../src/server/storage/ossStorage";
 
 const processes: MediaProcesses = {
+  "thumb-112": "process-thumb-112",
   "thumb-240": "process-thumb-240",
   "thumb-480": "process-thumb-480",
   "detail-1280": "process-detail-1280",
 };
 
+assert.equal(imageProcessFor("thumb-112", processes), "process-thumb-112");
 assert.equal(imageProcessFor("thumb-240", processes), "process-thumb-240");
 assert.equal(imageProcessFor("thumb-480", processes), "process-thumb-480");
 assert.equal(imageProcessFor("detail-1280", processes), "process-detail-1280");

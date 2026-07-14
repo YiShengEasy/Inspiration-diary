@@ -121,6 +121,8 @@ export function createPrimaryMediaRouter(dependencies: PrimaryMediaRouterDepende
     handlePrimaryObjectDelivery(req, res, "thumb-480"));
   router.get("/objects/primary-thumb-240/:storageKey", requireAuthOrSignedUrl, (req, res) =>
     handlePrimaryObjectDelivery(req, res, "thumb-240"));
+  router.get("/objects/primary-thumb-112/:storageKey", requireAuthOrSignedUrl, (req, res) =>
+    handlePrimaryObjectDelivery(req, res, "thumb-112"));
   router.get("/objects/primary-detail/:storageKey", requireAuthOrSignedUrl, (req, res) =>
     handlePrimaryObjectDelivery(req, res, "detail-1280"));
 

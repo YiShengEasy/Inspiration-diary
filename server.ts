@@ -74,6 +74,7 @@ const MAX_DOCUMENT_UPLOAD_BYTES = Number.parseInt(process.env.MAX_DOCUMENT_UPLOA
 const DIRECT_DOCUMENT_HARD_LIMIT_BYTES = 20 * 1024 * 1024;
 const MAX_DOCUMENT_TEXT_CHARS = Number.parseInt(process.env.MAX_DOCUMENT_TEXT_CHARS || "300000", 10);
 const OSS_IMAGE_PROCESSES: MediaProcesses = {
+  "thumb-112": process.env.OSS_THUMB_112_PROCESS || "image/resize,m_fill,w_112,h_112/quality,Q_55/format,webp",
   "thumb-240": process.env.OSS_THUMB_240_PROCESS || "image/resize,w_240/quality,Q_70/format,webp",
   "thumb-480": process.env.OSS_THUMB_480_PROCESS || process.env.OSS_PRIMARY_THUMB_PROCESS || "image/resize,w_480/quality,Q_75/format,webp",
   "detail-1280": process.env.OSS_DETAIL_1280_PROCESS || "image/resize,w_1280/quality,Q_82/format,webp",
@@ -535,6 +536,7 @@ async function refreshKnowledgeCard(
 
 function primaryObjectUrl(storageKey: string, req: express.Request, variant: ImageVariant) {
   const routeByVariant: Record<ImageVariant, string> = {
+    "thumb-112": "primary-thumb-112",
     "thumb-240": "primary-thumb-240",
     "thumb-480": "primary-thumb",
     "detail-1280": "primary-detail",

@@ -18,3 +18,20 @@ test("knowledge core migration preserves tenant, relation, and search contracts"
   assert.match(sql, /CHECK \(lower_node_id::text < higher_node_id::text\)/i);
   assert.match(sql, /knowledge_nodes_search_trgm_idx[\s\S]*gin\(search_text gin_trgm_ops\)/i);
 });
+
+test("knowledge explorer migration keeps folders tenant-safe and indexed", async () => {
+  const sql = await readFile(
+    new URL("../database/migrations/003_knowledge_explorer.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(sql, /CREATE TABLE knowledge_folders/i);
+  assert.match(sql, /source_type TEXT NOT NULL CHECK \(source_type IN \('manual','inspiration_book'\)\)/i);
+  assert.match(sql, /FOREIGN KEY \(user_id, parent_id\)[\s\S]*REFERENCES knowledge_folders\(user_id, id\)/i);
+  assert.match(sql, /PRIMARY KEY \(user_id, folder_id, node_id\)/i);
+  assert.match(sql, /FOREIGN KEY \(user_id, node_id\)[\s\S]*REFERENCES knowledge_nodes\(user_id, id\)/i);
+  assert.match(sql, /knowledge_folders_parent_sort_idx/i);
+  assert.match(sql, /knowledge_folder_nodes_folder_idx/i);
+  assert.match(sql, /knowledge_folder_nodes_node_idx/i);
+  assert.match(sql, /ON CONFLICT \(user_id, folder_id, node_id\) DO NOTHING/i);
+});

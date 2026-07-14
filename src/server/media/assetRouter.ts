@@ -100,7 +100,7 @@ export function createAssetMediaRouter(dependencies: AssetMediaRouterDependencie
     }
   }
 
-  for (const variant of ["thumb-240", "thumb-480", "detail-1280", "original"] as const) {
+  for (const variant of ["thumb-112", "thumb-240", "thumb-480", "detail-1280", "original"] as const) {
     router.get(`/images/:imageId/${variant}`, requireAuthOrSignedUrl, (req, res) =>
       handleStoredImageDelivery(req, res, "image_assets", variant));
     router.get(`/combo-images/:imageId/${variant}`, requireAuthOrSignedUrl, (req, res) =>

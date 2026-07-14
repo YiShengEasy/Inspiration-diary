@@ -61,7 +61,7 @@ export interface KnowledgeSuggestionFeedback {
   createdAt: number;
 }
 
-interface KnowledgeNodeRow {
+export interface KnowledgeNodeRow {
   id: string;
   user_id: string;
   entity_type: KnowledgeEntityType;
@@ -132,7 +132,7 @@ interface KnowledgeBacklinkRow extends KnowledgeLinkRow {
   node_updated_at: number | string;
 }
 
-const NODE_COLUMNS = `
+export const NODE_COLUMNS = `
   id, user_id, entity_type, entity_id, slug, title, tags, properties,
   search_text, is_active, auto_added, content_fingerprint, revision,
   deleted_at, created_at, updated_at
@@ -158,7 +158,7 @@ function nullableSafeInteger(value: number | string | null, field: string): numb
   return value === null ? null : safeInteger(value, field);
 }
 
-function mapNode(row: KnowledgeNodeRow): KnowledgeNode {
+export function mapKnowledgeNodeRow(row: KnowledgeNodeRow): KnowledgeNode {
   return {
     id: row.id,
     userId: row.user_id,
@@ -328,7 +328,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
          AND ($3::boolean = FALSE OR (is_active = TRUE AND deleted_at IS NULL))`,
       [userId, nodeId, activeOnly],
     );
-    return result.rows[0] ? mapNode(result.rows[0]) : null;
+    return result.rows[0] ? mapKnowledgeNodeRow(result.rows[0]) : null;
   }
 
   async function putLink(input: PutKnowledgeLinkInput): Promise<KnowledgeLink | null> {
@@ -366,7 +366,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
            AND ($4::boolean = FALSE OR (is_active = TRUE AND deleted_at IS NULL))`,
         [userId, entityType, entityId, activeOnly],
       );
-      return result.rows[0] ? mapNode(result.rows[0]) : null;
+      return result.rows[0] ? mapKnowledgeNodeRow(result.rows[0]) : null;
     },
 
     async getActiveNodeBySlug(userId, slug) {
@@ -376,7 +376,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
          WHERE user_id = $1 AND slug = $2 AND is_active = TRUE AND deleted_at IS NULL`,
         [userId, slug],
       );
-      return result.rows[0] ? mapNode(result.rows[0]) : null;
+      return result.rows[0] ? mapKnowledgeNodeRow(result.rows[0]) : null;
     },
 
     async getActiveNodeByTitle(userId, normalizedTitle) {
@@ -390,7 +390,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
          LIMIT 1`,
         [userId, normalizedTitle],
       );
-      return result.rows[0] ? mapNode(result.rows[0]) : null;
+      return result.rows[0] ? mapKnowledgeNodeRow(result.rows[0]) : null;
     },
 
     async getActiveConceptByTitle(userId, normalizedTitle) {
@@ -404,7 +404,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
          LIMIT 1`,
         [userId, normalizedTitle],
       );
-      return result.rows[0] ? mapNode(result.rows[0]) : null;
+      return result.rows[0] ? mapKnowledgeNodeRow(result.rows[0]) : null;
     },
 
     async listNodes(input) {
@@ -441,7 +441,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
         ],
       );
       return {
-        nodes: result.rows.map(mapNode),
+        nodes: result.rows.map(mapKnowledgeNodeRow),
         total: result.rows[0] ? safeInteger(result.rows[0].total_count, "node count") : 0,
         page,
         pageSize,
@@ -473,7 +473,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
       );
       const row = result.rows[0];
       if (!row) throw new Error("PostgreSQL did not return the knowledge node");
-      return mapNode(row);
+      return mapKnowledgeNodeRow(row);
     },
 
     async claimConceptNode(input) {
@@ -493,7 +493,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
           input.autoAdded, input.contentFingerprint, input.now,
         ],
       );
-      return result.rows[0] ? mapNode(result.rows[0]) : null;
+      return result.rows[0] ? mapKnowledgeNodeRow(result.rows[0]) : null;
     },
 
     async createConceptNode(input) {
@@ -517,7 +517,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
       );
       const row = result.rows[0];
       if (!row) throw new Error("PostgreSQL did not return the concept node");
-      return mapNode(row);
+      return mapKnowledgeNodeRow(row);
     },
 
     async updateNodeOptimistically(input) {
@@ -533,7 +533,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
           input.searchText, input.contentFingerprint, input.now, input.expectedRevision,
         ],
       );
-      if (updated.rows[0]) return { status: "updated", node: mapNode(updated.rows[0]) };
+      if (updated.rows[0]) return { status: "updated", node: mapKnowledgeNodeRow(updated.rows[0]) };
       const current = await getNodeById(input.userId, input.nodeId, true);
       return current ? { status: "conflict", node: current } : { status: "not_found" };
     },
@@ -549,7 +549,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
          RETURNING ${NODE_COLUMNS}`,
         [userId, nodeId, active, now],
       );
-      return result.rows[0] ? mapNode(result.rows[0]) : null;
+      return result.rows[0] ? mapKnowledgeNodeRow(result.rows[0]) : null;
     },
 
     async softDeleteNode(userId, nodeId, now) {
@@ -561,7 +561,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
          RETURNING ${NODE_COLUMNS}`,
         [userId, nodeId, now],
       );
-      return result.rows[0] ? mapNode(result.rows[0]) : null;
+      return result.rows[0] ? mapKnowledgeNodeRow(result.rows[0]) : null;
     },
 
     async listLinksForNode(userId, nodeId) {
@@ -622,7 +622,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
       );
       return result.rows.map((row) => ({
         link: mapLink(row),
-        source: mapNode({
+        source: mapKnowledgeNodeRow({
           id: row.node_id,
           user_id: row.node_user_id,
           entity_type: row.node_entity_type,
@@ -665,7 +665,7 @@ export function createKnowledgeRepository(client: KnowledgeQueryable): Knowledge
          ORDER BY updated_at DESC, id ASC`,
         [userId, nodeIds],
       );
-      return result.rows.map(mapNode);
+      return result.rows.map(mapKnowledgeNodeRow);
     },
 
     async listCandidateNodes(userId) {

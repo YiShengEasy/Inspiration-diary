@@ -3,6 +3,7 @@ import type {
   KnowledgeNode,
 } from "./repository.ts";
 import type { KnowledgeNodeDetail } from "./service.ts";
+import type { ExplorerNode } from "./folders.ts";
 
 function snippet(searchText: string, maximum = 180): string {
   const normalized = searchText.replace(/\s+/gu, " ").trim();
@@ -33,6 +34,14 @@ export function serializeKnowledgeNodeDetail(detail: KnowledgeNodeDetail) {
     ...serializeKnowledgeNodeSummary(detail.node),
     properties: detail.node.properties,
     markdown: detail.markdown || null,
+  };
+}
+
+export function serializeKnowledgeExplorerNode(item: ExplorerNode) {
+  return {
+    ...serializeKnowledgeNodeSummary(item.node),
+    preview: item.preview,
+    folders: item.folders,
   };
 }
 

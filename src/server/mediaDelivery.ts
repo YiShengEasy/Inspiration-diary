@@ -1,9 +1,10 @@
 import type { ObjectStorageProvider } from "./storage/types";
 import type { MediaDeliveryMode } from "./runtimeConfig";
 
-export type ImageVariant = "thumb-240" | "thumb-480" | "detail-1280" | "original";
+export type ImageVariant = "thumb-112" | "thumb-240" | "thumb-480" | "detail-1280" | "original";
 
 export interface MediaProcesses {
+  "thumb-112": string;
   "thumb-240": string;
   "thumb-480": string;
   "detail-1280": string;

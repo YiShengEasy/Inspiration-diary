@@ -18,9 +18,14 @@ import {
 } from "./service.ts";
 import {
   serializeKnowledgeLink,
+  serializeKnowledgeExplorerNode,
   serializeKnowledgeNodeDetail,
   serializeKnowledgeNodeSummary,
 } from "./serializers.ts";
+import {
+  createKnowledgeFolderService,
+  KnowledgeFolderError,
+} from "./folders.ts";
 import type { KnowledgeEntityType } from "./types.ts";
 import type { KnowledgeRelationType } from "./types.ts";
 
@@ -63,6 +68,7 @@ const RELATION_TYPES = new Set<KnowledgeRelationType>([
   "contrasts",
   "supports",
 ]);
+const CONTENT_TYPES = new Set(["image", "md", "combo", "video"]);
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -121,6 +127,10 @@ function isoWeek(now: Date): { weekId: string; dayIndex: number } {
 }
 
 function publicError(res: Response, error: unknown): Response {
+  if (error instanceof KnowledgeFolderError) {
+    const status = error.code === "conflict" ? 409 : error.code === "not_found" ? 404 : 400;
+    return res.status(status).json({ error: error.message, code: error.code });
+  }
   if (error instanceof KnowledgePropertyValidationError) {
     return res.status(400).json({ error: error.message, code: error.code });
   }
@@ -153,11 +163,20 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
   const database = options.pool ?? options.queryable;
   const factory = options.serviceFactory ?? createKnowledgeService;
   const defaultService = options.service ?? (database ? factory(database) : null);
+  const defaultFolderService = database ? createKnowledgeFolderService(database) : null;
   const aiSuggestionGenerator = options.aiSuggestionGenerator ?? generateKnowledgeAiSuggestions;
 
   async function runMutation<T>(operation: (service: KnowledgeService) => Promise<T>): Promise<T> {
     if (!database) return operation(defaultService!);
     return inTransaction(database, factory, async (_queryable, service) => operation(service));
+  }
+
+  async function runFolderMutation<T>(
+    operation: (service: ReturnType<typeof createKnowledgeFolderService>) => Promise<T>,
+  ): Promise<T> {
+    if (!database) throw new KnowledgeFolderError("not_found", "知识目录数据库未配置");
+    return inTransaction(database, factory, async (queryable) =>
+      operation(createKnowledgeFolderService(queryable)));
   }
 
   router.use((req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -167,6 +186,138 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
     if (!req.user) return res.status(401).json({ error: "未登录" });
     if (!defaultService) return res.status(503).json({ error: "知识库数据库未配置" });
     next();
+  });
+
+  router.get("/folders", async (req: AuthenticatedRequest, res: Response) => {
+    if (!defaultFolderService) return res.status(503).json({ error: "知识目录数据库未配置" });
+    const parentId = typeof req.query.parentId === "string" && req.query.parentId ? req.query.parentId : null;
+    try {
+      const page = await defaultFolderService.listChildren({
+        userId: req.user!.id,
+        parentId,
+        cursor: typeof req.query.cursor === "string" ? req.query.cursor.slice(0, 500) : null,
+        pageSize: boundedInteger(req.query.pageSize, 100, 1, 100),
+      });
+      return res.json(page);
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.post("/folders", async (req: AuthenticatedRequest, res: Response) => {
+    const body = record(req.body);
+    const name = boundedText(body?.name, 120);
+    const parentId = body?.parentId === null || body?.parentId === undefined
+      ? null
+      : boundedText(body.parentId, 128);
+    if (!body || !name || parentId === null && body.parentId !== null && body.parentId !== undefined) {
+      return res.status(400).json({ error: "目录参数无效" });
+    }
+    try {
+      const folder = await runFolderMutation((service) => service.createFolder({
+        userId: req.user!.id,
+        parentId,
+        name,
+      }));
+      return res.status(201).json({ folder });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.patch("/folders/:folderId", async (req: AuthenticatedRequest, res: Response) => {
+    const body = record(req.body);
+    const folderId = boundedText(req.params.folderId, 128);
+    const name = boundedText(body?.name, 120);
+    const parentId = body?.parentId === null || body?.parentId === undefined
+      ? null
+      : boundedText(body.parentId, 128);
+    if (!body || !folderId || !name || parentId === null && body.parentId !== null && body.parentId !== undefined) {
+      return res.status(400).json({ error: "目录参数无效" });
+    }
+    try {
+      const folder = await runFolderMutation((service) => service.updateFolder({
+        userId: req.user!.id,
+        folderId,
+        parentId,
+        name,
+      }));
+      return folder ? res.json({ folder }) : res.status(404).json({ error: "手工目录不存在" });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.delete("/folders/:folderId", async (req: AuthenticatedRequest, res: Response) => {
+    const folderId = boundedText(req.params.folderId, 128);
+    if (!folderId) return res.status(400).json({ error: "目录参数无效" });
+    try {
+      const deleted = await runFolderMutation((service) => service.deleteFolder(req.user!.id, folderId));
+      return deleted ? res.json({ deleted: true }) : res.status(404).json({ error: "手工目录不存在" });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  async function explorerNodesResponse(
+    req: AuthenticatedRequest,
+    res: Response,
+    mode: "folder" | "unfiled",
+  ) {
+    if (!defaultFolderService) return res.status(503).json({ error: "知识目录数据库未配置" });
+    const rawEntityType = typeof req.query.type === "string" ? req.query.type : "";
+    const entityType = rawEntityType ? parseEntityType(rawEntityType) : undefined;
+    const rawContentType = typeof req.query.contentType === "string" ? req.query.contentType : "";
+    if (rawEntityType && !entityType) return res.status(400).json({ error: "知识类型无效" });
+    if (rawContentType && !CONTENT_TYPES.has(rawContentType)) return res.status(400).json({ error: "内容类型无效" });
+    try {
+      const input = {
+        userId: req.user!.id,
+        query: typeof req.query.q === "string" ? req.query.q.slice(0, 200) : undefined,
+        entityType,
+        contentType: rawContentType || undefined,
+        cursor: typeof req.query.cursor === "string" ? req.query.cursor.slice(0, 500) : null,
+        pageSize: boundedInteger(req.query.pageSize, 30, 1, 100),
+      };
+      const page = mode === "unfiled"
+        ? await defaultFolderService.listUnfiledNodes(input)
+        : await defaultFolderService.listFolderNodes({ ...input, folderId: req.params.folderId });
+      return res.json({
+        nodes: page.nodes.map(serializeKnowledgeExplorerNode),
+        nextCursor: page.nextCursor,
+      });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  }
+
+  router.get("/folders/:folderId/nodes", (req: AuthenticatedRequest, res: Response) =>
+    explorerNodesResponse(req, res, "folder"));
+  router.get("/unfiled", (req: AuthenticatedRequest, res: Response) =>
+    explorerNodesResponse(req, res, "unfiled"));
+
+  router.post("/folders/:folderId/nodes", async (req: AuthenticatedRequest, res: Response) => {
+    const folderId = boundedText(req.params.folderId, 128);
+    const nodeId = boundedText(req.body?.nodeId, 128);
+    if (!folderId || !nodeId) return res.status(400).json({ error: "目录成员参数无效" });
+    try {
+      const added = await runFolderMutation((service) => service.addNode(req.user!.id, folderId, nodeId));
+      return added ? res.status(201).json({ added: true }) : res.status(404).json({ error: "目录或知识节点不存在" });
+    } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.delete("/folders/:folderId/nodes/:nodeId", async (req: AuthenticatedRequest, res: Response) => {
+    const folderId = boundedText(req.params.folderId, 128);
+    const nodeId = boundedText(req.params.nodeId, 128);
+    if (!folderId || !nodeId) return res.status(400).json({ error: "目录成员参数无效" });
+    try {
+      const removed = await runFolderMutation((service) => service.removeNode(req.user!.id, folderId, nodeId));
+      return removed ? res.json({ removed: true }) : res.status(404).json({ error: "目录成员不存在" });
+    } catch (error) {
+      return publicError(res, error);
+    }
   });
 
   router.get("/nodes", async (req: AuthenticatedRequest, res: Response) => {
