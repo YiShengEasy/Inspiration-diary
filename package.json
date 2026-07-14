@@ -33,6 +33,7 @@
     "mini:auth:smoke": "WECHAT_MOCK=true MINI_DEBUG_PASSWORD_LOGIN=true node scripts/miniprogram-auth-smoke.mjs",
     "combo:smoke": "node scripts/combo-card-smoke.mjs",
     "media:smoke": "tsx scripts/media-delivery-smoke.ts",
+    "knowledge:benchmark": "tsx scripts/knowledge-explorer-benchmark.ts",
     "mini:p2:smoke": "node scripts/mini-p2-smoke.mjs",
     "release:prod": "bash scripts/release-production.sh"
   },
