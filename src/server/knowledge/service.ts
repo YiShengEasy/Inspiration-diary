@@ -747,6 +747,25 @@ export function createKnowledgeService(
       const explorationLimit = ranked && ranked.length > 0 ? 2 : Math.min(6, targetLimit);
       const explorationSlots = Math.min(explorationLimit, targetLimit - targets.length);
       if (explorationSlots > 0) {
+        const addExplorationNode = (node: KnowledgeNode): boolean => {
+          const explorationCount = targets.filter((target) => target.evidence.source === "exploration").length;
+          if (targets.length >= targetLimit || explorationCount >= explorationSlots || seen.has(node.id)) return false;
+          seen.add(node.id);
+          targets.push({
+            node,
+            score: 0.25,
+            evidence: {
+              sharedTags: source.node.tags.filter((tag) => node.tags.includes(tag)),
+              sameBook: false,
+              sharedPropertyRatio: 0,
+              creationProximity: 0,
+              feedbackBoost: 0,
+              feedbackPenalty: 0,
+              source: "exploration",
+            },
+          });
+          return true;
+        };
         const queries = Array.from(new Set([
           source.node.title,
           ...source.node.tags.slice(0, 4),
@@ -760,23 +779,17 @@ export function createKnowledgeService(
             pageSize: 12,
           });
           for (const node of page.nodes) {
-            const explorationCount = targets.filter((target) => target.evidence.source === "exploration").length;
-            if (targets.length >= targetLimit || explorationCount >= explorationSlots) break;
-            if (seen.has(node.id)) continue;
-            seen.add(node.id);
-            targets.push({
-              node,
-              score: 0.25,
-              evidence: {
-                sharedTags: source.node.tags.filter((tag) => node.tags.includes(tag)),
-                sameBook: false,
-                sharedPropertyRatio: 0,
-                creationProximity: 0,
-                feedbackBoost: 0,
-                feedbackPenalty: 0,
-                source: "exploration",
-              },
-            });
+            if (!addExplorationNode(node)) continue;
+          }
+        }
+        if (targets.length === 0) {
+          const page = await repository.listNodes({
+            userId,
+            page: 1,
+            pageSize: 12,
+          });
+          for (const node of page.nodes) {
+            addExplorationNode(node);
           }
         }
       }
