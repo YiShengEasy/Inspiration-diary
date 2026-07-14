@@ -451,7 +451,17 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
         defaults: options.aiDefaults,
         limit,
       });
-      return res.json({ suggestions });
+      const targetMeta = new Map(context.targets.map((target) => [target.node.id, target]));
+      return res.json({
+        suggestions: suggestions.map((suggestion) => {
+          const target = targetMeta.get(suggestion.targetNodeId);
+          return {
+            ...suggestion,
+            localScore: target?.score ?? 0,
+            evidence: target?.evidence ?? null,
+          };
+        }),
+      });
     } catch (error) {
       if (error instanceof KnowledgeAiSuggestionError) {
         return res.status(error.httpStatus).json({ error: error.message });

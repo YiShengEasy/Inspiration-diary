@@ -39,6 +39,14 @@ export interface KnowledgeCandidateDetail extends Omit<KnowledgeCandidate, "node
   node: KnowledgeNode;
 }
 
+export interface KnowledgeAiSuggestionTarget {
+  node: KnowledgeNode;
+  score: number;
+  evidence: KnowledgeCandidateDetail["evidence"] & {
+    source: "ranked" | "exploration";
+  };
+}
+
 export interface KnowledgeGraphNode {
   node: KnowledgeNode;
   distance: 0 | 1 | 2;
@@ -61,7 +69,7 @@ export interface KnowledgeGraph {
 
 export interface KnowledgeAiSuggestionContext {
   source: KnowledgeNodeDetail;
-  targets: KnowledgeNode[];
+  targets: KnowledgeAiSuggestionTarget[];
 }
 
 export interface IndexCardResult {
@@ -632,16 +640,31 @@ export function createKnowledgeService(
       return Boolean(result);
     },
 
-    createManualLink(input) {
-      return repository.putLink({
+    async createManualLink(input) {
+      const now = input.now ?? currentTime();
+      const link = await repository.putLink({
         userId: input.userId,
         sourceNodeId: input.sourceNodeId,
         targetNodeId: input.targetNodeId,
         relationType: input.relationType,
         origin: "manual",
         context: input.context ?? null,
-        now: input.now ?? currentTime(),
+        now,
       });
+      if (!link) return null;
+
+      const candidateNodes = await repository.listCandidateNodes(input.userId);
+      const source = candidateNodes.find((node) => node.id === input.sourceNodeId);
+      const target = candidateNodes.find((node) => node.id === input.targetNodeId);
+      if (source && target) {
+        await repository.putSuggestionFeedback({
+          userId: input.userId,
+          action: "accepted",
+          now,
+          ...candidateFingerprintForPair(source, target),
+        });
+      }
+      return link;
     },
 
     deleteLink(userId, linkId) {
@@ -708,16 +731,58 @@ export function createKnowledgeService(
     },
 
     async getAiSuggestionContext(userId, nodeId, limit = 50) {
+      const targetLimit = Math.min(8, Math.max(1, Math.floor(limit)));
       const source = await getNode(userId, nodeId);
       if (!source) return null;
-      const page = await repository.listNodes({
-        userId,
-        page: 1,
-        pageSize: Math.min(100, Math.max(1, limit + 1)),
-      });
+      const ranked = await findCandidateDetails(userId, nodeId, targetLimit);
+      const targets: KnowledgeAiSuggestionTarget[] = (ranked ?? []).slice(0, targetLimit).map((candidate) => ({
+        node: candidate.node,
+        score: candidate.score,
+        evidence: { ...candidate.evidence, source: "ranked" },
+      }));
+      const seen = new Set([nodeId, ...targets.map((target) => target.node.id)]);
+      const linkedNodeIds = await repository.listLinkedNodeIds(userId, nodeId);
+      for (const linkedNodeId of linkedNodeIds) seen.add(linkedNodeId);
+
+      const explorationLimit = ranked && ranked.length > 0 ? 2 : Math.min(6, targetLimit);
+      const explorationSlots = Math.min(explorationLimit, targetLimit - targets.length);
+      if (explorationSlots > 0) {
+        const queries = Array.from(new Set([
+          source.node.title,
+          ...source.node.tags.slice(0, 4),
+        ].map((value) => value.trim()).filter(Boolean)));
+        for (const query of queries) {
+          if (targets.length >= targetLimit) break;
+          const page = await repository.listNodes({
+            userId,
+            query,
+            page: 1,
+            pageSize: 12,
+          });
+          for (const node of page.nodes) {
+            const explorationCount = targets.filter((target) => target.evidence.source === "exploration").length;
+            if (targets.length >= targetLimit || explorationCount >= explorationSlots) break;
+            if (seen.has(node.id)) continue;
+            seen.add(node.id);
+            targets.push({
+              node,
+              score: 0.25,
+              evidence: {
+                sharedTags: source.node.tags.filter((tag) => node.tags.includes(tag)),
+                sameBook: false,
+                sharedPropertyRatio: 0,
+                creationProximity: 0,
+                feedbackBoost: 0,
+                feedbackPenalty: 0,
+                source: "exploration",
+              },
+            });
+          }
+        }
+      }
       return {
         source,
-        targets: page.nodes.filter((node) => node.id !== nodeId).slice(0, limit),
+        targets,
       };
     },
   };

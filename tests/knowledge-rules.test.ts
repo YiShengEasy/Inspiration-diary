@@ -68,6 +68,32 @@ test("candidate rules enforce evidence, feedback fingerprints, threshold and ten
     lowerFingerprint: pair.lowerNodeId === source.id ? source.contentFingerprint : first.contentFingerprint,
     higherFingerprint: pair.higherNodeId === source.id ? source.contentFingerprint : first.contentFingerprint,
   }] }).length, 1);
+
+  const acceptedLike = {
+    id: "accepted-like",
+    tags: ["粒子", "弱相关", "偏好"],
+    properties: {},
+    createdAt: 1_000,
+    contentFingerprint: "accepted-like-v1",
+  };
+  const learnedCandidate = {
+    id: "learned-candidate",
+    tags: ["粒子", "弱相关", "偏好"],
+    properties: {},
+    createdAt: 1_000,
+    contentFingerprint: "learned-candidate-v1",
+  };
+  const acceptedPair = canonicalNodePair(source.id, acceptedLike.id);
+  assert.equal(findKnowledgeCandidates(source, [learnedCandidate]).length, 0);
+  assert.equal(findKnowledgeCandidates(source, [acceptedLike, learnedCandidate], {
+    formalLinkedNodeIds: [acceptedLike.id],
+    feedback: [{
+      ...acceptedPair,
+      action: "accepted",
+      lowerFingerprint: acceptedPair.lowerNodeId === source.id ? source.contentFingerprint : acceptedLike.contentFingerprint,
+      higherFingerprint: acceptedPair.higherNodeId === source.id ? source.contentFingerprint : acceptedLike.contentFingerprint,
+    }],
+  }).some((candidate) => candidate.node.id === learnedCandidate.id), true);
 });
 
 test("graph layout is deterministic and capped at 50 nodes and 100 valid edges", () => {

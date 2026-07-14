@@ -16,6 +16,7 @@ export interface CandidateNode {
 export interface CandidateFeedback {
   lowerNodeId: string;
   higherNodeId: string;
+  action?: "dismissed" | "accepted";
   lowerFingerprint: string;
   higherFingerprint: string;
 }
@@ -28,6 +29,8 @@ export interface KnowledgeCandidate {
     sameBook: boolean;
     sharedPropertyRatio: number;
     creationProximity: number;
+    feedbackBoost?: number;
+    feedbackPenalty?: number;
   };
 }
 
@@ -75,6 +78,40 @@ function feedbackMatches(source: CandidateNode, target: CandidateNode, feedback:
   return lowerFingerprint === feedback.lowerFingerprint && higherFingerprint === feedback.higherFingerprint;
 }
 
+function otherFeedbackNodeId(sourceId: string, feedback: CandidateFeedback): string | null {
+  if (feedback.lowerNodeId === sourceId) return feedback.higherNodeId;
+  if (feedback.higherNodeId === sourceId) return feedback.lowerNodeId;
+  return null;
+}
+
+function patternSimilarity(first: CandidateNode, second: CandidateNode): number {
+  const firstTags = normalizedSet(first.tags);
+  const secondTags = normalizedSet(second.tags);
+  const tagUnion = new Set([...firstTags, ...secondTags]);
+  const tagScore = tagUnion.size === 0 ? 0 : intersect(firstTags, secondTags).length / tagUnion.size;
+  const sameBook = intersect(normalizedSet(first.bookIds ?? []), normalizedSet(second.bookIds ?? [])).length > 0;
+  return tagScore * 0.7 + (sameBook ? 0.2 : 0) + propertyRatio(first.properties, second.properties) * 0.1;
+}
+
+function feedbackPatternScore(
+  source: CandidateNode,
+  target: CandidateNode,
+  nodesById: Map<string, CandidateNode>,
+  feedback: CandidateFeedback[],
+  action: "dismissed" | "accepted",
+): number {
+  let best = 0;
+  for (const entry of feedback) {
+    if ((entry.action ?? "dismissed") !== action) continue;
+    const otherId = otherFeedbackNodeId(source.id, entry);
+    if (!otherId || otherId === target.id) continue;
+    const otherNode = nodesById.get(otherId);
+    if (!otherNode) continue;
+    best = Math.max(best, patternSimilarity(target, otherNode));
+  }
+  return best;
+}
+
 export function findKnowledgeCandidates(
   source: CandidateNode,
   nodes: CandidateNode[],
@@ -86,10 +123,11 @@ export function findKnowledgeCandidates(
   const limit = Math.min(10, Math.max(0, Math.floor(options.limit ?? 10)));
   const sourceTags = normalizedSet(source.tags);
   const sourceBooks = normalizedSet(source.bookIds ?? []);
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
 
   return nodes.flatMap((node): KnowledgeCandidate[] => {
     if (node.id === source.id || node.isActive === false || formalLinks.has(node.id)) return [];
-    if (feedback.some((entry) => feedbackMatches(source, node, entry))) return [];
+    if (feedback.some((entry) => (entry.action ?? "dismissed") === "dismissed" && feedbackMatches(source, node, entry))) return [];
 
     const targetTags = normalizedSet(node.tags);
     const sharedTags = intersect(sourceTags, targetTags);
@@ -108,11 +146,16 @@ export function findKnowledgeCandidates(
       (sameBook ? 0.2 : 0) +
       sharedPropertyRatio * 0.15 +
       creationProximity * 0.1;
-    if (score < minScore) return [];
+    const feedbackBoost =
+      (feedback.some((entry) => entry.action === "accepted" && feedbackMatches(source, node, entry)) ? 0.25 : 0) +
+      feedbackPatternScore(source, node, nodesById, feedback, "accepted") * 0.18;
+    const feedbackPenalty = feedbackPatternScore(source, node, nodesById, feedback, "dismissed") * 0.22;
+    const learnedScore = Math.max(0, Math.min(1, score + feedbackBoost - feedbackPenalty));
+    if (learnedScore < minScore) return [];
     return [{
       node,
-      score,
-      evidence: { sharedTags, sameBook, sharedPropertyRatio, creationProximity },
+      score: learnedScore,
+      evidence: { sharedTags, sameBook, sharedPropertyRatio, creationProximity, feedbackBoost, feedbackPenalty },
     }];
   }).sort((first, second) => second.score - first.score || (first.node.id < second.node.id ? -1 : first.node.id > second.node.id ? 1 : 0))
     .slice(0, limit);

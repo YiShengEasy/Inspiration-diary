@@ -7,7 +7,7 @@ import express, { type Express } from "express";
 import type { AuthenticatedRequest, AuthUser } from "../src/server/auth.ts";
 import type { KnowledgeLink, KnowledgeNode } from "../src/server/knowledge/repository.ts";
 import { createKnowledgeRouter } from "../src/server/knowledge/router.ts";
-import type { KnowledgeNodeDetail, KnowledgeService } from "../src/server/knowledge/service.ts";
+import type { KnowledgeAiSuggestionTarget, KnowledgeNodeDetail, KnowledgeService } from "../src/server/knowledge/service.ts";
 
 const MEMBER: AuthUser = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -40,6 +40,22 @@ function makeNode(overrides: Partial<KnowledgeNode> = {}): KnowledgeNode {
 
 function makeDetail(node = makeNode()): KnowledgeNodeDetail {
   return { node, markdown: "知识正文" };
+}
+
+function makeSuggestionTarget(node: KnowledgeNode): KnowledgeAiSuggestionTarget {
+  return {
+    node,
+    score: 0.72,
+    evidence: {
+      source: "ranked",
+      sharedTags: ["知识"],
+      sameBook: false,
+      sharedPropertyRatio: 0,
+      creationProximity: 1,
+      feedbackBoost: 0,
+      feedbackPenalty: 0,
+    },
+  };
 }
 
 function makeLink(overrides: Partial<KnowledgeLink> = {}): KnowledgeLink {
@@ -107,7 +123,7 @@ function createService(overrides: Partial<KnowledgeService> = {}): KnowledgeServ
     async getAiSuggestionContext() {
       return {
         source: makeDetail(node),
-        targets: [targetNode],
+        targets: [makeSuggestionTarget(targetNode)],
       };
     },
     ...overrides,
@@ -452,7 +468,7 @@ test("generates AI relation suggestions without writing links", async () => {
       calls.push(`context:${userId}:${receivedNodeId}:${limit}`);
       return {
         source: makeDetail(makeNode({ id: receivedNodeId })),
-        targets: [makeNode({ id: targetId, title: "关联知识" })],
+        targets: [makeSuggestionTarget(makeNode({ id: targetId, title: "关联知识" }))],
       };
     },
     async createManualLink() {
@@ -488,6 +504,16 @@ test("generates AI relation suggestions without writing links", async () => {
         relationType: "supports",
         confidence: 0.84,
         reason: "同一主题下的支撑材料",
+        localScore: 0.72,
+        evidence: {
+          source: "ranked",
+          sharedTags: ["知识"],
+          sameBook: false,
+          sharedPropertyRatio: 0,
+          creationProximity: 1,
+          feedbackBoost: 0,
+          feedbackPenalty: 0,
+        },
       }],
     },
   });

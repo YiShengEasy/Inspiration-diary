@@ -433,6 +433,13 @@ export default function KnowledgeBaseView({ onBack, aiHeaders = {} }: KnowledgeB
                                 共同标签：{candidate.evidence.sharedTags.join("、")}
                               </span>
                             )}
+                            {(candidate.evidence.feedbackBoost || candidate.evidence.feedbackPenalty) && (
+                              <span className="mt-1 block text-xs opacity-55">
+                                反馈学习：
+                                {candidate.evidence.feedbackBoost ? ` +${Math.round(candidate.evidence.feedbackBoost * 100)}` : ""}
+                                {candidate.evidence.feedbackPenalty ? ` -${Math.round(candidate.evidence.feedbackPenalty * 100)}` : ""}
+                              </span>
+                            )}
                           </div>
                           <div className="flex shrink-0 gap-2">
                             <button
@@ -518,7 +525,14 @@ export default function KnowledgeBaseView({ onBack, aiHeaders = {} }: KnowledgeB
                             <strong className="block">{targetTitle(suggestion.targetNodeId)}</strong>
                             <span className="text-xs opacity-55">
                               {suggestion.relationType} · 置信度 {Math.round(suggestion.confidence * 100)}%
+                              {typeof suggestion.localScore === "number" ? ` · 本地分 ${Math.round(suggestion.localScore * 100)}%` : ""}
                             </span>
+                            {suggestion.evidence && (
+                              <span className="mt-1 block text-xs opacity-55">
+                                {suggestion.evidence.source === "exploration" ? "探索候选" : "高分候选"}
+                                {suggestion.evidence.sharedTags.length > 0 ? ` · 共同标签：${suggestion.evidence.sharedTags.join("、")}` : ""}
+                              </span>
+                            )}
                             <p className="mt-1 text-xs opacity-65">{suggestion.reason}</p>
                           </div>
                           <button

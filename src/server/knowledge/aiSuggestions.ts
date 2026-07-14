@@ -8,6 +8,7 @@ import {
 } from "../analysis/shared.ts";
 import type { KnowledgeNode } from "./repository.ts";
 import type { KnowledgeRelationType } from "./types.ts";
+import type { KnowledgeAiSuggestionTarget } from "./service.ts";
 
 const RELATION_TYPES: KnowledgeRelationType[] = [
   "mentions",
@@ -39,7 +40,7 @@ export interface KnowledgeAiSuggestion {
 export interface KnowledgeAiSuggestionInput {
   source: KnowledgeNode;
   sourceMarkdown: string;
-  targets: KnowledgeNode[];
+  targets: KnowledgeAiSuggestionTarget[];
   headers: IncomingHttpHeaders;
   defaults: AiProviderDefaults;
   limit: number;
@@ -80,10 +81,26 @@ function compactNode(node: KnowledgeNode) {
   };
 }
 
+function compactTarget(target: KnowledgeAiSuggestionTarget) {
+  return {
+    ...compactNode(target.node),
+    localScore: Number(target.score.toFixed(3)),
+    evidence: {
+      source: target.evidence.source,
+      sharedTags: target.evidence.sharedTags.slice(0, 8),
+      sameBook: target.evidence.sameBook,
+      sharedPropertyRatio: Number(target.evidence.sharedPropertyRatio.toFixed(3)),
+      creationProximity: Number(target.evidence.creationProximity.toFixed(3)),
+      feedbackBoost: Number((target.evidence.feedbackBoost ?? 0).toFixed(3)),
+      feedbackPenalty: Number((target.evidence.feedbackPenalty ?? 0).toFixed(3)),
+    },
+  };
+}
+
 function buildPrompt(input: KnowledgeAiSuggestionInput): string {
   return [
     "你是一个知识库关系建议助手。只能从候选节点列表中选择 targetNodeId，不要创造新节点。",
-    "请根据当前节点和候选节点，建议少量值得人工确认的关系。",
+    "候选节点已经由本地相关性和用户反馈预筛。请优先考虑 localScore 高、evidence 充分的候选；exploration 只在语义明显相关时建议。",
     `relationType 只能从这些值中选择：${RELATION_TYPES.join(", ")}。`,
     "输出必须是严格 JSON：{\"suggestions\":[{\"targetNodeId\":\"...\",\"relationType\":\"related\",\"confidence\":0.82,\"reason\":\"中文理由，40字以内\"}]}。",
     `最多返回 ${input.limit} 条；没有高质量建议时返回空数组。不要写入数据库，不要声称已经建立关系。`,
@@ -95,7 +112,7 @@ function buildPrompt(input: KnowledgeAiSuggestionInput): string {
     }),
     "",
     "候选节点：",
-    JSON.stringify(input.targets.map(compactNode)),
+    JSON.stringify(input.targets.map(compactTarget)),
   ].join("\n");
 }
 
@@ -135,7 +152,7 @@ export async function generateKnowledgeAiSuggestions(input: KnowledgeAiSuggestio
   const customGeminiBaseUrl = headerString(input.headers, "x-gemini-base-url");
   const thinkingEnabled = headerString(input.headers, "x-thinking-enabled") === "true";
   const prompt = buildPrompt(input);
-  const allowedTargetIds = new Set(input.targets.map((node) => node.id));
+  const allowedTargetIds = new Set(input.targets.map((target) => target.node.id));
 
   if (input.targets.length === 0) return [];
 

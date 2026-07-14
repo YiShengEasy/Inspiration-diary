@@ -74,6 +74,9 @@ export interface KnowledgeCandidateEvidence {
   sameBook: boolean;
   sharedPropertyRatio: number;
   creationProximity: number;
+  feedbackBoost?: number;
+  feedbackPenalty?: number;
+  source?: "ranked" | "exploration";
 }
 
 export interface KnowledgeCandidate {
@@ -91,6 +94,8 @@ export interface KnowledgeAiSuggestion {
   relationType: KnowledgeRelationType;
   confidence: number;
   reason: string;
+  localScore?: number;
+  evidence?: KnowledgeCandidateEvidence | null;
 }
 
 export interface KnowledgeAiSuggestionsResponse {
