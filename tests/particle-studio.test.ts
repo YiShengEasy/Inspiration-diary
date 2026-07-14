@@ -16,12 +16,23 @@ import {
   mp4FrameTimestamp,
   particleVideoFilename,
 } from "../src/features/particle-studio/particleVideoExporter";
+import { DISSOLUTION_PRESETS } from "../src/features/particle-studio/dissolution/presets";
 
 test("ships only the six approved particle presets", () => {
   assert.deepEqual(Object.keys(PARTICLE_PRESETS), ["portrait", "dust", "nebula", "linear", "fog", "fire"]);
   assert.deepEqual(
     Object.values(PARTICLE_PRESETS).map((preset) => preset.effectMode),
     ["portrait", "dust", "nebula", "linear", "fog", "fire"],
+  );
+});
+
+test("ships the five independent demo dissolution presets", () => {
+  assert.deepEqual(Object.keys(DISSOLUTION_PRESETS), ["dust", "nebula", "linear", "fog", "fire"]);
+  assert.equal(DISSOLUTION_PRESETS.fire.effect, 1);
+  assert.deepEqual(
+    [DISSOLUTION_PRESETS.dust.mode, DISSOLUTION_PRESETS.nebula.mode,
+      DISSOLUTION_PRESETS.linear.mode, DISSOLUTION_PRESETS.fog.mode],
+    [0, 1, 2, 3],
   );
 });
 
