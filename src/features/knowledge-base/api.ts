@@ -183,13 +183,12 @@ export function getKnowledgeCandidates(nodeId: string): Promise<KnowledgeCandida
 
 export function generateKnowledgeAiSuggestions(
   nodeId: string,
-  aiHeaders: Record<string, string> = {},
 ): Promise<KnowledgeAiSuggestionsResponse> {
   return request(
     `/api/knowledge/nodes/${encodeURIComponent(nodeId)}/ai-suggestions`,
     {
       ...jsonRequest("POST", { limit: 5 }),
-      headers: { "Content-Type": "application/json", ...aiHeaders },
+      headers: { "Content-Type": "application/json" },
     },
   );
 }

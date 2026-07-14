@@ -609,7 +609,6 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
         source: context.source.node,
         sourceMarkdown: context.source.markdown,
         targets: context.targets,
-        headers: req.headers,
         defaults: options.aiDefaults,
         limit,
       });

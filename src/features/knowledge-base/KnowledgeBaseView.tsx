@@ -50,7 +50,6 @@ const KIND_LABELS = {
 
 export interface KnowledgeBaseViewProps {
   onBack?: () => void;
-  aiHeaders?: Record<string, string>;
 }
 
 function errorText(error: unknown, fallback: string): string {
@@ -75,7 +74,7 @@ function InspectorPreview({ item }: { item?: KnowledgeExplorerNode }) {
   return <div className="mt-4 grid h-32 place-items-center rounded-2xl bg-black/5 dark:bg-white/5"><Icon size={34} className="opacity-35" /></div>;
 }
 
-export default function KnowledgeBaseView({ onBack, aiHeaders = {} }: KnowledgeBaseViewProps) {
+export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
   const [source, setSource] = useState<KnowledgeExplorerSource>({ kind: "all", label: "全部知识" });
   const [query, setQuery] = useState("");
   const [nodes, setNodes] = useState<KnowledgeExplorerNode[]>([]);
@@ -245,7 +244,7 @@ export default function KnowledgeBaseView({ onBack, aiHeaders = {} }: KnowledgeB
     setAiBusy(true);
     setAiStatus(null);
     try {
-      const result = await generateKnowledgeAiSuggestions(selectedId, aiHeaders);
+      const result = await generateKnowledgeAiSuggestions(selectedId);
       const unique = Array.from(new Map(result.suggestions.map((item) => [item.targetNodeId, item])).values()).slice(0, 3);
       setAiSuggestions(unique);
       setAiStatus(unique.length > 0 ? "AI 已生成待确认建议，不会自动写入知识库。" : "AI 没有找到足够可靠的关系建议。");

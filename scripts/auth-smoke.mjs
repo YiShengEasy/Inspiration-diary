@@ -1,3 +1,5 @@
+import { createSmokeInvite } from "./smoke-invite.mjs";
+
 const baseUrl = process.env.AUTH_SMOKE_BASE_URL || "http://localhost:3005";
 const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const term = `smoke-auth-${suffix}`;
@@ -36,10 +38,19 @@ const unauthFavorite = await request("/api/db/cards/missing/favorite", {
 });
 assert(unauthFavorite.status === 401, `expected unauth favorite 401, got ${unauthFavorite.status}`);
 
-const regA = await request("/api/auth/register", {
+const missingInvite = await request("/api/auth/register", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(userA),
+});
+assert(missingInvite.status === 400, `expected registration without invite to fail, got ${missingInvite.status}`);
+
+const inviteA = await createSmokeInvite(baseUrl);
+
+const regA = await request("/api/auth/register", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ ...userA, inviteCode: inviteA }),
 });
 assert(regA.ok, `register A failed ${regA.status}: ${JSON.stringify(await json(regA))}`);
 const cookieA = cookieFrom(regA, "user A");
@@ -52,10 +63,18 @@ const loginAByIdentifier = await request("/api/auth/login", {
 assert(loginAByIdentifier.ok, `login A with identifier failed ${loginAByIdentifier.status}: ${JSON.stringify(await json(loginAByIdentifier))}`);
 cookieFrom(loginAByIdentifier, "user A identifier login");
 
+const reusedInvite = await request("/api/auth/register", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ ...userB, inviteCode: inviteA }),
+});
+assert(reusedInvite.status === 400, `expected reused invite to fail, got ${reusedInvite.status}`);
+
+const inviteB = await createSmokeInvite(baseUrl);
 const regB = await request("/api/auth/register", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(userB),
+  body: JSON.stringify({ ...userB, inviteCode: inviteB }),
 });
 assert(regB.ok, `register B failed ${regB.status}: ${JSON.stringify(await json(regB))}`);
 const cookieB = cookieFrom(regB, "user B");

@@ -114,6 +114,14 @@ test("settings router commits the complete batch in one transaction", async () =
   });
   assert.deepEqual(response, { status: 200, body: { success: true } });
   assert.deepEqual(commands, ["BEGIN", "INSERT", "INSERT", "COMMIT", "RELEASE"]);
+
+  const forbidden = await requestJson(app, {
+    method: "POST",
+    path: "/api/db/settings",
+    body: { custom_gemini_api_key: "must-not-reach-the-database" },
+  });
+  assert.deepEqual(forbidden, { status: 400, body: { error: "AI provider configuration is server-only." } });
+  assert.deepEqual(commands, ["BEGIN", "INSERT", "INSERT", "COMMIT", "RELEASE"]);
 });
 
 test("mini-program router keeps profile counts scoped to the authenticated user", async () => {

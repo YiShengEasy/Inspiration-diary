@@ -162,11 +162,9 @@ export function createDiagnosticsRouter(dependencies: DiagnosticsRouterDependenc
 
   router.post("/test-model", async (req, res) => {
     try {
-      const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
-      const customApiKey = req.headers["x-api-key"] as string | undefined;
-      const customModelName = req.headers["x-model-name"] as string | undefined;
-      const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
-      const thinkingEnabled = req.headers["x-thinking-enabled"] === "true";
+      const provider = !defaults.thirdPartyBaseUrl && !defaults.geminiApiKey && process.env.ANTHROPIC_AUTH_TOKEN
+        ? "anthropic"
+        : "gemini";
 
       const textStatus: DiagnosticStatus = { ok: false, error: "", response: "" };
       const visionStatus: DiagnosticStatus = { ok: false, error: "", response: "" };
@@ -175,14 +173,14 @@ export function createDiagnosticsRouter(dependencies: DiagnosticsRouterDependenc
       const tinyImageBase64 = "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAALElEQVR42mNk+M9QDwOMjIxtbW3E6sGlhoGBgY8bVz0yGBUYoIEBCgYGBgC3DwscLgbvggAAAABJRU5ErkJggg==";
 
       if (provider === "anthropic") {
-        const anthropicApiKey = customApiKey || process.env.ANTHROPIC_AUTH_TOKEN;
+        const anthropicApiKey = process.env.ANTHROPIC_AUTH_TOKEN;
         if (!anthropicApiKey) {
           return res.status(400).json({ error: "Anthropic API Key is not configured." });
         }
 
-        const customBaseUrl = (req.headers["x-anthropic-base-url"] as string | undefined) || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+        const customBaseUrl = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
         const anthropicUrl = buildAnthropicUrl(customBaseUrl);
-        const selectedModel = customModelName || "claude-3-5-sonnet-20241022";
+        const selectedModel = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
 
         try {
           const textRes = await fetch(anthropicUrl, {
@@ -254,8 +252,8 @@ export function createDiagnosticsRouter(dependencies: DiagnosticsRouterDependenc
           visionStatus.error = errorMessage(err);
         }
       } else {
-        const thirdPartyBaseUrl = (customGeminiBaseUrl || defaults.thirdPartyBaseUrl).trim();
-        const activeApiKey = customApiKey || defaults.thirdPartyApiKey || defaults.geminiApiKey;
+        const thirdPartyBaseUrl = defaults.thirdPartyBaseUrl.trim();
+        const activeApiKey = defaults.thirdPartyApiKey || defaults.geminiApiKey;
         const isThirdParty = thirdPartyBaseUrl &&
           (!thirdPartyBaseUrl.toLowerCase().includes("googleapis.com") && !thirdPartyBaseUrl.toLowerCase().includes("google.com"));
 
@@ -265,14 +263,14 @@ export function createDiagnosticsRouter(dependencies: DiagnosticsRouterDependenc
           }
 
           const completionsUrl = getCompletionsUrl(thirdPartyBaseUrl);
-          const selectedModel = (customModelName || defaults.thirdPartyModel).trim();
+          const selectedModel = defaults.thirdPartyModel.trim();
 
           console.log(`Running diagnostic tests via OpenAI/Third-party directly to: ${completionsUrl} using model: ${selectedModel}`);
 
           const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
           const isVolcengineResponsesFormat = completionsUrl.includes("/responses");
           const activeApiKeyTrimmed = activeApiKey.trim();
-          const effectiveThinkingEnabled = req.headers["x-thinking-enabled"] === undefined ? defaults.thirdPartyThinking : thinkingEnabled;
+          const effectiveThinkingEnabled = defaults.thirdPartyThinking;
 
           try {
             const textPayload = buildThirdPartyTextPayload({
@@ -344,9 +342,8 @@ export function createDiagnosticsRouter(dependencies: DiagnosticsRouterDependenc
                 "User-Agent": "aistudio-build",
               },
             },
-            ...(customGeminiBaseUrl ? { baseURL: customGeminiBaseUrl } : {}),
           });
-          const selectedModel = customModelName || "gemini-3.5-flash";
+          const selectedModel = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
           try {
             const response = await activeAi.models.generateContent({
@@ -384,7 +381,11 @@ export function createDiagnosticsRouter(dependencies: DiagnosticsRouterDependenc
 
       return res.json({
         provider,
-        model: customModelName || (provider === "anthropic" ? "claude-3-5-sonnet-20241022" : "gemini-3.5-flash"),
+        model: provider === "anthropic"
+          ? process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022"
+          : defaults.thirdPartyBaseUrl
+            ? defaults.thirdPartyModel
+            : process.env.GEMINI_MODEL || "gemini-3.5-flash",
         textStatus,
         visionStatus,
         sentPrompt: testPrompt,

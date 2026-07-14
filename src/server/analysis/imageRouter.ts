@@ -130,32 +130,28 @@ export function createImageAnalysisRouter(dependencies: ImageAnalysisRouterDepen
 
   router.post("/analyze-image", uploadMiddleware, async (req, res) => {
     try {
-      const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
-      const customApiKey = req.headers["x-api-key"] as string | undefined;
-      const customModelName = req.headers["x-model-name"] as string | undefined;
-      const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
-      const thinkingEnabled = req.headers["x-thinking-enabled"] === "true";
+      const provider = !defaults.thirdPartyBaseUrl && !defaults.geminiApiKey && process.env.ANTHROPIC_AUTH_TOKEN
+        ? "anthropic"
+        : "gemini";
       const bookHintPrompt = buildBookHintPrompt(normalizeBookHints(req.body?.bookHints));
       const customTagHintPrompt = buildCustomTagHintPrompt(normalizeCustomTagHints(req.body?.customTagHints));
 
       console.log("=== API LOG: Analyze Image Request ===");
       console.log("provider:", provider);
-      console.log("has customApiKey:", !!customApiKey, customApiKey ? `(length: ${customApiKey.length})` : "(empty)");
-      console.log("customModelName:", customModelName);
-      console.log("customGeminiBaseUrl:", customGeminiBaseUrl);
+      console.log("configuration source: server environment");
       console.log("=====================================");
 
       const { rawBase64, actualMimeType } = toRawBase64(normalizeImageUpload(req));
 
       if (provider === "anthropic") {
-        const anthropicApiKey = customApiKey || process.env.ANTHROPIC_AUTH_TOKEN;
+        const anthropicApiKey = process.env.ANTHROPIC_AUTH_TOKEN;
         if (!anthropicApiKey) {
-          return res.status(400).json({ error: "Anthropic API Key is not configured. Please supply it in Settings." });
+          return res.status(500).json({ error: "Anthropic API Key is not configured on the server." });
         }
 
-        const customBaseUrl = (req.headers["x-anthropic-base-url"] as string | undefined) || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+        const customBaseUrl = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
         const anthropicUrl = buildAnthropicUrl(customBaseUrl);
-        const selectedModel = customModelName || "claude-3-5-sonnet-20241022";
+        const selectedModel = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
 
         console.log(`Routing image analysis to Anthropic endpoint: ${anthropicUrl} using model: ${selectedModel}`);
 
@@ -208,18 +204,18 @@ export function createImageAnalysisRouter(dependencies: ImageAnalysisRouterDepen
         return res.json(limitTermsResponse(parsedData));
       }
 
-      const thirdPartyBaseUrl = (customGeminiBaseUrl || defaults.thirdPartyBaseUrl).trim();
+      const thirdPartyBaseUrl = defaults.thirdPartyBaseUrl.trim();
       const isThirdParty = thirdPartyBaseUrl &&
         (!thirdPartyBaseUrl.toLowerCase().includes("googleapis.com") && !thirdPartyBaseUrl.toLowerCase().includes("google.com"));
 
       if (isThirdParty) {
-        const activeApiKey = (customApiKey || defaults.thirdPartyApiKey || defaults.geminiApiKey || "").trim();
+        const activeApiKey = (defaults.thirdPartyApiKey || defaults.geminiApiKey || "").trim();
         if (!activeApiKey) {
-          return res.status(400).json({ error: "Third-party API key is not defined. Please configure your API key in Settings." });
+          return res.status(500).json({ error: "Third-party API key is not configured on the server." });
         }
 
         const completionsUrl = getCompletionsUrl(thirdPartyBaseUrl);
-        const selectedModel = (customModelName || defaults.thirdPartyModel).trim();
+        const selectedModel = defaults.thirdPartyModel.trim();
 
         console.log(`Routing image analysis via OpenAI/Third-party protocol to: ${completionsUrl} using model: ${selectedModel}`);
 
@@ -234,7 +230,7 @@ export function createImageAnalysisRouter(dependencies: ImageAnalysisRouterDepen
 
         const isVolcengineResponsesFormat = completionsUrl.includes("/responses");
         const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
-        const effectiveThinkingEnabled = req.headers["x-thinking-enabled"] === undefined ? defaults.thirdPartyThinking : thinkingEnabled;
+        const effectiveThinkingEnabled = defaults.thirdPartyThinking;
         if (isArkOrDoubaoOrDeepseek && !isVolcengineResponsesFormat) {
           payload.thinking = {
             type: effectiveThinkingEnabled ? "enabled" : "disabled",
@@ -263,9 +259,9 @@ export function createImageAnalysisRouter(dependencies: ImageAnalysisRouterDepen
         return res.json(limitTermsResponse(parsedData));
       }
 
-      const activeApiKey = customApiKey || defaults.geminiApiKey;
+      const activeApiKey = defaults.geminiApiKey;
       if (!activeApiKey) {
-        return res.status(500).json({ error: "Gemini API key is not defined. Please configure your API key in Settings." });
+        return res.status(500).json({ error: "Gemini API key is not configured on the server." });
       }
 
       const activeAi = new GoogleGenAI({
@@ -275,10 +271,9 @@ export function createImageAnalysisRouter(dependencies: ImageAnalysisRouterDepen
             "User-Agent": "aistudio-build-custom",
           },
         },
-        ...(customGeminiBaseUrl ? { baseURL: customGeminiBaseUrl } : {}),
       });
 
-      const selectedModel = customModelName || "gemini-3.5-flash";
+      const selectedModel = process.env.GEMINI_MODEL || "gemini-3.5-flash";
       const response = await activeAi.models.generateContent({
         model: selectedModel,
         contents: {

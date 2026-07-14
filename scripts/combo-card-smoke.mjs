@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createSmokeInvite } from "./smoke-invite.mjs";
 
 const baseUrl = process.env.SMOKE_BASE_URL || "http://127.0.0.1:3005";
 const token = process.env.SMOKE_AUTH_TOKEN || "";
@@ -23,10 +24,11 @@ if (!token && !cookie) {
     email: `combo-smoke-${suffix}@example.com`,
     password: "combo-smoke-password-12345",
   };
+  const inviteCode = await createSmokeInvite(baseUrl);
   const reg = await fetch(`${baseUrl}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(user),
+    body: JSON.stringify({ ...user, inviteCode }),
   });
   const regBody = await reg.json().catch(() => ({}));
   assert(reg.ok, `register failed ${reg.status}: ${JSON.stringify(regBody)}`);

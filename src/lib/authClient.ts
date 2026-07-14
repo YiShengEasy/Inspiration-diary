@@ -39,12 +39,12 @@ export async function login(identifier: string, password: string): Promise<AuthU
   return body.user;
 }
 
-export async function register(email: string, password: string): Promise<AuthUser> {
+export async function register(email: string, password: string, inviteCode: string): Promise<AuthUser> {
   const res = await fetch("/api/auth/register", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, inviteCode }),
   });
   const body = await parseJson<{ user: AuthUser }>(res);
   return body.user;

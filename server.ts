@@ -47,6 +47,7 @@ import { createDocumentRouter } from "./src/server/documents/router";
 import { createImageAnalysisRouter } from "./src/server/analysis/imageRouter";
 import { createDocumentSummaryRouter } from "./src/server/analysis/documentSummaryRouter";
 import { createDiagnosticsRouter } from "./src/server/analysis/diagnosticsRouter";
+import { createInviteCodesRouter } from "./src/server/admin/inviteCodesRouter";
 
 dotenv.config();
 dotenv.config({
@@ -614,8 +615,8 @@ const defaultThirdPartyBaseUrl = process.env.THIRD_PARTY_BASE_URL || process.env
 const defaultThirdPartyApiKey = process.env.THIRD_PARTY_API_KEY || process.env.OPENAI_API_KEY || "";
 const defaultThirdPartyModel = process.env.THIRD_PARTY_MODEL || "doubao-seed-2.0-code";
 const defaultThirdPartyThinking = process.env.THIRD_PARTY_THINKING === "true";
-if (!apiKey && (!defaultThirdPartyApiKey || !defaultThirdPartyBaseUrl)) {
-  console.warn("No default AI provider is configured. Set THIRD_PARTY_BASE_URL and THIRD_PARTY_API_KEY, or configure AI settings in the app.");
+if (!apiKey && (!defaultThirdPartyApiKey || !defaultThirdPartyBaseUrl) && !process.env.ANTHROPIC_AUTH_TOKEN) {
+  console.warn("No server-side AI provider is configured. Set THIRD_PARTY_*, GEMINI_API_KEY, or ANTHROPIC_AUTH_TOKEN in the environment file.");
 }
 
 // ==========================================
@@ -667,6 +668,25 @@ if (dbType === "postgres") {
         `);
         await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);");
         await client.query("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);");
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS invite_codes (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            code_hash TEXT NOT NULL UNIQUE,
+            code_hint VARCHAR(4) NOT NULL,
+            code_value VARCHAR(14),
+            created_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            used_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            created_at BIGINT NOT NULL,
+            expires_at BIGINT NOT NULL,
+            used_at BIGINT,
+            revoked_at BIGINT
+          );
+        `);
+        await client.query("ALTER TABLE invite_codes ADD COLUMN IF NOT EXISTS code_hint VARCHAR(4);");
+        await client.query("ALTER TABLE invite_codes ADD COLUMN IF NOT EXISTS code_value VARCHAR(14);");
+        await client.query("UPDATE invite_codes SET code_hint = '****' WHERE code_hint IS NULL;");
+        await client.query("ALTER TABLE invite_codes ALTER COLUMN code_hint SET NOT NULL;");
+        await client.query("CREATE INDEX IF NOT EXISTS idx_invite_codes_created_at ON invite_codes(created_at DESC);");
         await client.query(`
           CREATE TABLE IF NOT EXISTS wechat_identities (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -857,6 +877,22 @@ if (dbType === "postgres") {
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_user_week ON notes(user_id, week_id);");
         await client.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_user_key ON settings(user_id, key);");
         await client.query(`
+          DELETE FROM settings
+          WHERE key IN (
+            'custom_provider',
+            'custom_gemini_api_key',
+            'custom_gemini_base_url',
+            'custom_gemini_model',
+            'custom_anthropic_auth_token',
+            'custom_anthropic_base_url',
+            'custom_anthropic_model',
+            'custom_thirdparty_api_key',
+            'custom_thirdparty_base_url',
+            'custom_thirdparty_model',
+            'custom_thirdparty_thinking'
+          );
+        `);
+        await client.query(`
           CREATE TABLE IF NOT EXISTS inspiration_books (
             id TEXT PRIMARY KEY,
             user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -933,6 +969,7 @@ if (dbType === "postgres") {
 
 if (pgPool) {
   app.use("/api/auth", createAuthRouter(pgPool));
+  app.use("/api/admin/invite-codes", createInviteCodesRouter(pgPool));
 }
 
 const requirePostgresAuth = createRequirePostgresAuth(pgPool);

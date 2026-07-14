@@ -1,5 +1,4 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { IncomingHttpHeaders } from "node:http";
 
 import {
   cleanJsonText,
@@ -41,7 +40,6 @@ export interface KnowledgeAiSuggestionInput {
   source: KnowledgeNode;
   sourceMarkdown: string;
   targets: KnowledgeAiSuggestionTarget[];
-  headers: IncomingHttpHeaders;
   defaults: AiProviderDefaults;
   limit: number;
 }
@@ -56,11 +54,6 @@ interface ThirdPartyResponseDoc {
     text?: string;
   }>;
   output?: string;
-}
-
-function headerString(headers: IncomingHttpHeaders, key: string): string | undefined {
-  const value = headers[key];
-  return Array.isArray(value) ? value[0] : value;
 }
 
 function buildAnthropicUrl(baseUrl: string): string {
@@ -146,20 +139,18 @@ function normalizeSuggestions(rawText: string, allowedTargetIds: Set<string>, li
 }
 
 export async function generateKnowledgeAiSuggestions(input: KnowledgeAiSuggestionInput): Promise<KnowledgeAiSuggestion[]> {
-  const provider = headerString(input.headers, "x-provider") || "gemini";
-  const customApiKey = headerString(input.headers, "x-api-key");
-  const customModelName = headerString(input.headers, "x-model-name");
-  const customGeminiBaseUrl = headerString(input.headers, "x-gemini-base-url");
-  const thinkingEnabled = headerString(input.headers, "x-thinking-enabled") === "true";
+  const provider = !input.defaults.thirdPartyBaseUrl && !input.defaults.geminiApiKey && process.env.ANTHROPIC_AUTH_TOKEN
+    ? "anthropic"
+    : "gemini";
   const prompt = buildPrompt(input);
   const allowedTargetIds = new Set(input.targets.map((target) => target.node.id));
 
   if (input.targets.length === 0) return [];
 
   if (provider === "anthropic") {
-    const anthropicApiKey = customApiKey || process.env.ANTHROPIC_AUTH_TOKEN;
+    const anthropicApiKey = process.env.ANTHROPIC_AUTH_TOKEN;
     if (!anthropicApiKey) throw new KnowledgeAiSuggestionError("Anthropic API Key is not configured.");
-    const customBaseUrl = headerString(input.headers, "x-anthropic-base-url") || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+    const customBaseUrl = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
     const response = await fetch(buildAnthropicUrl(customBaseUrl), {
       method: "POST",
       headers: {
@@ -168,7 +159,7 @@ export async function generateKnowledgeAiSuggestions(input: KnowledgeAiSuggestio
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: customModelName || "claude-3-5-sonnet-20241022",
+        model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022",
         max_tokens: 1200,
         messages: [{ role: "user", content: prompt }],
       }),
@@ -178,22 +169,22 @@ export async function generateKnowledgeAiSuggestions(input: KnowledgeAiSuggestio
     return normalizeSuggestions(doc.content?.[0]?.text || "{}", allowedTargetIds, input.limit);
   }
 
-  const thirdPartyBaseUrl = (customGeminiBaseUrl || input.defaults.thirdPartyBaseUrl).trim();
+  const thirdPartyBaseUrl = input.defaults.thirdPartyBaseUrl.trim();
   const isThirdParty = thirdPartyBaseUrl &&
     (!thirdPartyBaseUrl.toLowerCase().includes("googleapis.com") && !thirdPartyBaseUrl.toLowerCase().includes("google.com"));
 
   if (isThirdParty) {
-    const activeApiKey = (customApiKey || input.defaults.thirdPartyApiKey || input.defaults.geminiApiKey || "").trim();
+    const activeApiKey = (input.defaults.thirdPartyApiKey || input.defaults.geminiApiKey || "").trim();
     if (!activeApiKey) throw new KnowledgeAiSuggestionError("Third-party API key is not configured.");
     const completionsUrl = getCompletionsUrl(thirdPartyBaseUrl);
-    const selectedModel = (customModelName || input.defaults.thirdPartyModel).trim();
+    const selectedModel = input.defaults.thirdPartyModel.trim();
     const payload: Record<string, unknown> = {
       model: selectedModel,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 1200,
     };
     const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
-    const effectiveThinkingEnabled = input.headers["x-thinking-enabled"] === undefined ? input.defaults.thirdPartyThinking : thinkingEnabled;
+    const effectiveThinkingEnabled = input.defaults.thirdPartyThinking;
     if (isArkOrDoubaoOrDeepseek) {
       payload.thinking = { type: effectiveThinkingEnabled ? "enabled" : "disabled" };
     }
@@ -210,15 +201,14 @@ export async function generateKnowledgeAiSuggestions(input: KnowledgeAiSuggestio
     return normalizeSuggestions(doc.choices?.[0]?.message?.content || doc.choices?.[0]?.text || doc.output || "{}", allowedTargetIds, input.limit);
   }
 
-  const activeApiKey = customApiKey || input.defaults.geminiApiKey;
+  const activeApiKey = input.defaults.geminiApiKey;
   if (!activeApiKey) throw new KnowledgeAiSuggestionError("Gemini API key is not configured.");
   const activeAi = new GoogleGenAI({
     apiKey: activeApiKey,
-    ...(customGeminiBaseUrl ? { baseURL: customGeminiBaseUrl } : {}),
     httpOptions: { headers: { "User-Agent": "aistudio-build-custom" } },
   });
   const response = await activeAi.models.generateContent({
-    model: customModelName || "gemini-3.5-flash",
+    model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
     contents: prompt,
     config: {
       responseMimeType: "application/json",

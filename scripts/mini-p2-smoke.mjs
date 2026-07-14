@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createSmokeInvite } from "./smoke-invite.mjs";
 
 const baseUrl = process.env.MINI_P2_SMOKE_BASE_URL || "http://localhost:3000";
 const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -18,10 +19,11 @@ async function request(path, options = {}) {
 }
 
 try {
+  const inviteCode = await createSmokeInvite(baseUrl);
   const register = await request("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(user),
+    body: JSON.stringify({ ...user, inviteCode }),
   });
   const registerText = await register.text();
   assert.equal(register.status, 200, registerText);

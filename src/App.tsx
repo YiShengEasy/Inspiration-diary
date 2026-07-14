@@ -35,9 +35,9 @@ import CardBookPopover from "./components/CardBookPopover";
 import { ComboCardDetailView } from "./components/ComboCardDetail";
 import LoginScreen from "./components/LoginScreen";
 import { WeeklyPreviewModal } from "./components/WeeklyPreviewModal";
-import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, Settings, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText, Tags, FileVideo, Upload, Star } from "lucide-react";
+import { Sun, Moon, Sparkles, BookOpen, Clock, Loader2, Save, ShieldCheck, Search, X, Copy, Calendar, Globe, Wand2, Trash, RefreshCw, LogOut, ChevronLeft, ChevronRight, Download, ZoomIn, ZoomOut, Maximize2, Move, Image as ImageIcon, FileText, Tags, FileVideo, Upload, Star } from "lucide-react";
 import { generateMockImage } from "./utils/mockGenerator";
-import SettingsModal from "./components/SettingsModal";
+import AdminInvitePage from "./components/AdminInvitePage";
 import { getCurrentUser, login, logout, register, authFetch, type AuthUser } from "./lib/authClient";
 import { loadBooks, loadBookSuggestionCandidates, loadCardBookMembership, recordBookSuggestionFeedback, setCardBookMembership } from "./lib/booksClient";
 import { CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY, CUSTOM_TAG_LIBRARY_SETTINGS_KEY, flattenEnabledCustomTagGroups, normalizeCustomTagGroups } from "./lib/customTagLibrary";
@@ -74,7 +74,7 @@ type UploadTargetOptions = {
   documentUploadId?: string;
 };
 
-type MainView = "board" | "books" | "tags" | "particles" | "knowledge";
+type MainView = "board" | "books" | "tags" | "particles" | "knowledge" | "admin";
 
 function directImageMimeType(file: File): string {
   if (file.type) return file.type;
@@ -146,42 +146,6 @@ export default function App() {
   const [smartSuggestionError, setSmartSuggestionError] = useState<string | null>(null);
   const [selectedSmartBookId, setSelectedSmartBookId] = useState<string>("");
 
-  // Custom AI parameter states
-  const [customProvider, setCustomProvider] = useState<string>(() => {
-    return localStorage.getItem("custom_provider") || "thirdparty";
-  });
-  const [customApiKey, setCustomApiKey] = useState<string>(() => {
-    return localStorage.getItem("custom_gemini_api_key") || "";
-  });
-  const [customGeminiBaseUrl, setCustomGeminiBaseUrl] = useState<string>(() => {
-    return localStorage.getItem("custom_gemini_base_url") || "";
-  });
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem("custom_gemini_model") || "gemini-3.5-flash";
-  });
-  const [anthropicAuthToken, setAnthropicAuthToken] = useState<string>(() => {
-    return localStorage.getItem("custom_anthropic_auth_token") || "";
-  });
-  const [anthropicBaseUrl, setAnthropicBaseUrl] = useState<string>(() => {
-    return localStorage.getItem("custom_anthropic_base_url") || "https://api.anthropic.com";
-  });
-  const [anthropicModel, setAnthropicModel] = useState<string>(() => {
-    return localStorage.getItem("custom_anthropic_model") || "claude-3-5-sonnet-latest";
-  });
-  const [thirdPartyApiKey, setThirdPartyApiKey] = useState<string>(() => {
-    return localStorage.getItem("custom_thirdparty_api_key") || "";
-  });
-  const [thirdPartyBaseUrl, setThirdPartyBaseUrl] = useState<string>(() => {
-    return localStorage.getItem("custom_thirdparty_base_url") || "";
-  });
-  const [thirdPartyModel, setThirdPartyModel] = useState<string>(() => {
-    return localStorage.getItem("custom_thirdparty_model") || "doubao-seed-2.0-code";
-  });
-  const [thirdPartyThinking, setThirdPartyThinking] = useState<boolean>(() => {
-    return localStorage.getItem("custom_thirdparty_thinking") === "true";
-  });
-  const [showSettings, setShowSettings] = useState<boolean>(false);
-
   const dragStartRef = useRef<number | null>(null);
   const initialHeightRef = useRef<number | null>(null);
 
@@ -200,6 +164,20 @@ export default function App() {
 
   useEffect(() => {
     let alive = true;
+
+    [
+      "custom_provider",
+      "custom_gemini_api_key",
+      "custom_gemini_base_url",
+      "custom_gemini_model",
+      "custom_anthropic_auth_token",
+      "custom_anthropic_base_url",
+      "custom_anthropic_model",
+      "custom_thirdparty_api_key",
+      "custom_thirdparty_base_url",
+      "custom_thirdparty_model",
+      "custom_thirdparty_thinking",
+    ].forEach((key) => localStorage.removeItem(key));
 
     getCurrentUser()
       .then((user) => {
@@ -267,24 +245,13 @@ export default function App() {
     setWeekId(getWeekIdentifier(currentDate));
   }, [currentDate]);
 
-  // Load AI settings from DB on startup (DB values take priority over localStorage)
+  // Load non-secret user preferences. AI provider credentials are server-only.
   useEffect(() => {
     if (!authUser) return;
 
     loadSettings().then((dbSettings) => {
       setKnowledgeAutoAdd(dbSettings.knowledge_auto_add !== "false");
       if (Object.keys(dbSettings).length === 0) return;
-      if (dbSettings.custom_provider) { setCustomProvider(dbSettings.custom_provider); localStorage.setItem("custom_provider", dbSettings.custom_provider); }
-      if (dbSettings.custom_gemini_api_key !== undefined) { setCustomApiKey(dbSettings.custom_gemini_api_key); localStorage.setItem("custom_gemini_api_key", dbSettings.custom_gemini_api_key); }
-      if (dbSettings.custom_gemini_base_url !== undefined) { setCustomGeminiBaseUrl(dbSettings.custom_gemini_base_url); localStorage.setItem("custom_gemini_base_url", dbSettings.custom_gemini_base_url); }
-      if (dbSettings.custom_gemini_model) { setSelectedModel(dbSettings.custom_gemini_model); localStorage.setItem("custom_gemini_model", dbSettings.custom_gemini_model); }
-      if (dbSettings.custom_anthropic_auth_token !== undefined) { setAnthropicAuthToken(dbSettings.custom_anthropic_auth_token); localStorage.setItem("custom_anthropic_auth_token", dbSettings.custom_anthropic_auth_token); }
-      if (dbSettings.custom_anthropic_base_url) { setAnthropicBaseUrl(dbSettings.custom_anthropic_base_url); localStorage.setItem("custom_anthropic_base_url", dbSettings.custom_anthropic_base_url); }
-      if (dbSettings.custom_anthropic_model) { setAnthropicModel(dbSettings.custom_anthropic_model); localStorage.setItem("custom_anthropic_model", dbSettings.custom_anthropic_model); }
-      if (dbSettings.custom_thirdparty_api_key !== undefined) { setThirdPartyApiKey(dbSettings.custom_thirdparty_api_key); localStorage.setItem("custom_thirdparty_api_key", dbSettings.custom_thirdparty_api_key); }
-      if (dbSettings.custom_thirdparty_base_url !== undefined) { setThirdPartyBaseUrl(dbSettings.custom_thirdparty_base_url); localStorage.setItem("custom_thirdparty_base_url", dbSettings.custom_thirdparty_base_url); }
-      if (dbSettings.custom_thirdparty_model !== undefined) { setThirdPartyModel(dbSettings.custom_thirdparty_model); localStorage.setItem("custom_thirdparty_model", dbSettings.custom_thirdparty_model); }
-      if (dbSettings.custom_thirdparty_thinking !== undefined) { const v = dbSettings.custom_thirdparty_thinking === "true"; setThirdPartyThinking(v); localStorage.setItem("custom_thirdparty_thinking", String(v)); }
       if (dbSettings[SMART_BOOK_SUGGEST_IMAGES_KEY] !== undefined) {
         setSmartSuggestImages(dbSettings[SMART_BOOK_SUGGEST_IMAGES_KEY] === "true");
       }
@@ -750,37 +717,7 @@ export default function App() {
         throw new Error("当前周信息还在加载，请稍后再粘贴图片。");
       }
 
-      const headers: Record<string, string> = {
-        "x-provider": customProvider || "gemini",
-      };
-
-      if (customProvider === "anthropic") {
-        if (anthropicAuthToken) {
-          headers["x-api-key"] = anthropicAuthToken;
-        }
-        if (anthropicModel) {
-          headers["x-model-name"] = anthropicModel;
-        }
-        if (anthropicBaseUrl) {
-          headers["x-anthropic-base-url"] = anthropicBaseUrl;
-        }
-      } else if (customProvider === "thirdparty") {
-        headers["x-provider"] = "gemini"; // server routes third-party via non-Google base URL
-        if (thirdPartyApiKey) headers["x-api-key"] = thirdPartyApiKey;
-        if (thirdPartyModel) headers["x-model-name"] = thirdPartyModel;
-        if (thirdPartyBaseUrl) headers["x-gemini-base-url"] = thirdPartyBaseUrl;
-        if (thirdPartyThinking) headers["x-thinking-enabled"] = "true";
-      } else {
-        if (customApiKey) {
-          headers["x-api-key"] = customApiKey;
-        }
-        if (selectedModel) {
-          headers["x-model-name"] = selectedModel;
-        }
-        if (customGeminiBaseUrl) {
-          headers["x-gemini-base-url"] = customGeminiBaseUrl;
-        }
-      }
+      const headers: Record<string, string> = {};
 
       // Decorator types cycle list
       const decoList: Array<"tape" | "pin" | "paperclip" | "washi"> = [
@@ -963,24 +900,7 @@ export default function App() {
 
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        "x-provider": customProvider || "gemini",
       };
-
-      if (customProvider === "anthropic") {
-        if (anthropicAuthToken) headers["x-api-key"] = anthropicAuthToken;
-        if (anthropicModel) headers["x-model-name"] = anthropicModel;
-        if (anthropicBaseUrl) headers["x-anthropic-base-url"] = anthropicBaseUrl;
-      } else if (customProvider === "thirdparty") {
-        headers["x-provider"] = "gemini";
-        if (thirdPartyApiKey) headers["x-api-key"] = thirdPartyApiKey;
-        if (thirdPartyModel) headers["x-model-name"] = thirdPartyModel;
-        if (thirdPartyBaseUrl) headers["x-gemini-base-url"] = thirdPartyBaseUrl;
-        if (thirdPartyThinking) headers["x-thinking-enabled"] = "true";
-      } else {
-        if (customApiKey) headers["x-api-key"] = customApiKey;
-        if (selectedModel) headers["x-model-name"] = selectedModel;
-        if (customGeminiBaseUrl) headers["x-gemini-base-url"] = customGeminiBaseUrl;
-      }
 
       let mdSummary = text
         .replace(/[#>*_`~\-[\]()]/g, " ")
@@ -1755,40 +1675,6 @@ export default function App() {
     </button>
   );
 
-  const knowledgeAiHeaders = React.useMemo(() => {
-    const headers: Record<string, string> = {
-      "x-provider": customProvider || "gemini",
-    };
-    if (customProvider === "anthropic") {
-      if (anthropicAuthToken) headers["x-api-key"] = anthropicAuthToken;
-      if (anthropicModel) headers["x-model-name"] = anthropicModel;
-      if (anthropicBaseUrl) headers["x-anthropic-base-url"] = anthropicBaseUrl;
-    } else if (customProvider === "thirdparty") {
-      headers["x-provider"] = "gemini";
-      if (thirdPartyApiKey) headers["x-api-key"] = thirdPartyApiKey;
-      if (thirdPartyModel) headers["x-model-name"] = thirdPartyModel;
-      if (thirdPartyBaseUrl) headers["x-gemini-base-url"] = thirdPartyBaseUrl;
-      if (thirdPartyThinking) headers["x-thinking-enabled"] = "true";
-    } else {
-      if (customApiKey) headers["x-api-key"] = customApiKey;
-      if (selectedModel) headers["x-model-name"] = selectedModel;
-      if (customGeminiBaseUrl) headers["x-gemini-base-url"] = customGeminiBaseUrl;
-    }
-    return headers;
-  }, [
-    anthropicAuthToken,
-    anthropicBaseUrl,
-    anthropicModel,
-    customApiKey,
-    customGeminiBaseUrl,
-    customProvider,
-    selectedModel,
-    thirdPartyApiKey,
-    thirdPartyBaseUrl,
-    thirdPartyModel,
-    thirdPartyThinking,
-  ]);
-
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-stone-50 dark:bg-stone-950 flex items-center justify-center gap-2 text-stone-600 dark:text-stone-300">
@@ -1805,8 +1691,8 @@ export default function App() {
           const user = await login(email, password);
           setAuthUser(user);
         }}
-        onRegister={async (email, password) => {
-          const user = await register(email, password);
+        onRegister={async (email, password, inviteCode) => {
+          const user = await register(email, password, inviteCode);
           setAuthUser(user);
         }}
       />
@@ -1948,15 +1834,16 @@ export default function App() {
               </button>
             )}
 
-            <button
-              onClick={() => setShowSettings(true)}
-              className="p-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-950 dark:text-amber-350 transition-colors shadow-sm cursor-pointer border border-amber-500/20 flex items-center justify-center gap-1.5 text-xs font-semibold"
-              title="Configure AI service"
-              id="ai-settings-trigger"
-            >
-              <Settings size={14} />
-              <span>AI Settings</span>
-            </button>
+            {authUser.role === "admin" && (
+              <button
+                onClick={() => setMainView("admin")}
+                className="p-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-950 dark:text-amber-300 transition-colors shadow-sm cursor-pointer border border-amber-500/20 flex items-center justify-center gap-1.5 text-xs font-semibold"
+                title="打开管理员后台"
+              >
+                <ShieldCheck size={14} />
+                <span>管理后台</span>
+              </button>
+            )}
 
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
@@ -2456,9 +2343,10 @@ export default function App() {
           >
             <KnowledgeBaseView
               onBack={() => setMainView("board")}
-              aiHeaders={knowledgeAiHeaders}
             />
           </React.Suspense>
+        ) : mainView === "admin" && authUser.role === "admin" ? (
+          <AdminInvitePage onBack={() => setMainView("board")} />
         ) : (
           <CustomTagLibraryView
             groups={customTagGroups}
@@ -2471,67 +2359,6 @@ export default function App() {
       </div>
 
       <IcpFooter />
-
-      {/* AI Config modal */}
-      {showSettings && (
-        <SettingsModal
-          isOpen={showSettings}
-          onClose={() => setShowSettings(false)}
-          customProvider={customProvider}
-          customApiKey={customApiKey}
-          customGeminiBaseUrl={customGeminiBaseUrl}
-          selectedModel={selectedModel}
-          anthropicAuthToken={anthropicAuthToken}
-          anthropicBaseUrl={anthropicBaseUrl}
-          anthropicModel={anthropicModel}
-          thirdPartyApiKey={thirdPartyApiKey}
-          thirdPartyBaseUrl={thirdPartyBaseUrl}
-          thirdPartyModel={thirdPartyModel}
-          thirdPartyThinking={thirdPartyThinking}
-          knowledgeAutoAdd={knowledgeAutoAdd}
-          onSave={(config) => {
-            localStorage.setItem("custom_provider", config.customProvider);
-            localStorage.setItem("custom_gemini_api_key", config.customApiKey);
-            localStorage.setItem("custom_gemini_base_url", config.customGeminiBaseUrl);
-            localStorage.setItem("custom_gemini_model", config.selectedModel);
-            localStorage.setItem("custom_anthropic_auth_token", config.anthropicAuthToken);
-            localStorage.setItem("custom_anthropic_base_url", config.anthropicBaseUrl);
-            localStorage.setItem("custom_anthropic_model", config.anthropicModel);
-            localStorage.setItem("custom_thirdparty_api_key", config.thirdPartyApiKey);
-            localStorage.setItem("custom_thirdparty_base_url", config.thirdPartyBaseUrl);
-            localStorage.setItem("custom_thirdparty_model", config.thirdPartyModel);
-            localStorage.setItem("custom_thirdparty_thinking", String(config.thirdPartyThinking));
-
-            saveSettings({
-              custom_provider: config.customProvider,
-              custom_gemini_api_key: config.customApiKey,
-              custom_gemini_base_url: config.customGeminiBaseUrl,
-              custom_gemini_model: config.selectedModel,
-              custom_anthropic_auth_token: config.anthropicAuthToken,
-              custom_anthropic_base_url: config.anthropicBaseUrl,
-              custom_anthropic_model: config.anthropicModel,
-              custom_thirdparty_api_key: config.thirdPartyApiKey,
-              custom_thirdparty_base_url: config.thirdPartyBaseUrl,
-              custom_thirdparty_model: config.thirdPartyModel,
-              custom_thirdparty_thinking: String(config.thirdPartyThinking),
-              knowledge_auto_add: String(config.knowledgeAutoAdd),
-            });
-
-            setCustomProvider(config.customProvider);
-            setCustomApiKey(config.customApiKey);
-            setCustomGeminiBaseUrl(config.customGeminiBaseUrl);
-            setSelectedModel(config.selectedModel);
-            setAnthropicAuthToken(config.anthropicAuthToken);
-            setAnthropicBaseUrl(config.anthropicBaseUrl);
-            setAnthropicModel(config.anthropicModel);
-            setThirdPartyApiKey(config.thirdPartyApiKey);
-            setThirdPartyBaseUrl(config.thirdPartyBaseUrl);
-            setThirdPartyModel(config.thirdPartyModel);
-            setThirdPartyThinking(config.thirdPartyThinking);
-            setKnowledgeAutoAdd(config.knowledgeAutoAdd);
-          }}
-        />
-      )}
 
       {showWeeklyPreview && (
         <WeeklyPreviewModal

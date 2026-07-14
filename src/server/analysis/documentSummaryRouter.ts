@@ -126,21 +126,19 @@ export function createDocumentSummaryRouter(dependencies: DocumentSummaryRouterD
       }
 
       const fallback = buildFallback(markdown);
-      const provider = (req.headers["x-provider"] as string | undefined) || "gemini";
-      const customApiKey = req.headers["x-api-key"] as string | undefined;
-      const customModelName = req.headers["x-model-name"] as string | undefined;
-      const customGeminiBaseUrl = req.headers["x-gemini-base-url"] as string | undefined;
-      const thinkingEnabled = req.headers["x-thinking-enabled"] === "true";
+      const provider = !defaults.thirdPartyBaseUrl && !defaults.geminiApiKey && process.env.ANTHROPIC_AUTH_TOKEN
+        ? "anthropic"
+        : "gemini";
       const bookHints = normalizeBookHints(req.body?.bookHints);
       const customTagHints = normalizeCustomTagHints(req.body?.customTagHints);
       const prompt = buildPrompt(markdown, bookHints, customTagHints);
 
       try {
         if (provider === "anthropic") {
-          const anthropicApiKey = customApiKey || process.env.ANTHROPIC_AUTH_TOKEN;
+          const anthropicApiKey = process.env.ANTHROPIC_AUTH_TOKEN;
           if (!anthropicApiKey) return res.json(fallback);
 
-          const customBaseUrl = (req.headers["x-anthropic-base-url"] as string | undefined) || process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+          const customBaseUrl = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
           const anthropicUrl = buildAnthropicUrl(customBaseUrl);
 
           const anthropicResponse = await fetch(anthropicUrl, {
@@ -151,7 +149,7 @@ export function createDocumentSummaryRouter(dependencies: DocumentSummaryRouterD
               "content-type": "application/json",
             },
             body: JSON.stringify({
-              model: customModelName || "claude-3-5-sonnet-20241022",
+              model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022",
               max_tokens: 1200,
               messages: [{ role: "user", content: prompt }],
             }),
@@ -162,23 +160,23 @@ export function createDocumentSummaryRouter(dependencies: DocumentSummaryRouterD
           return res.json(normalizeResult(doc.content?.[0]?.text || "{}", fallback));
         }
 
-        const thirdPartyBaseUrl = (customGeminiBaseUrl || defaults.thirdPartyBaseUrl).trim();
+        const thirdPartyBaseUrl = defaults.thirdPartyBaseUrl.trim();
         const isThirdParty = thirdPartyBaseUrl &&
           (!thirdPartyBaseUrl.toLowerCase().includes("googleapis.com") && !thirdPartyBaseUrl.toLowerCase().includes("google.com"));
 
         if (isThirdParty) {
-          const activeApiKey = (customApiKey || defaults.thirdPartyApiKey || defaults.geminiApiKey || "").trim();
+          const activeApiKey = (defaults.thirdPartyApiKey || defaults.geminiApiKey || "").trim();
           if (!activeApiKey) return res.json(fallback);
 
           const completionsUrl = getCompletionsUrl(thirdPartyBaseUrl);
-          const selectedModel = (customModelName || defaults.thirdPartyModel).trim();
+          const selectedModel = defaults.thirdPartyModel.trim();
           const payload: SummaryPayload = {
             model: selectedModel,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 1200,
           };
           const isArkOrDoubaoOrDeepseek = /doubao|ark|volces|volcengine|deepseek/i.test(selectedModel) || /volces|ark|volcengine|deepseek/i.test(completionsUrl);
-          const effectiveThinkingEnabled = req.headers["x-thinking-enabled"] === undefined ? defaults.thirdPartyThinking : thinkingEnabled;
+          const effectiveThinkingEnabled = defaults.thirdPartyThinking;
           if (isArkOrDoubaoOrDeepseek) {
             payload.thinking = { type: effectiveThinkingEnabled ? "enabled" : "disabled" };
           }
@@ -197,17 +195,16 @@ export function createDocumentSummaryRouter(dependencies: DocumentSummaryRouterD
           return res.json(normalizeResult(doc.choices?.[0]?.message?.content || doc.choices?.[0]?.text || "{}", fallback));
         }
 
-        const activeApiKey = customApiKey || defaults.geminiApiKey;
+        const activeApiKey = defaults.geminiApiKey;
         if (!activeApiKey) return res.json(fallback);
 
         const activeAi = new GoogleGenAI({
           apiKey: activeApiKey,
-          ...(customGeminiBaseUrl ? { baseURL: customGeminiBaseUrl } : {}),
           httpOptions: { headers: { "User-Agent": "aistudio-build-custom" } },
         });
 
         const response = await activeAi.models.generateContent({
-          model: customModelName || "gemini-3.5-flash",
+          model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json",

@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import type pg from "pg";
 import { createMiniSession, getMiniToken, missingRegistrationFields, revokeMiniSession } from "./miniprogramAuth";
 import { exchangeWechatCode, resolveWechatPhone, WechatApiError } from "./wechat";
+import { hashInviteCode } from "./inviteCodes";
 
 export interface AuthUser {
   id: string;
@@ -107,7 +108,7 @@ async function verifyPassword(password: string, passwordHash: string): Promise<b
   return bcrypt.compare(password, passwordHash);
 }
 
-async function createSession(pool: pg.Pool, userId: string, req: Request): Promise<{ id: string; expiresAt: number }> {
+async function createSession(pool: pg.Pool | pg.PoolClient, userId: string, req: Request): Promise<{ id: string; expiresAt: number }> {
   const id = crypto.randomBytes(32).toString("base64url");
   const createdAt = nowMs();
   const expiresAt = createdAt + getSessionTtlMs();
@@ -414,32 +415,58 @@ export function createAuthRouter(pool: pg.Pool): Router {
   });
 
   router.post("/register", async (req: Request, res: Response) => {
+    const client = await pool.connect();
     try {
       const email = normalizeEmail(String(req.body.email || ""));
       const password = String(req.body.password || "");
+      const inviteCode = String(req.body.inviteCode || "");
       const displayName = String(req.body.displayName || "").trim() || null;
 
       if (!isEmail(email)) return res.status(400).json({ error: "请输入有效邮箱" });
       if (password.length < 8) return res.status(400).json({ error: "密码至少需要 8 位" });
+      if (!inviteCode.trim()) return res.status(400).json({ error: "请输入邀请码" });
 
-      const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
-      if (existing.rows.length > 0) return res.status(409).json({ error: "邮箱或密码不正确" });
+      await client.query("BEGIN");
+      const invite = await client.query(
+        `SELECT id FROM invite_codes
+         WHERE code_hash = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2
+         FOR UPDATE`,
+        [hashInviteCode(inviteCode), nowMs()],
+      );
+      if (!invite.rows[0]) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: "邀请码无效或已失效" });
+      }
+
+      const existing = await client.query("SELECT id FROM users WHERE email = $1", [email]);
+      if (existing.rows.length > 0) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "邮箱或密码不正确" });
+      }
 
       const passwordHash = await hashPassword(password);
       const createdAt = nowMs();
-      const result = await pool.query<UserRow>(
+      const result = await client.query<UserRow>(
         `INSERT INTO users (id, email, password_hash, display_name, role, created_at, updated_at)
          VALUES (gen_random_uuid(), $1, $2, $3, 'user', $4, $4)
          RETURNING id, email, display_name, role`,
         [email, passwordHash, displayName, createdAt]
       );
       const user = safeUser(result.rows[0]);
-      const session = await createSession(pool, user.id, req);
+      await client.query(
+        "UPDATE invite_codes SET used_at = $1, used_by_user_id = $2 WHERE id = $3",
+        [createdAt, user.id, invite.rows[0].id],
+      );
+      const session = await createSession(client, user.id, req);
+      await client.query("COMMIT");
       setSessionCookie(res, session.id, session.expiresAt);
       return res.json({ user });
     } catch (err: unknown) {
+      await client.query("ROLLBACK").catch(() => undefined);
       console.error("Auth register error:", err);
       return res.status(500).json({ error: "注册失败" });
+    } finally {
+      client.release();
     }
   });
 

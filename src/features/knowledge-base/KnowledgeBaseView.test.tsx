@@ -187,7 +187,7 @@ describe("KnowledgeBaseView checkpoint", () => {
   });
 
   it("generates AI suggestions without writing relations", async () => {
-    render(<KnowledgeBaseView aiHeaders={{ "x-provider": "gemini", "x-model-name": "test-model" }} />);
+    render(<KnowledgeBaseView />);
     fireEvent.click(await screen.findByRole("button", { name: /知识卡片/u }));
     await screen.findByText("# 知识正文");
 
@@ -196,10 +196,7 @@ describe("KnowledgeBaseView checkpoint", () => {
     fireEvent.click(screen.getByRole("button", { name: "填入表单" }));
 
     await waitFor(() => {
-      expect(generateKnowledgeAiSuggestions).toHaveBeenCalledWith("node-1", {
-        "x-provider": "gemini",
-        "x-model-name": "test-model",
-      });
+      expect(generateKnowledgeAiSuggestions).toHaveBeenCalledWith("node-1");
     });
     expect(createKnowledgeLink).not.toHaveBeenCalled();
     expect(screen.getByDisplayValue("node-2")).toBeInTheDocument();

@@ -6,12 +6,13 @@ import IcpFooter from "./IcpFooter";
 
 interface LoginScreenProps {
   onLogin: (identifier: string, password: string) => Promise<void>;
-  onRegister: (email: string, password: string) => Promise<void>;
+  onRegister: (email: string, password: string, inviteCode: string) => Promise<void>;
 }
 
 export default function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,13 +30,17 @@ export default function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
       setError("密码至少需要 8 位");
       return;
     }
+    if (!isLoginMode && !inviteCode.trim()) {
+      setError("请输入邀请码");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       if (isLoginMode) {
         await onLogin(email.trim(), password);
       } else {
-        await onRegister(email.trim(), password);
+        await onRegister(email.trim(), password, inviteCode.trim());
       }
     } catch (err: any) {
       setError(err.message || "操作失败");
@@ -176,6 +181,26 @@ export default function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
               </div>
             </div>
             
+            <AnimatePresence>
+              {!isLoginMode && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <input
+                    type="text"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    placeholder="邀请码"
+                    autoComplete="one-time-code"
+                    className="w-full px-4 py-3 rounded-2xl bg-white/70 dark:bg-stone-900/70 backdrop-blur-md border border-stone-300/50 dark:border-stone-700/50 focus:border-amber-700 dark:focus:border-amber-400 focus:ring-1 focus:ring-amber-700 dark:focus:ring-amber-400 outline-none text-sm text-stone-800 dark:text-stone-200 placeholder:text-stone-400 shadow-sm font-mono tracking-wider uppercase"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <AnimatePresence>
               {error && (
                 <motion.div 
