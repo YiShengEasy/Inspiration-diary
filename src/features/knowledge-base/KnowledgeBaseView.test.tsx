@@ -9,6 +9,8 @@ import {
   getKnowledgeGraph,
   getKnowledgeNode,
   listKnowledgeNodes,
+  runKnowledgeBackfill,
+  updateKnowledgeNode,
 } from "./api";
 import KnowledgeBaseView from "./KnowledgeBaseView";
 import type { KnowledgeNodeDetail, KnowledgeNodeSummary } from "./types";
@@ -21,6 +23,8 @@ vi.mock("./api", () => ({
   getKnowledgeGraph: vi.fn(),
   getKnowledgeNode: vi.fn(),
   listKnowledgeNodes: vi.fn(),
+  runKnowledgeBackfill: vi.fn(),
+  updateKnowledgeNode: vi.fn(),
 }));
 
 const node: KnowledgeNodeSummary = {
@@ -101,6 +105,22 @@ describe("KnowledgeBaseView checkpoint", () => {
         updatedAt: 1,
       },
     });
+    vi.mocked(updateKnowledgeNode).mockResolvedValue({
+      node: {
+        ...detail,
+        title: "更新后的知识",
+        tags: ["更新"],
+        revision: 2,
+      },
+    });
+    vi.mocked(runKnowledgeBackfill).mockResolvedValue({
+      cursor: null,
+      processed: 2,
+      created: 1,
+      updated: 1,
+      nextCursor: null,
+      done: true,
+    });
   });
 
   it("loads the searchable list and a read-only detail", async () => {
@@ -121,5 +141,29 @@ describe("KnowledgeBaseView checkpoint", () => {
     await waitFor(() => {
       expect(listKnowledgeNodes).toHaveBeenLastCalledWith(expect.objectContaining({ query: "图谱" }));
     });
+  });
+
+  it("saves node edits and runs history backfill", async () => {
+    render(<KnowledgeBaseView />);
+    fireEvent.click(await screen.findByRole("button", { name: /知识卡片/u }));
+    await screen.findByText("# 知识正文");
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    fireEvent.change(screen.getByDisplayValue("知识卡片"), { target: { value: "更新后的知识" } });
+    fireEvent.change(screen.getByDisplayValue("知识，图谱"), { target: { value: "更新" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(updateKnowledgeNode).toHaveBeenCalledWith("node-1", expect.objectContaining({
+        title: "更新后的知识",
+        tags: ["更新"],
+      }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "历史回填" }));
+    await waitFor(() => {
+      expect(runKnowledgeBackfill).toHaveBeenCalledWith(null);
+    });
+    expect(await screen.findByText(/回填完成：处理 2 条/u)).toBeInTheDocument();
   });
 });

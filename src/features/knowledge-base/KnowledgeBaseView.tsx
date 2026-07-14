@@ -7,6 +7,8 @@ import {
   getKnowledgeGraph,
   getKnowledgeNode,
   listKnowledgeNodes,
+  runKnowledgeBackfill,
+  updateKnowledgeNode,
 } from "./api";
 import type {
   KnowledgeCandidate,
@@ -53,6 +55,15 @@ export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
   const [relationContext, setRelationContext] = useState("");
   const [relationStatus, setRelationStatus] = useState<string | null>(null);
   const [relationBusy, setRelationBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [editMarkdown, setEditMarkdown] = useState("");
+  const [editProperties, setEditProperties] = useState("{}");
+  const [editStatus, setEditStatus] = useState<string | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillStatus, setBackfillStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -110,6 +121,20 @@ export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
       });
     return () => controller.abort();
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedNode) {
+      setEditing(false);
+      setEditStatus(null);
+      return;
+    }
+    setEditTitle(selectedNode.title);
+    setEditTags(selectedNode.tags.join("，"));
+    setEditMarkdown(selectedNode.markdown ?? "");
+    setEditProperties(JSON.stringify(selectedNode.properties, null, 2));
+    setEditStatus(null);
+    setEditing(false);
+  }, [selectedNode]);
 
   async function refreshRelations(nodeId: string) {
     const [candidateResult, graphResult] = await Promise.all([
@@ -173,6 +198,61 @@ export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
     }
   }
 
+  async function handleSaveNode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedNode) return;
+    setEditBusy(true);
+    setEditStatus(null);
+    try {
+      const parsedProperties = JSON.parse(editProperties || "{}") as unknown;
+      if (!parsedProperties || typeof parsedProperties !== "object" || Array.isArray(parsedProperties)) {
+        throw new Error("属性 JSON 必须是对象");
+      }
+      const result = await updateKnowledgeNode(selectedNode.id, {
+        revision: selectedNode.revision,
+        title: editTitle.trim(),
+        tags: editTags.split(/[,，、;；\n]/u).map((tag) => tag.trim()).filter(Boolean),
+        markdown: editMarkdown,
+        properties: parsedProperties as KnowledgeNodeDetail["properties"],
+      });
+      setSelectedNode(result.node);
+      setNodes((current) => current.map((node) => node.id === result.node.id ? result.node : node));
+      setEditing(false);
+      setEditStatus("已保存知识节点");
+      await refreshRelations(result.node.id);
+    } catch (error: unknown) {
+      setEditStatus(error instanceof Error ? error.message : "知识节点保存失败");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
+  async function handleBackfillHistory() {
+    setBackfillBusy(true);
+    setBackfillStatus("正在回填历史卡片…");
+    try {
+      let cursor: string | null = null;
+      let processed = 0;
+      let created = 0;
+      let updated = 0;
+      for (let batch = 0; batch < 50; batch += 1) {
+        const result = await runKnowledgeBackfill(cursor);
+        processed += result.processed;
+        created += result.created;
+        updated += result.updated;
+        cursor = result.nextCursor;
+        if (result.done) break;
+      }
+      setBackfillStatus(`回填完成：处理 ${processed} 条，新增 ${created}，更新 ${updated}`);
+      const refreshed = await listKnowledgeNodes({ query, page: 1, pageSize: 20 });
+      setNodes(refreshed.nodes);
+    } catch (error: unknown) {
+      setBackfillStatus(error instanceof Error ? error.message : "历史回填失败");
+    } finally {
+      setBackfillBusy(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#fdfaf6] px-4 py-6 text-[#2d2319] dark:bg-[#1a1612] dark:text-[#f7ede2] sm:px-8">
       <header className="mx-auto mb-6 flex max-w-6xl items-center gap-4">
@@ -185,7 +265,20 @@ export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
           <h1 className="text-2xl font-semibold">知识库</h1>
           <p className="text-sm opacity-60">从灵感卡片、灵感册与周记中查找关联内容</p>
         </div>
+        <button
+          type="button"
+          disabled={backfillBusy}
+          onClick={() => void handleBackfillHistory()}
+          className="ml-auto rounded-full border border-current/20 px-4 py-2 text-sm disabled:opacity-40"
+        >
+          {backfillBusy ? "回填中…" : "历史回填"}
+        </button>
       </header>
+      {backfillStatus && (
+        <div className="mx-auto mb-4 max-w-6xl rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-sm opacity-75 dark:border-white/10 dark:bg-white/5">
+          {backfillStatus}
+        </div>
+      )}
 
       <section className="mx-auto grid max-w-6xl gap-5 md:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
         <div className="rounded-3xl border border-black/10 bg-white/70 p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
@@ -239,13 +332,60 @@ export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
           {selectedId && !detailLoading && !detailError && selectedNode && (
             <article>
               <span className="text-xs opacity-50">{ENTITY_LABELS[selectedNode.entityType]}</span>
-              <h2 className="mt-1 text-xl font-semibold">{selectedNode.title}</h2>
-              {selectedNode.tags.length > 0 && <p className="mt-3 text-sm opacity-60">{selectedNode.tags.map((tag) => `#${tag}`).join(" ")}</p>}
-              {selectedNode.markdown ? (
-                <pre className="mt-5 max-h-[55vh] overflow-auto whitespace-pre-wrap break-words font-sans text-sm leading-6 opacity-80">{selectedNode.markdown}</pre>
+              <div className="mt-1 flex items-start justify-between gap-3">
+                <h2 className="text-xl font-semibold">{selectedNode.title}</h2>
+                <button
+                  type="button"
+                  onClick={() => setEditing((current) => !current)}
+                  className="rounded-full border border-current/20 px-3 py-1 text-xs"
+                >
+                  {editing ? "取消编辑" : "编辑"}
+                </button>
+              </div>
+              {editing ? (
+                <form className="mt-4 space-y-3" onSubmit={(event) => void handleSaveNode(event)}>
+                  <input
+                    value={editTitle}
+                    onChange={(event) => setEditTitle(event.target.value)}
+                    className="w-full rounded-2xl border border-black/15 bg-transparent px-3 py-2 text-sm outline-none dark:border-white/15"
+                  />
+                  <input
+                    value={editTags}
+                    onChange={(event) => setEditTags(event.target.value)}
+                    placeholder="标签，用逗号分隔"
+                    className="w-full rounded-2xl border border-black/15 bg-transparent px-3 py-2 text-sm outline-none dark:border-white/15"
+                  />
+                  <textarea
+                    value={editMarkdown}
+                    onChange={(event) => setEditMarkdown(event.target.value)}
+                    rows={8}
+                    className="w-full rounded-2xl border border-black/15 bg-transparent px-3 py-2 font-sans text-sm leading-6 outline-none dark:border-white/15"
+                  />
+                  <textarea
+                    value={editProperties}
+                    onChange={(event) => setEditProperties(event.target.value)}
+                    rows={5}
+                    className="w-full rounded-2xl border border-black/15 bg-transparent px-3 py-2 font-mono text-xs leading-5 outline-none dark:border-white/15"
+                  />
+                  <button
+                    type="submit"
+                    disabled={editBusy || !editTitle.trim()}
+                    className="rounded-full bg-[#2d2319] px-4 py-2 text-sm text-white disabled:opacity-40 dark:bg-[#f7ede2] dark:text-[#1a1612]"
+                  >
+                    {editBusy ? "保存中…" : "保存"}
+                  </button>
+                </form>
               ) : (
-                <p className="mt-5 text-sm opacity-55">此节点没有可显示的 Markdown 正文。</p>
+                <>
+                  {selectedNode.tags.length > 0 && <p className="mt-3 text-sm opacity-60">{selectedNode.tags.map((tag) => `#${tag}`).join(" ")}</p>}
+                  {selectedNode.markdown ? (
+                    <pre className="mt-5 max-h-[55vh] overflow-auto whitespace-pre-wrap break-words font-sans text-sm leading-6 opacity-80">{selectedNode.markdown}</pre>
+                  ) : (
+                    <p className="mt-5 text-sm opacity-55">此节点没有可显示的 Markdown 正文。</p>
+                  )}
+                </>
               )}
+              {editStatus && <p className="mt-3 text-xs opacity-65">{editStatus}</p>}
 
               <section className="mt-6 border-t border-black/10 pt-5 dark:border-white/10">
                 <h3 className="text-sm font-semibold">候选关系</h3>
