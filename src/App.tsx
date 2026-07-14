@@ -44,6 +44,7 @@ import { CUSTOM_TAG_LIBRARY_ENABLED_SETTINGS_KEY, CUSTOM_TAG_LIBRARY_SETTINGS_KE
 import MarkdownContent from "./components/MarkdownContent";
 import OnDemandVideo from "./components/OnDemandVideo";
 import ProgressiveImage from "./components/ProgressiveImage";
+import IcpFooter from "./components/IcpFooter";
 import { isDirectUploadUnavailable, uploadDirect } from "./lib/directUploadClient";
 import { createImageAnalysisCopy, DEFAULT_ANALYSIS_MAX_BYTES } from "./lib/imageAnalysisCopy";
 
@@ -2468,6 +2469,8 @@ export default function App() {
           />
         )}
       </div>
+
+      <IcpFooter />
 
       {/* AI Config modal */}
       {showSettings && (

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Feather, Camera, Eye, EyeOff, Loader2 } from "lucide-react";
 import InkReveal from "./ui/ink-reveal";
+import IcpFooter from "./IcpFooter";
 
 interface LoginScreenProps {
   onLogin: (identifier: string, password: string) => Promise<void>;
@@ -207,6 +208,7 @@ export default function LoginScreen({ onLogin, onRegister }: LoginScreenProps) {
           </form>
         </motion.div>
       </div>
+      <IcpFooter compact />
     </div>
   );
 }
