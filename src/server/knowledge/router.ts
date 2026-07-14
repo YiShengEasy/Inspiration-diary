@@ -262,7 +262,7 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
   async function explorerNodesResponse(
     req: AuthenticatedRequest,
     res: Response,
-    mode: "folder" | "unfiled",
+    mode: "folder" | "unfiled" | "all",
   ) {
     if (!defaultFolderService) return res.status(503).json({ error: "知识目录数据库未配置" });
     const rawEntityType = typeof req.query.type === "string" ? req.query.type : "";
@@ -281,7 +281,10 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
       };
       const page = mode === "unfiled"
         ? await defaultFolderService.listUnfiledNodes(input)
-        : await defaultFolderService.listFolderNodes({ ...input, folderId: req.params.folderId });
+        : await defaultFolderService.listFolderNodes({
+          ...input,
+          folderId: mode === "folder" ? req.params.folderId : null,
+        });
       return res.json({
         nodes: page.nodes.map(serializeKnowledgeExplorerNode),
         nextCursor: page.nextCursor,
@@ -295,6 +298,8 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
     explorerNodesResponse(req, res, "folder"));
   router.get("/unfiled", (req: AuthenticatedRequest, res: Response) =>
     explorerNodesResponse(req, res, "unfiled"));
+  router.get("/explorer", (req: AuthenticatedRequest, res: Response) =>
+    explorerNodesResponse(req, res, "all"));
 
   router.post("/folders/:folderId/nodes", async (req: AuthenticatedRequest, res: Response) => {
     const folderId = boundedText(req.params.folderId, 128);
@@ -574,9 +579,15 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
         boundedInteger(req.query.limit, 10, 1, 10),
       );
       if (!candidates) return res.status(404).json({ error: "知识节点不存在" });
+      const explorerItems = defaultFolderService
+        ? await defaultFolderService.enrichNodes(req.user!.id, candidates.map((candidate) => candidate.node))
+        : [];
+      const explorerById = new Map(explorerItems.map((item) => [item.node.id, item]));
       return res.json({
         candidates: candidates.map((candidate) => ({
-          node: serializeKnowledgeNodeSummary(candidate.node),
+          node: explorerById.has(candidate.node.id)
+            ? serializeKnowledgeExplorerNode(explorerById.get(candidate.node.id)!)
+            : serializeKnowledgeNodeSummary(candidate.node),
           score: candidate.score,
           evidence: candidate.evidence,
         })),
@@ -661,6 +672,7 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
       return res.json({
         nodes: graph.nodes.map(({ node, distance }) => ({
           ...serializeKnowledgeNodeSummary(node),
+          contentType: typeof node.properties.contentType === "string" ? node.properties.contentType : node.entityType,
           distance,
         })),
         edges: graph.edges,

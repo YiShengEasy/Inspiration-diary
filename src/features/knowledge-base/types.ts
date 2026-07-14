@@ -29,6 +29,54 @@ export interface KnowledgeNodeSummary {
   updatedAt: number;
 }
 
+export type KnowledgePreviewKind = "image" | "markdown" | "combo" | "video" | "book" | "weekly_note" | "concept";
+
+export interface KnowledgePreview {
+  kind: KnowledgePreviewKind;
+  thumbnailUrls: string[];
+  mediaCount: number;
+}
+
+export interface KnowledgeFolderSummary {
+  id: string;
+  name: string;
+}
+
+export interface KnowledgeExplorerNode extends KnowledgeNodeSummary {
+  preview: KnowledgePreview;
+  folders: KnowledgeFolderSummary[];
+}
+
+export interface KnowledgeFolder {
+  id: string;
+  parentId: string | null;
+  name: string;
+  sourceType: "manual" | "inspiration_book";
+  sourceEntityId: string | null;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+  hasChildren: boolean;
+  nodeCount: number;
+}
+
+export interface KnowledgeFolderPage {
+  folders: KnowledgeFolder[];
+  nextCursor: string | null;
+}
+
+export interface KnowledgeExplorerPage {
+  nodes: KnowledgeExplorerNode[];
+  nextCursor: string | null;
+}
+
+export type KnowledgeExplorerSource =
+  | { kind: "all"; label: string }
+  | { kind: "unfiled"; label: string }
+  | { kind: "folder"; id: string; label: string }
+  | { kind: "contentType"; contentType: "image" | "md" | "combo" | "video"; label: string }
+  | { kind: "entityType"; entityType: "book" | "weekly_note" | "concept"; label: string };
+
 export interface KnowledgeNodeDetail extends KnowledgeNodeSummary {
   properties: KnowledgeProperties;
   markdown: string | null;
@@ -80,7 +128,7 @@ export interface KnowledgeCandidateEvidence {
 }
 
 export interface KnowledgeCandidate {
-  node: KnowledgeNodeSummary;
+  node: KnowledgeNodeSummary & { preview?: KnowledgePreview; folders?: KnowledgeFolderSummary[] };
   score: number;
   evidence: KnowledgeCandidateEvidence;
 }
@@ -103,6 +151,7 @@ export interface KnowledgeAiSuggestionsResponse {
 }
 
 export interface KnowledgeGraphNode extends KnowledgeNodeSummary {
+  contentType?: string;
   distance: 0 | 1 | 2;
 }
 

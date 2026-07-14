@@ -451,7 +451,8 @@ test("exposes candidates, graph and manual relation endpoints with tenant scope"
     `link:${MEMBER.id}:${nodeId}:${targetId}:supports:手工整理`,
     `delete:${MEMBER.id}:link-1`,
   ]);
-  assert.deepEqual(transactionLog, [
+  assert.equal(transactionLog.filter((entry) => entry === "SELECT").length, 2);
+  assert.deepEqual(transactionLog.filter((entry) => entry !== "SELECT"), [
     "BEGIN", "COMMIT", "RELEASE",
     "BEGIN", "COMMIT", "RELEASE",
     "BEGIN", "COMMIT", "RELEASE",

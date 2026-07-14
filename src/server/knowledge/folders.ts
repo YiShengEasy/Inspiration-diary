@@ -218,6 +218,27 @@ export function createKnowledgeFolderService(queryable: KnowledgeQueryable) {
   }
 
   return {
+    enrichNodes(userId: string, nodes: KnowledgeNode[]) {
+      return enrich(userId, nodes.map((node) => ({
+        id: node.id,
+        user_id: node.userId,
+        entity_type: node.entityType,
+        entity_id: node.entityId,
+        slug: node.slug,
+        title: node.title,
+        tags: node.tags,
+        properties: node.properties,
+        search_text: node.searchText,
+        is_active: node.isActive,
+        auto_added: node.autoAdded,
+        content_fingerprint: node.contentFingerprint,
+        revision: node.revision,
+        deleted_at: node.deletedAt,
+        created_at: node.createdAt,
+        updated_at: node.updatedAt,
+      })));
+    },
+
     async listChildren(input: { userId: string; parentId?: string | null; cursor?: string | null; pageSize?: number }) {
       if (input.parentId) assertUuid(input.parentId, "父目录");
       const limit = pageSize(input.pageSize);

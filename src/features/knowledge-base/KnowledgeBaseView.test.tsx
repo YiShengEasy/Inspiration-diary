@@ -9,7 +9,8 @@ import {
   getKnowledgeCandidates,
   getKnowledgeGraph,
   getKnowledgeNode,
-  listKnowledgeNodes,
+  listKnowledgeExplorerNodes,
+  listKnowledgeFolders,
   runKnowledgeBackfill,
   updateKnowledgeNode,
 } from "./api";
@@ -24,12 +25,14 @@ vi.mock("./api", () => ({
   getKnowledgeCandidates: vi.fn(),
   getKnowledgeGraph: vi.fn(),
   getKnowledgeNode: vi.fn(),
-  listKnowledgeNodes: vi.fn(),
+  listKnowledgeExplorerNodes: vi.fn(),
+  listKnowledgeFolders: vi.fn(),
+  createKnowledgeFolder: vi.fn(),
   runKnowledgeBackfill: vi.fn(),
   updateKnowledgeNode: vi.fn(),
 }));
 
-const node: KnowledgeNodeSummary = {
+const node: KnowledgeNodeSummary & { preview: { kind: "markdown"; thumbnailUrls: string[]; mediaCount: number }; folders: [] } = {
   id: "node-1",
   entityType: "card",
   entityId: "card-1",
@@ -42,6 +45,8 @@ const node: KnowledgeNodeSummary = {
   revision: 1,
   createdAt: 1,
   updatedAt: 2,
+  preview: { kind: "markdown", thumbnailUrls: [], mediaCount: 0 },
+  folders: [],
 };
 
 const detail: KnowledgeNodeDetail = {
@@ -53,7 +58,8 @@ const detail: KnowledgeNodeDetail = {
 describe("KnowledgeBaseView checkpoint", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(listKnowledgeNodes).mockResolvedValue({ nodes: [node], total: 1, page: 1, pageSize: 20 });
+    vi.mocked(listKnowledgeExplorerNodes).mockResolvedValue({ nodes: [node], nextCursor: null });
+    vi.mocked(listKnowledgeFolders).mockResolvedValue({ folders: [], nextCursor: null });
     vi.mocked(getKnowledgeNode).mockResolvedValue({ node: detail });
     vi.mocked(getKnowledgeCandidates).mockResolvedValue({
       candidates: [{
@@ -136,6 +142,9 @@ describe("KnowledgeBaseView checkpoint", () => {
   it("loads the searchable list and a read-only detail", async () => {
     render(<KnowledgeBaseView />);
 
+    expect(screen.getByRole("tree", { name: "知识目录" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "当前目录内容" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "知识详情" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /知识卡片/u })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /知识卡片/u }));
     expect(await screen.findByText("# 知识正文")).toBeInTheDocument();
@@ -149,7 +158,7 @@ describe("KnowledgeBaseView checkpoint", () => {
 
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索知识" }), { target: { value: "图谱" } });
     await waitFor(() => {
-      expect(listKnowledgeNodes).toHaveBeenLastCalledWith(expect.objectContaining({ query: "图谱" }));
+      expect(listKnowledgeExplorerNodes).toHaveBeenLastCalledWith(expect.objectContaining({ query: "图谱" }));
     });
   });
 
@@ -182,7 +191,7 @@ describe("KnowledgeBaseView checkpoint", () => {
     fireEvent.click(await screen.findByRole("button", { name: /知识卡片/u }));
     await screen.findByText("# 知识正文");
 
-    fireEvent.click(screen.getByRole("button", { name: "生成建议" }));
+    fireEvent.click(screen.getByRole("button", { name: "手动生成" }));
     expect(await screen.findByText("同一主题下的支撑材料")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "填入表单" }));
 
