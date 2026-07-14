@@ -86,6 +86,17 @@ export interface KnowledgeCandidatesResponse {
   candidates: KnowledgeCandidate[];
 }
 
+export interface KnowledgeAiSuggestion {
+  targetNodeId: string;
+  relationType: KnowledgeRelationType;
+  confidence: number;
+  reason: string;
+}
+
+export interface KnowledgeAiSuggestionsResponse {
+  suggestions: KnowledgeAiSuggestion[];
+}
+
 export interface KnowledgeGraphNode extends KnowledgeNodeSummary {
   distance: 0 | 1 | 2;
 }

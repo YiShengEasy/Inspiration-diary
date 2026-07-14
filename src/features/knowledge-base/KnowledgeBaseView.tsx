@@ -3,6 +3,7 @@ import {
   acceptKnowledgeCandidate,
   createKnowledgeLink,
   dismissKnowledgeCandidate,
+  generateKnowledgeAiSuggestions,
   getKnowledgeCandidates,
   getKnowledgeGraph,
   getKnowledgeNode,
@@ -12,6 +13,7 @@ import {
 } from "./api";
 import type {
   KnowledgeCandidate,
+  KnowledgeAiSuggestion,
   KnowledgeGraphResponse,
   KnowledgeNodeDetail,
   KnowledgeNodeSummary,
@@ -37,9 +39,10 @@ const RELATION_OPTIONS: Array<{ value: KnowledgeRelationType; label: string }> =
 
 export interface KnowledgeBaseViewProps {
   onBack?: () => void;
+  aiHeaders?: Record<string, string>;
 }
 
-export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
+export default function KnowledgeBaseView({ onBack, aiHeaders = {} }: KnowledgeBaseViewProps) {
   const [query, setQuery] = useState("");
   const [nodes, setNodes] = useState<KnowledgeNodeSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -55,6 +58,9 @@ export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
   const [relationContext, setRelationContext] = useState("");
   const [relationStatus, setRelationStatus] = useState<string | null>(null);
   const [relationBusy, setRelationBusy] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<KnowledgeAiSuggestion[]>([]);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editTags, setEditTags] = useState("");
@@ -111,6 +117,8 @@ export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
         setRelationTargetId("");
         setRelationContext("");
         setRelationStatus(null);
+        setAiSuggestions([]);
+        setAiStatus(null);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -196,6 +204,27 @@ export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
     } finally {
       setRelationBusy(false);
     }
+  }
+
+  async function handleGenerateAiSuggestions() {
+    if (!selectedId) return;
+    setAiBusy(true);
+    setAiStatus(null);
+    try {
+      const result = await generateKnowledgeAiSuggestions(selectedId, aiHeaders);
+      setAiSuggestions(result.suggestions);
+      setAiStatus(result.suggestions.length > 0 ? "AI 建议已生成，确认后可填入手工关系。" : "AI 没有找到足够可靠的关系建议。");
+    } catch (error: unknown) {
+      setAiStatus(error instanceof Error ? error.message : "AI 建议生成失败");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  function targetTitle(targetNodeId: string): string {
+    return graph?.nodes.find((node) => node.id === targetNodeId)?.title ||
+      candidates.find((candidate) => candidate.node.id === targetNodeId)?.node.title ||
+      targetNodeId;
   }
 
   async function handleSaveNode(event: FormEvent<HTMLFormElement>) {
@@ -465,6 +494,50 @@ export default function KnowledgeBaseView({ onBack }: KnowledgeBaseViewProps) {
                   />
                 </form>
                 {relationStatus && <p className="mt-2 text-xs opacity-65">{relationStatus}</p>}
+              </section>
+
+              <section className="mt-6 border-t border-black/10 pt-5 dark:border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold">AI 关系建议</h3>
+                  <button
+                    type="button"
+                    disabled={aiBusy}
+                    onClick={() => void handleGenerateAiSuggestions()}
+                    className="rounded-full border border-current/20 px-3 py-1 text-xs disabled:opacity-40"
+                  >
+                    {aiBusy ? "生成中…" : "生成建议"}
+                  </button>
+                </div>
+                {aiStatus && <p className="mt-2 text-xs opacity-65">{aiStatus}</p>}
+                {aiSuggestions.length > 0 && (
+                  <ul className="mt-3 space-y-2">
+                    {aiSuggestions.map((suggestion) => (
+                      <li key={`${suggestion.targetNodeId}:${suggestion.relationType}`} className="rounded-2xl border border-black/10 p-3 text-sm dark:border-white/10">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <strong className="block">{targetTitle(suggestion.targetNodeId)}</strong>
+                            <span className="text-xs opacity-55">
+                              {suggestion.relationType} · 置信度 {Math.round(suggestion.confidence * 100)}%
+                            </span>
+                            <p className="mt-1 text-xs opacity-65">{suggestion.reason}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRelationTargetId(suggestion.targetNodeId);
+                              setRelationType(suggestion.relationType);
+                              setRelationContext(suggestion.reason);
+                              setRelationStatus("AI 建议已填入手工关系表单，点击添加才会写入。");
+                            }}
+                            className="shrink-0 rounded-full border border-amber-500/50 px-3 py-1 text-xs text-amber-800 dark:text-amber-200"
+                          >
+                            填入表单
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
 
               <section className="mt-6 border-t border-black/10 pt-5 dark:border-white/10">

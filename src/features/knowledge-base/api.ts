@@ -1,6 +1,7 @@
 import { authFetch } from "../../lib/authClient";
 import type {
   CreateKnowledgeMarkdownInput,
+  KnowledgeAiSuggestionsResponse,
   KnowledgeBackfillResponse,
   KnowledgeBacklinksResponse,
   KnowledgeCandidatesResponse,
@@ -109,6 +110,19 @@ export function getKnowledgeBacklinks(nodeId: string): Promise<KnowledgeBacklink
 
 export function getKnowledgeCandidates(nodeId: string): Promise<KnowledgeCandidatesResponse> {
   return request(`/api/knowledge/nodes/${encodeURIComponent(nodeId)}/candidates`);
+}
+
+export function generateKnowledgeAiSuggestions(
+  nodeId: string,
+  aiHeaders: Record<string, string> = {},
+): Promise<KnowledgeAiSuggestionsResponse> {
+  return request(
+    `/api/knowledge/nodes/${encodeURIComponent(nodeId)}/ai-suggestions`,
+    {
+      ...jsonRequest("POST", { limit: 5 }),
+      headers: { "Content-Type": "application/json", ...aiHeaders },
+    },
+  );
 }
 
 export function acceptKnowledgeCandidate(nodeId: string, targetId: string): Promise<{ link: KnowledgeLink }> {

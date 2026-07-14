@@ -59,6 +59,11 @@ export interface KnowledgeGraph {
   truncated: boolean;
 }
 
+export interface KnowledgeAiSuggestionContext {
+  source: KnowledgeNodeDetail;
+  targets: KnowledgeNode[];
+}
+
 export interface IndexCardResult {
   status: "created" | "updated" | "unchanged" | "disabled" | "not_found";
   node: KnowledgeNode | null;
@@ -101,6 +106,7 @@ export interface KnowledgeService {
   }): Promise<KnowledgeLink | null>;
   deleteLink(userId: string, linkId: string): Promise<boolean>;
   getLocalGraph(userId: string, nodeId: string, depth?: 1 | 2): Promise<KnowledgeGraph | null>;
+  getAiSuggestionContext(userId: string, nodeId: string, limit?: number): Promise<KnowledgeAiSuggestionContext | null>;
 }
 
 export interface KnowledgeServiceOptions {
@@ -698,6 +704,20 @@ export function createKnowledgeService(
         nodes: sortedNodes,
         edges,
         truncated: nodes.length > GRAPH_MAX_NODES || formalEdges.length + suggestedEdges.length > GRAPH_MAX_EDGES,
+      };
+    },
+
+    async getAiSuggestionContext(userId, nodeId, limit = 50) {
+      const source = await getNode(userId, nodeId);
+      if (!source) return null;
+      const page = await repository.listNodes({
+        userId,
+        page: 1,
+        pageSize: Math.min(100, Math.max(1, limit + 1)),
+      });
+      return {
+        source,
+        targets: page.nodes.filter((node) => node.id !== nodeId).slice(0, limit),
       };
     },
   };

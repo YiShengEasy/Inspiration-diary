@@ -1754,6 +1754,40 @@ export default function App() {
     </button>
   );
 
+  const knowledgeAiHeaders = React.useMemo(() => {
+    const headers: Record<string, string> = {
+      "x-provider": customProvider || "gemini",
+    };
+    if (customProvider === "anthropic") {
+      if (anthropicAuthToken) headers["x-api-key"] = anthropicAuthToken;
+      if (anthropicModel) headers["x-model-name"] = anthropicModel;
+      if (anthropicBaseUrl) headers["x-anthropic-base-url"] = anthropicBaseUrl;
+    } else if (customProvider === "thirdparty") {
+      headers["x-provider"] = "gemini";
+      if (thirdPartyApiKey) headers["x-api-key"] = thirdPartyApiKey;
+      if (thirdPartyModel) headers["x-model-name"] = thirdPartyModel;
+      if (thirdPartyBaseUrl) headers["x-gemini-base-url"] = thirdPartyBaseUrl;
+      if (thirdPartyThinking) headers["x-thinking-enabled"] = "true";
+    } else {
+      if (customApiKey) headers["x-api-key"] = customApiKey;
+      if (selectedModel) headers["x-model-name"] = selectedModel;
+      if (customGeminiBaseUrl) headers["x-gemini-base-url"] = customGeminiBaseUrl;
+    }
+    return headers;
+  }, [
+    anthropicAuthToken,
+    anthropicBaseUrl,
+    anthropicModel,
+    customApiKey,
+    customGeminiBaseUrl,
+    customProvider,
+    selectedModel,
+    thirdPartyApiKey,
+    thirdPartyBaseUrl,
+    thirdPartyModel,
+    thirdPartyThinking,
+  ]);
+
   if (isCheckingAuth) {
     return (
       <div className="min-h-screen bg-stone-50 dark:bg-stone-950 flex items-center justify-center gap-2 text-stone-600 dark:text-stone-300">
@@ -2419,7 +2453,10 @@ export default function App() {
               </div>
             )}
           >
-            <KnowledgeBaseView onBack={() => setMainView("board")} />
+            <KnowledgeBaseView
+              onBack={() => setMainView("board")}
+              aiHeaders={knowledgeAiHeaders}
+            />
           </React.Suspense>
         ) : (
           <CustomTagLibraryView

@@ -104,6 +104,12 @@ function createService(overrides: Partial<KnowledgeService> = {}): KnowledgeServ
         truncated: false,
       };
     },
+    async getAiSuggestionContext() {
+      return {
+        source: makeDetail(node),
+        targets: [targetNode],
+      };
+    },
     ...overrides,
   };
 }
@@ -135,6 +141,7 @@ function createApp(input: {
   service: KnowledgeService;
   user?: AuthUser;
   queryRows?: Array<{ id: string }>;
+  aiSuggestionGenerator?: Parameters<typeof createKnowledgeRouter>[0]["aiSuggestionGenerator"];
 }): { app: Express; transactionLog: string[] } {
   const { database, log } = createDatabase(input.queryRows);
   const app = express();
@@ -149,6 +156,14 @@ function createApp(input: {
     mode: input.enabled,
     pool: database,
     serviceFactory: () => input.service,
+    aiDefaults: {
+      geminiApiKey: "test-key",
+      thirdPartyBaseUrl: "",
+      thirdPartyApiKey: "",
+      thirdPartyModel: "test-model",
+      thirdPartyThinking: false,
+    },
+    aiSuggestionGenerator: input.aiSuggestionGenerator,
   }));
   return { app, transactionLog: log };
 }
@@ -426,4 +441,59 @@ test("exposes candidates, graph and manual relation endpoints with tenant scope"
     "BEGIN", "COMMIT", "RELEASE",
     "BEGIN", "COMMIT", "RELEASE",
   ]);
+});
+
+test("generates AI relation suggestions without writing links", async () => {
+  const calls: string[] = [];
+  const nodeId = makeNode().id;
+  const targetId = "44444444-4444-4444-8444-444444444444";
+  const service = createService({
+    async getAiSuggestionContext(userId, receivedNodeId, limit) {
+      calls.push(`context:${userId}:${receivedNodeId}:${limit}`);
+      return {
+        source: makeDetail(makeNode({ id: receivedNodeId })),
+        targets: [makeNode({ id: targetId, title: "关联知识" })],
+      };
+    },
+    async createManualLink() {
+      throw new Error("AI suggestions must not write links");
+    },
+  });
+  const { app, transactionLog } = createApp({
+    enabled: true,
+    service,
+    user: MEMBER,
+    aiSuggestionGenerator: async (input) => {
+      calls.push(`ai:${input.source.id}:${input.targets.length}:${input.limit}`);
+      return [{
+        targetNodeId: targetId,
+        relationType: "supports",
+        confidence: 0.84,
+        reason: "同一主题下的支撑材料",
+      }];
+    },
+  });
+
+  const response = await requestJson(app, {
+    method: "POST",
+    path: `/api/knowledge/nodes/${nodeId}/ai-suggestions`,
+    body: { limit: 3 },
+  });
+
+  assert.deepEqual(response, {
+    status: 200,
+    body: {
+      suggestions: [{
+        targetNodeId: targetId,
+        relationType: "supports",
+        confidence: 0.84,
+        reason: "同一主题下的支撑材料",
+      }],
+    },
+  });
+  assert.deepEqual(calls, [
+    `context:${MEMBER.id}:${nodeId}:50`,
+    `ai:${nodeId}:1:3`,
+  ]);
+  assert.deepEqual(transactionLog, []);
 });

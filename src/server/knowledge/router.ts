@@ -3,6 +3,13 @@ import { Router, type NextFunction, type Response } from "express";
 
 import type { AuthenticatedRequest } from "../auth.ts";
 import { KnowledgePropertyValidationError } from "./properties.ts";
+import type { AiProviderDefaults } from "../analysis/shared.ts";
+import {
+  generateKnowledgeAiSuggestions,
+  KnowledgeAiSuggestionError,
+  type KnowledgeAiSuggestion,
+  type KnowledgeAiSuggestionInput,
+} from "./aiSuggestions.ts";
 import type { KnowledgeQueryable } from "./repository.ts";
 import {
   createKnowledgeService,
@@ -32,6 +39,8 @@ export interface KnowledgeRouterOptions {
   queryable?: ConnectableKnowledgeQueryable;
   service?: KnowledgeService;
   serviceFactory?: (queryable: KnowledgeQueryable) => KnowledgeService;
+  aiDefaults?: AiProviderDefaults;
+  aiSuggestionGenerator?: (input: KnowledgeAiSuggestionInput) => Promise<KnowledgeAiSuggestion[]>;
 }
 
 const ENTITY_TYPES = new Set<KnowledgeEntityType>([
@@ -144,6 +153,7 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
   const database = options.pool ?? options.queryable;
   const factory = options.serviceFactory ?? createKnowledgeService;
   const defaultService = options.service ?? (database ? factory(database) : null);
+  const aiSuggestionGenerator = options.aiSuggestionGenerator ?? generateKnowledgeAiSuggestions;
 
   async function runMutation<T>(operation: (service: KnowledgeService) => Promise<T>): Promise<T> {
     if (!database) return operation(defaultService!);
@@ -421,6 +431,31 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
         })),
       });
     } catch (error) {
+      return publicError(res, error);
+    }
+  });
+
+  router.post("/nodes/:id/ai-suggestions", async (req: AuthenticatedRequest, res: Response) => {
+    const nodeId = boundedText(req.params.id, 128);
+    if (!nodeId) return res.status(400).json({ error: "节点参数无效" });
+    if (!options.aiDefaults) return res.status(503).json({ error: "AI 建议未配置" });
+    const limit = boundedInteger(req.body?.limit, 5, 1, 8);
+    try {
+      const context = await defaultService!.getAiSuggestionContext(req.user!.id, nodeId, 50);
+      if (!context) return res.status(404).json({ error: "知识节点不存在" });
+      const suggestions = await aiSuggestionGenerator({
+        source: context.source.node,
+        sourceMarkdown: context.source.markdown,
+        targets: context.targets,
+        headers: req.headers,
+        defaults: options.aiDefaults,
+        limit,
+      });
+      return res.json({ suggestions });
+    } catch (error) {
+      if (error instanceof KnowledgeAiSuggestionError) {
+        return res.status(error.httpStatus).json({ error: error.message });
+      }
       return publicError(res, error);
     }
   });

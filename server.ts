@@ -988,6 +988,13 @@ app.use(
   createKnowledgeRouter({
     mode: runtimeConfig.knowledgeBaseEnabled,
     ...(pgPool ? { pool: pgPool } : {}),
+    aiDefaults: {
+      geminiApiKey: apiKey,
+      thirdPartyBaseUrl: defaultThirdPartyBaseUrl,
+      thirdPartyApiKey: defaultThirdPartyApiKey,
+      thirdPartyModel: defaultThirdPartyModel,
+      thirdPartyThinking: defaultThirdPartyThinking,
+    },
   }),
 );
 

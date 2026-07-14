@@ -5,6 +5,7 @@ import {
   acceptKnowledgeCandidate,
   createKnowledgeLink,
   dismissKnowledgeCandidate,
+  generateKnowledgeAiSuggestions,
   getKnowledgeCandidates,
   getKnowledgeGraph,
   getKnowledgeNode,
@@ -19,6 +20,7 @@ vi.mock("./api", () => ({
   acceptKnowledgeCandidate: vi.fn(),
   createKnowledgeLink: vi.fn(),
   dismissKnowledgeCandidate: vi.fn(),
+  generateKnowledgeAiSuggestions: vi.fn(),
   getKnowledgeCandidates: vi.fn(),
   getKnowledgeGraph: vi.fn(),
   getKnowledgeNode: vi.fn(),
@@ -121,6 +123,14 @@ describe("KnowledgeBaseView checkpoint", () => {
       nextCursor: null,
       done: true,
     });
+    vi.mocked(generateKnowledgeAiSuggestions).mockResolvedValue({
+      suggestions: [{
+        targetNodeId: "node-2",
+        relationType: "supports",
+        confidence: 0.84,
+        reason: "同一主题下的支撑材料",
+      }],
+    });
   });
 
   it("loads the searchable list and a read-only detail", async () => {
@@ -165,5 +175,25 @@ describe("KnowledgeBaseView checkpoint", () => {
       expect(runKnowledgeBackfill).toHaveBeenCalledWith(null);
     });
     expect(await screen.findByText(/回填完成：处理 2 条/u)).toBeInTheDocument();
+  });
+
+  it("generates AI suggestions without writing relations", async () => {
+    render(<KnowledgeBaseView aiHeaders={{ "x-provider": "gemini", "x-model-name": "test-model" }} />);
+    fireEvent.click(await screen.findByRole("button", { name: /知识卡片/u }));
+    await screen.findByText("# 知识正文");
+
+    fireEvent.click(screen.getByRole("button", { name: "生成建议" }));
+    expect(await screen.findByText("同一主题下的支撑材料")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "填入表单" }));
+
+    await waitFor(() => {
+      expect(generateKnowledgeAiSuggestions).toHaveBeenCalledWith("node-1", {
+        "x-provider": "gemini",
+        "x-model-name": "test-model",
+      });
+    });
+    expect(createKnowledgeLink).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("node-2")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("同一主题下的支撑材料")).toBeInTheDocument();
   });
 });
