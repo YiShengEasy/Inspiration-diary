@@ -1,7 +1,13 @@
 export type DepthMode = "fast" | "ai";
-export type PresetId = "portrait" | "landscape" | "neon" | "mono" | "reference";
+export type PresetId = "portrait" | "dust" | "nebula" | "linear" | "fog" | "fire";
+export type ParticleEffectMode = PresetId;
+export type DissolveDirection = "edge-in" | "center-out" | "left-to-right" | "top-to-bottom" | "bottom-to-top";
 
 export interface ParticleParams {
+  effectMode: ParticleEffectMode;
+  dissolveDirection: DissolveDirection;
+  dissolveProgress: number;
+  dissolveBandwidth: number;
   brightnessThreshold: number;
   contrast: number;
   edgeStrength: number;

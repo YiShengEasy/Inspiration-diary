@@ -330,7 +330,9 @@ export function sampleParticleSource(
   }
   const luminance = computeLuminance(imageRgba, pixelCount);
   const edges = computeEdges(luminance, width, height);
-  const target = Math.max(1, Math.min(maxParticles, Math.floor(pixelCount * clamp01(params.density))));
+  // Build the device-capped source once. Runtime density is a GPU uniform so
+  // dragging the density control never restarts image preprocessing.
+  const target = Math.max(1, Math.min(maxParticles, pixelCount));
   const selected: number[] = [];
   const selectedMask = new Uint8Array(pixelCount);
   const trySelect = (index: number) => {

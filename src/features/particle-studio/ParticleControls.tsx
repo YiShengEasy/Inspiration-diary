@@ -11,7 +11,7 @@ interface ParticleControlsProps {
   onToggleCollapsed: () => void;
 }
 
-type NumericKey = Exclude<keyof ParticleParams, "autoRotate" | "backgroundColor">;
+type NumericKey = Exclude<keyof ParticleParams, "autoRotate" | "backgroundColor" | "effectMode" | "dissolveDirection">;
 type Control = { key: NumericKey; label: string; min: number; max: number; step: number };
 
 const groups: Array<{ title: string; controls: Control[] }> = [
@@ -24,6 +24,8 @@ const groups: Array<{ title: string; controls: Control[] }> = [
     { key: "density", label: "粒子保留率", min: 0.05, max: 1, step: 0.01 },
   ] },
   { title: "侵蚀边界", controls: [
+    { key: "dissolveProgress", label: "侵蚀进度", min: 0, max: 1, step: 0.01 },
+    { key: "dissolveBandwidth", label: "过渡带宽", min: 0.06, max: 0.6, step: 0.01 },
     { key: "invasionRange", label: "侵入范围", min: 0.1, max: 0.9, step: 0.01 },
     { key: "edgeSoftness", label: "边界柔化", min: 0.04, max: 0.45, step: 0.01 },
     { key: "irregularity", label: "不规则度", min: 0, max: 1, step: 0.01 },

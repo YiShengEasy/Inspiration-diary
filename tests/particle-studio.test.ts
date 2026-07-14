@@ -17,8 +17,12 @@ import {
   particleVideoFilename,
 } from "../src/features/particle-studio/particleVideoExporter";
 
-test("ships the five approved presets", () => {
-  assert.deepEqual(Object.keys(PARTICLE_PRESETS), ["portrait", "landscape", "neon", "mono", "reference"]);
+test("ships only the six approved particle presets", () => {
+  assert.deepEqual(Object.keys(PARTICLE_PRESETS), ["portrait", "dust", "nebula", "linear", "fog", "fire"]);
+  assert.deepEqual(
+    Object.values(PARTICLE_PRESETS).map((preset) => preset.effectMode),
+    ["portrait", "dust", "nebula", "linear", "fog", "fire"],
+  );
 });
 
 test("caps mobile particles and pixel ratio", () => {
@@ -33,7 +37,7 @@ test("normalizes unsafe parameter input", () => {
     bloomStrength: 99,
   });
   assert.equal(next.density, 1);
-  assert.equal(next.particleSize, 0.4);
+  assert.equal(next.particleSize, 0.6);
   assert.equal(next.bloomStrength, 3);
 });
 
@@ -50,7 +54,7 @@ test("ships live water, invasion, dispersion, and source-color controls", () => 
 test("only structural parameters require particle preprocessing", () => {
   assert.equal(requiresParticleRebuild(DEFAULT_PARTICLE_PARAMS, { ...DEFAULT_PARTICLE_PARAMS, waveStrength: 0.08 }), false);
   assert.equal(requiresParticleRebuild(DEFAULT_PARTICLE_PARAMS, { ...DEFAULT_PARTICLE_PARAMS, invasionRange: 0.7 }), false);
-  assert.equal(requiresParticleRebuild(DEFAULT_PARTICLE_PARAMS, { ...DEFAULT_PARTICLE_PARAMS, density: 0.4 }), true);
+  assert.equal(requiresParticleRebuild(DEFAULT_PARTICLE_PARAMS, { ...DEFAULT_PARTICLE_PARAMS, density: 0.4 }), false);
   assert.equal(requiresParticleRebuild(DEFAULT_PARTICLE_PARAMS, { ...DEFAULT_PARTICLE_PARAMS, depthLayers: 12 }), true);
 });
 

@@ -15,10 +15,11 @@ type StudioStatus = "empty" | "decoding" | "fast-ready" | "ai-loading" | "ai-rea
 type Decoded = { rgba: Uint8ClampedArray; width: number; height: number };
 const presetNames: Record<PresetId, string> = {
   portrait: "人像柔边",
-  landscape: "风景层次",
-  neon: "霓虹冷光",
-  mono: "黑白雕刻",
-  reference: "参考图同款",
+  dust: "灰尘消散",
+  nebula: "星云扩张",
+  linear: "线性扫除",
+  fog: "雾化飘落",
+  fire: "火焰涅槃",
 };
 
 export default function ParticleStudio({ onBack }: { onBack: () => void }) {
@@ -89,7 +90,7 @@ export default function ParticleStudio({ onBack }: { onBack: () => void }) {
       client.cancelPending();
     };
   }, [decoded, mode, aiDepth, profile.maxParticles, params.brightnessThreshold, params.contrast,
-    params.edgeStrength, params.alphaThreshold, params.saturation, params.density,
+    params.edgeStrength, params.alphaThreshold, params.saturation,
     params.depthSmoothing, params.depthLayers]);
 
   const runAi = useCallback(async (imageFile: File, image: Decoded) => {

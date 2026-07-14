@@ -15,6 +15,7 @@ import {
   MP4_EXPORT_HEIGHT,
   MP4_EXPORT_WIDTH,
 } from "./particleVideoExporter";
+import { dissolveDirectionToUniform, effectModeToUniform } from "./effectModes";
 
 const EXPORT_SCALE_LIMIT = 3;
 type ImageSurface = THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
@@ -106,6 +107,10 @@ function createImageSurface(source: ParticleSource): ImageSurface {
       uEdgeSoftness: { value: 0.24 },
       uIrregularity: { value: 0.32 },
       uNoiseScale: { value: 3.4 },
+      uEffectMode: { value: 0 },
+      uDissolveDirection: { value: 0 },
+      uDissolveProgress: { value: 0.46 },
+      uDissolveBandwidth: { value: 0.24 },
     },
   });
   const surface = new THREE.Mesh(geometry, material);
@@ -133,6 +138,8 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   const edge: number[] = [];
   const content: number[] = [];
   const boundary: number[] = [];
+  const uvs: number[] = [];
+  const aspect = source.width / source.height;
   const candidateStep = Math.max(1, Math.floor(source.particleCount / 60_000));
 
   for (let index = 0; index < source.particleCount; index += candidateStep) {
@@ -180,6 +187,10 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
     edge.push(edgeWeight);
     content.push(contentWeight);
     boundary.push(boundaryWeight);
+    uvs.push(
+      clamp01(source.positions[offset] / (aspect * 2) + 0.5),
+      clamp01(source.positions[offset + 1] / 2 + 0.5),
+    );
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -193,6 +204,7 @@ function createDissolveParticleGeometry(source: ParticleSource): THREE.BufferGeo
   geometry.setAttribute("aEdge", new THREE.Float32BufferAttribute(edge, 1));
   geometry.setAttribute("aContent", new THREE.Float32BufferAttribute(content, 1));
   geometry.setAttribute("aBoundary", new THREE.Float32BufferAttribute(boundary, 1));
+  geometry.setAttribute("aUv", new THREE.Float32BufferAttribute(uvs, 2));
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -255,11 +267,14 @@ export class ParticleRenderer {
       blending: THREE.AdditiveBlending,
       uniforms: {
         uDepthStrength: { value: 2.4 }, uScatter: { value: 0.18 }, uDrift: { value: 0.12 },
-        uTime: { value: 0 }, uLoopDuration: { value: 5 }, uProgress: { value: 0 }, uExit: { value: 0 }, uPointSize: { value: 2.1 },
+        uTime: { value: 0 }, uLoopDuration: { value: 5 }, uProgress: { value: 0 }, uExit: { value: 0 },
+        uPointSize: { value: 2.1 }, uDensity: { value: 0.78 },
         uWaveStrength: { value: 0.026 }, uWaveScale: { value: 2.6 }, uWaveSpeed: { value: 0.5 },
         uInvasionRange: { value: 0.38 }, uEdgeSoftness: { value: 0.24 }, uIrregularity: { value: 0.32 },
         uNoiseScale: { value: 3.4 }, uOuterDispersion: { value: 0.7 }, uColorRetention: { value: 0.82 },
         uInnerCrossStrength: { value: 0.72 },
+        uEffectMode: { value: 0 }, uDissolveDirection: { value: 0 },
+        uDissolveProgress: { value: 0.46 }, uDissolveBandwidth: { value: 0.24 },
       },
     });
 
@@ -297,6 +312,7 @@ export class ParticleRenderer {
     this.particleMaterial.uniforms.uScatter.value = params.scatter;
     this.particleMaterial.uniforms.uDrift.value = params.driftSpeed;
     this.particleMaterial.uniforms.uPointSize.value = params.particleSize * this.profile.pixelRatio * 1.15;
+    this.particleMaterial.uniforms.uDensity.value = params.density;
     this.particleMaterial.uniforms.uWaveStrength.value = params.waveStrength;
     this.particleMaterial.uniforms.uWaveScale.value = params.waveScale;
     this.particleMaterial.uniforms.uWaveSpeed.value = params.waveSpeed;
@@ -307,6 +323,10 @@ export class ParticleRenderer {
     this.particleMaterial.uniforms.uOuterDispersion.value = params.outerDispersion;
     this.particleMaterial.uniforms.uColorRetention.value = params.colorRetention;
     this.particleMaterial.uniforms.uInnerCrossStrength.value = params.innerCrossStrength;
+    this.particleMaterial.uniforms.uEffectMode.value = effectModeToUniform(params.effectMode);
+    this.particleMaterial.uniforms.uDissolveDirection.value = dissolveDirectionToUniform(params.dissolveDirection);
+    this.particleMaterial.uniforms.uDissolveProgress.value = params.dissolveProgress;
+    this.particleMaterial.uniforms.uDissolveBandwidth.value = params.dissolveBandwidth;
     if (this.imageSurface) this.applySurfaceParams(this.imageSurface, params);
     this.bloomPass.strength = params.bloomStrength * (this.reduced ? 0.55 : 1);
     this.bloomPass.radius = params.bloomRadius;
@@ -487,6 +507,10 @@ export class ParticleRenderer {
     surface.material.uniforms.uEdgeSoftness.value = params.edgeSoftness;
     surface.material.uniforms.uIrregularity.value = params.irregularity;
     surface.material.uniforms.uNoiseScale.value = params.noiseScale;
+    surface.material.uniforms.uEffectMode.value = effectModeToUniform(params.effectMode);
+    surface.material.uniforms.uDissolveDirection.value = dissolveDirectionToUniform(params.dissolveDirection);
+    surface.material.uniforms.uDissolveProgress.value = params.dissolveProgress;
+    surface.material.uniforms.uDissolveBandwidth.value = params.dissolveBandwidth;
   }
 
   private setAnimationTime(seconds: number, progress: number): void {
