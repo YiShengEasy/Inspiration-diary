@@ -2687,19 +2687,23 @@ export default function App() {
                   </>
                 )}
                 {!zoomedCardIsCombo ? <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/5 pointer-events-none" /> : null}
-                {zoomedCard.type !== "md" && zoomedCard.type !== "video" && !zoomedCardIsCombo && visibleCards.length > 1 && (
+                {visibleCards.length > 1 && (
                   <>
                     <button
+                      type="button"
                       onClick={handlePrevZoomedCard}
                       className="absolute left-3 top-1/2 -translate-y-1/2 z-20 bg-stone-950/70 hover:bg-amber-500 hover:scale-110 active:scale-95 text-white p-2.5 rounded-full shadow-lg border border-white/10 transition-all cursor-pointer opacity-80 hover:opacity-100"
-                      title="上一张 (ArrowLeft)"
+                      title="上一条 (ArrowLeft)"
+                      aria-label="上一条"
                     >
                       <ChevronLeft size={18} />
                     </button>
                     <button
+                      type="button"
                       onClick={handleNextZoomedCard}
                       className="absolute right-3 top-1/2 -translate-y-1/2 z-20 bg-stone-950/70 hover:bg-amber-500 hover:scale-110 active:scale-95 text-white p-2.5 rounded-full shadow-lg border border-white/10 transition-all cursor-pointer opacity-80 hover:opacity-100"
-                      title="下一张 (ArrowRight)"
+                      title="下一条 (ArrowRight)"
+                      aria-label="下一条"
                     >
                       <ChevronRight size={18} />
                     </button>
