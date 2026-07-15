@@ -11,6 +11,8 @@ import {
   dissolutionPlaneVertexShader,
 } from "./shaders";
 import type { DissolutionParams } from "./types";
+import { exportAnimationProgress, interpolateExportParams, type ExportAnimationTrack } from "../exportAnimation";
+import type { DissolutionExportAnimationKey } from "../exportAnimationFields";
 
 type ImageCache = {
   data: Uint8ClampedArray;
@@ -176,6 +178,7 @@ export class DissolutionRenderer {
   async exportMp4(options: {
     onProgress?: (completed: number, total: number) => void;
     signal?: AbortSignal;
+    animationTracks?: ExportAnimationTrack<DissolutionExportAnimationKey>[];
   } = {}): Promise<Blob> {
     if (!this.imageMesh) throw new Error("请先上传图片");
     const wasPaused = this.paused;
@@ -183,6 +186,9 @@ export class DissolutionRenderer {
     const oldTime = this.uniforms.uTime.value;
     const oldInvasion = this.uniforms.uInvasion.value;
     const animateInvasion = this.autoPlay;
+    const originalParams = { ...this.params };
+    const animationTracks = options.animationTracks ?? [];
+    const animatesInvasion = animationTracks.some((track) => track.key === "invasion");
     if (!wasPaused) this.pause();
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(MP4_EXPORT_WIDTH, MP4_EXPORT_HEIGHT, false);
@@ -194,13 +200,19 @@ export class DissolutionRenderer {
         onProgress: options.onProgress,
         renderFrame: (timeSeconds) => {
           this.uniforms.uTime.value = timeSeconds;
-          if (animateInvasion) {
-            this.uniforms.uInvasion.value = clamp01(0.5 + Math.sin(timeSeconds / 5 * Math.PI * 2) * 0.5);
-          }
+          const frameBase = animateInvasion && !animatesInvasion
+            ? { ...originalParams, invasion: clamp01(0.5 + Math.sin(timeSeconds / 5 * Math.PI * 2) * 0.5) }
+            : originalParams;
+          this.applyParams(interpolateExportParams(
+            frameBase,
+            animationTracks,
+            exportAnimationProgress(timeSeconds),
+          ), false);
           this.renderer.render(this.scene, this.camera);
         },
       });
     } finally {
+      this.applyParams(originalParams, false);
       this.uniforms.uTime.value = oldTime;
       this.uniforms.uInvasion.value = oldInvasion;
       this.renderer.setPixelRatio(oldRatio);

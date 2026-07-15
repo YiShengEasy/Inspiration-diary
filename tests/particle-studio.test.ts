@@ -17,6 +17,31 @@ import {
   particleVideoFilename,
 } from "../src/features/particle-studio/particleVideoExporter";
 import { DISSOLUTION_PRESETS } from "../src/features/particle-studio/dissolution/presets";
+import {
+  clampExportValue,
+  interpolateExportParams,
+  smoothExportProgress,
+} from "../src/features/particle-studio/exportAnimation";
+
+test("interpolates multiple export parameters with smooth endpoints", () => {
+  const base = { invasion: 0.2, scatter: 0.1, untouched: 7 };
+  const tracks = [
+    { key: "invasion", from: 0.2, to: 0.8 },
+    { key: "scatter", from: 0.1, to: 0.5 },
+  ];
+  assert.deepEqual(interpolateExportParams(base, tracks, 0), base);
+  assert.deepEqual(interpolateExportParams(base, tracks, 1), { invasion: 0.8, scatter: 0.5, untouched: 7 });
+  const midpoint = interpolateExportParams(base, tracks, 0.5);
+  assert.equal(midpoint.invasion, 0.5);
+  assert.ok(Math.abs(midpoint.scatter - 0.3) < 1e-9);
+  assert.equal(midpoint.untouched, 7);
+});
+
+test("clamps export targets and easing progress", () => {
+  assert.equal(clampExportValue(12, 0, 10), 10);
+  assert.equal(smoothExportProgress(-1), 0);
+  assert.equal(smoothExportProgress(2), 1);
+});
 
 test("ships only the six approved particle presets", () => {
   assert.deepEqual(Object.keys(PARTICLE_PRESETS), ["portrait", "dust", "nebula", "linear", "fog", "fire"]);

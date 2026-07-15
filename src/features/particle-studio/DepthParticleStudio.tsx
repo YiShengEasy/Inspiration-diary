@@ -3,8 +3,11 @@ import { ArrowLeft, Download, Film, ImagePlus, LoaderCircle, RotateCcw, Sparkles
 import { generateAiDepth } from "./aiDepth";
 import { decodeImageFile } from "./fastDepth";
 import { ParticleControls } from "./ParticleControls";
+import { ParticleExportAnimationDialog } from "./ParticleExportAnimationDialog";
 import { ParticleViewport } from "./ParticleViewport";
 import type { ParticleRenderer } from "./ParticleRenderer";
+import type { ExportAnimationTrack } from "./exportAnimation";
+import { DEPTH_EXPORT_ANIMATION_FIELDS, type DepthExportAnimationKey } from "./exportAnimationFields";
 import { ParticleWorkerClient } from "./particleWorkerClient";
 import { particleVideoFilename } from "./particleVideoExporter";
 import { DEFAULT_PARTICLE_PARAMS, getQualityProfile, normalizeParams, PARTICLE_PRESETS } from "./presets";
@@ -49,6 +52,7 @@ export default function DepthParticleStudio({
   const [activePreset, setActivePreset] = useState<PresetId | null>(null);
   const [reduced, setReduced] = useState(false);
   const [exporting, setExporting] = useState<"png" | "mp4" | null>(null);
+  const [showExportAnimation, setShowExportAnimation] = useState(false);
   const [exportProgress, setExportProgress] = useState({ completed: 0, total: 150 });
   const rendererRef = useRef<ParticleRenderer | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -62,9 +66,12 @@ export default function DepthParticleStudio({
   const supportsTransparency = useMemo(() => decoded
     ? decoded.rgba.some((value, index) => index % 4 === 3 && value < 255)
     : false, [decoded]);
+  const exportAnimationValues = useMemo(() => Object.fromEntries(
+    DEPTH_EXPORT_ANIMATION_FIELDS.map((field) => [field.key, params[field.key]]),
+  ) as Record<DepthExportAnimationKey, number>, [params]);
   const handleRendererReady = useCallback((renderer: ParticleRenderer | null) => { rendererRef.current = renderer; }, []);
 
-  useEffect(() => onExportingChange(Boolean(exporting)), [exporting, onExportingChange]);
+  useEffect(() => onExportingChange(Boolean(exporting) || showExportAnimation), [exporting, onExportingChange, showExportAnimation]);
 
   useEffect(() => {
     const client = new ParticleWorkerClient();
@@ -171,7 +178,7 @@ export default function DepthParticleStudio({
     try { const blob = await rendererRef.current.exportPng(2); const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 13); downloadBlob(blob, `particle-3d-${stamp}.png`); }
     catch (error) { setNotice(error instanceof Error ? error.message : "导出失败"); } finally { setExporting(null); }
   };
-  const exportMp4 = async () => {
+  const exportMp4 = async (animationTracks: ExportAnimationTrack<DepthExportAnimationKey>[]) => {
     if (!rendererRef.current || !source) return;
     const controller = new AbortController();
     exportAbortRef.current = controller;
@@ -180,6 +187,7 @@ export default function DepthParticleStudio({
       const blob = await rendererRef.current.exportMp4({
         signal: controller.signal,
         onProgress: (completed, total) => setExportProgress({ completed, total }),
+        animationTracks,
       });
       downloadBlob(blob, particleVideoFilename());
     } catch (error) {
@@ -202,7 +210,7 @@ export default function DepthParticleStudio({
       <div className="particle-studio__modes" aria-label="深度模式"><button disabled={!!exporting} className={mode === "fast" ? "is-active" : ""} onClick={() => switchMode("fast")}>快速</button><button disabled={!!exporting} className={mode === "ai" ? "is-active" : ""} onClick={() => switchMode("ai")}>AI 精细</button></div>
       <button type="button" disabled={!source || !!exporting} onClick={() => rendererRef.current?.resetCamera()} title="复位视角"><RotateCcw size={16} /></button>
       <button type="button" disabled={!source || !!exporting || rebuilding} onClick={() => void exportPng()}><Download size={16} />{exporting === "png" ? "导出中" : "PNG"}</button>
-      <button type="button" disabled={!source || !!exporting || rebuilding} onClick={() => void exportMp4()}><Film size={16} />MP4</button>
+      <button type="button" disabled={!source || !!exporting || rebuilding} onClick={() => setShowExportAnimation(true)}><Film size={16} />MP4</button>
     </div>
     <div className="particle-studio__presets">{(Object.keys(presetNames) as PresetId[]).map((id) => <button key={id} type="button" disabled={!!exporting} className={activePreset === id ? "is-active" : ""} aria-pressed={activePreset === id} onClick={() => applyPreset(id)}>{presetNames[id]}</button>)}</div>
     {source && <div className="particle-studio__hint">拖拽旋转 · 滚轮缩放 · 双击复位</div>}
@@ -211,6 +219,12 @@ export default function DepthParticleStudio({
     {(status === "decoding" || status === "ai-loading") && <div className="particle-studio__progress"><LoaderCircle className="is-spinning" size={22} /><span>{status === "decoding" ? "正在解析图片" : progress?.message}</span>{progress && <div><i style={{ width: `${Math.round(progress.progress * 100)}%` }} /></div>}</div>}
     {exporting === "mp4" && <div className="particle-studio__progress particle-studio__export-progress"><LoaderCircle className="is-spinning" size={22} /><strong>正在生成 1080p MP4</strong><span>已渲染 {exportProgress.completed} / {exportProgress.total}</span><div><i style={{ width: `${Math.round(exportProgress.completed / exportProgress.total * 100)}%` }} /></div><button type="button" onClick={() => exportAbortRef.current?.abort()}><X size={14} />取消</button></div>}
     {notice && <button type="button" className="particle-studio__notice" onClick={() => setNotice(null)}>{notice}<span>×</span></button>}
+    {showExportAnimation && <ParticleExportAnimationDialog
+      fields={DEPTH_EXPORT_ANIMATION_FIELDS}
+      values={exportAnimationValues}
+      onCancel={() => setShowExportAnimation(false)}
+      onConfirm={(tracks) => { setShowExportAnimation(false); void exportMp4(tracks); }}
+    />}
     <ParticleControls params={params} collapsed={collapsed} supportsTransparency={supportsTransparency} disabled={!!exporting} onChange={applyParams} onReset={() => applyParams({ ...DEFAULT_PARTICLE_PARAMS })} onToggleCollapsed={() => setCollapsed((value) => !value)} />
   </main>;
 }

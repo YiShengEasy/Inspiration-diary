@@ -12,6 +12,12 @@ import {
   X,
 } from "lucide-react";
 import { particleVideoFilename } from "../particleVideoExporter";
+import { ParticleExportAnimationDialog } from "../ParticleExportAnimationDialog";
+import type { ExportAnimationTrack } from "../exportAnimation";
+import {
+  DISSOLUTION_EXPORT_ANIMATION_FIELDS,
+  type DissolutionExportAnimationKey,
+} from "../exportAnimationFields";
 import { DissolutionRenderer } from "./DissolutionRenderer";
 import {
   DEFAULT_DISSOLUTION_PARAMS,
@@ -78,9 +84,10 @@ export default function DissolutionStudio({
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [exporting, setExporting] = useState<"png" | "mp4" | null>(null);
+  const [showExportAnimation, setShowExportAnimation] = useState(false);
   const [exportProgress, setExportProgress] = useState({ completed: 0, total: 150 });
 
-  useEffect(() => onExportingChange(Boolean(exporting)), [exporting, onExportingChange]);
+  useEffect(() => onExportingChange(Boolean(exporting) || showExportAnimation), [exporting, onExportingChange, showExportAnimation]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -160,7 +167,7 @@ export default function DissolutionStudio({
     }
   };
 
-  const exportMp4 = async (): Promise<void> => {
+  const exportMp4 = async (animationTracks: ExportAnimationTrack<DissolutionExportAnimationKey>[]): Promise<void> => {
     if (!rendererRef.current || !file) return;
     const controller = new AbortController();
     exportAbortRef.current = controller;
@@ -171,6 +178,7 @@ export default function DissolutionStudio({
       const blob = await rendererRef.current.exportMp4({
         signal: controller.signal,
         onProgress: (completed, total) => setExportProgress({ completed, total }),
+        animationTracks,
       });
       downloadBlob(blob, particleVideoFilename());
     } catch (error) {
@@ -185,6 +193,9 @@ export default function DissolutionStudio({
 
   const fire = params.effect === 1;
   const visibleSliders = sliders.filter((slider) => !fire || !slider.particleOnly);
+  const exportAnimationValues = Object.fromEntries(
+    DISSOLUTION_EXPORT_ANIMATION_FIELDS.map((field) => [field.key, params[field.key]]),
+  ) as Record<DissolutionExportAnimationKey, number>;
 
   return <main className="dissolution-studio">
     <div ref={containerRef} className="dissolution-studio__viewport" aria-label="粒子溶解画布" />
@@ -218,7 +229,7 @@ export default function DissolutionStudio({
       <button type="button" disabled={!file || Boolean(exporting) || loading} onClick={() => void exportPng()}>
         <Download size={16} />{exporting === "png" ? "导出中" : "PNG"}
       </button>
-      <button type="button" disabled={!file || Boolean(exporting) || loading} onClick={() => void exportMp4()}>
+      <button type="button" disabled={!file || Boolean(exporting) || loading} onClick={() => setShowExportAnimation(true)}>
         <Film size={16} />MP4
       </button>
     </div>
@@ -263,5 +274,11 @@ export default function DissolutionStudio({
     {notice && <button type="button" className="dissolution-studio__notice" onClick={() => setNotice(null)}>
       {notice}<span>×</span>
     </button>}
+    {showExportAnimation && <ParticleExportAnimationDialog
+      fields={DISSOLUTION_EXPORT_ANIMATION_FIELDS}
+      values={exportAnimationValues}
+      onCancel={() => setShowExportAnimation(false)}
+      onConfirm={(tracks) => { setShowExportAnimation(false); void exportMp4(tracks); }}
+    />}
   </main>;
 }

@@ -16,6 +16,8 @@ import {
   MP4_EXPORT_WIDTH,
 } from "./particleVideoExporter";
 import { dissolveDirectionToUniform, effectModeToUniform } from "./effectModes";
+import { exportAnimationProgress, interpolateExportParams, type ExportAnimationTrack } from "./exportAnimation";
+import type { DepthExportAnimationKey } from "./exportAnimationFields";
 
 const EXPORT_SCALE_LIMIT = 3;
 type ImageSurface = THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
@@ -374,6 +376,7 @@ export class ParticleRenderer {
   async exportMp4(options: {
     onProgress?: (completedFrames: number, totalFrames: number) => void;
     signal?: AbortSignal;
+    animationTracks?: ExportAnimationTrack<DepthExportAnimationKey>[];
   } = {}): Promise<Blob> {
     if (!this.imageSurface || !this.particlePoints) throw new Error("请先上传图片并等待粒子生成完成");
     const wasPaused = this.paused;
@@ -385,6 +388,9 @@ export class ParticleRenderer {
     const oldTarget = this.controls.target.clone();
     const controlsEnabled = this.controls.enabled;
     const autoRotate = this.controls.autoRotate;
+    const originalParams = this.params ? { ...this.params } : null;
+    const animationTracks = options.animationTracks ?? [];
+    const animatesCameraDistance = animationTracks.some((track) => track.key === "cameraDistance");
     if (!wasPaused) this.pause();
     this.removeExitingContent();
     this.controls.enabled = false;
@@ -398,6 +404,19 @@ export class ParticleRenderer {
       return await exportCanvasToMp4({
         canvas: this.renderer.domElement,
         renderFrame: (timeSeconds) => {
+          if (originalParams && animationTracks.length > 0) {
+            this.setParams(interpolateExportParams(
+              originalParams,
+              animationTracks,
+              exportAnimationProgress(timeSeconds),
+            ));
+            this.controls.autoRotate = false;
+            if (!animatesCameraDistance) {
+              this.camera.position.copy(oldPosition);
+              this.camera.quaternion.copy(oldQuaternion);
+              this.controls.target.copy(oldTarget);
+            }
+          }
           this.setAnimationTime(timeSeconds, 1);
           this.composer.render();
         },
@@ -405,6 +424,7 @@ export class ParticleRenderer {
         signal: options.signal,
       });
     } finally {
+      if (originalParams) this.setParams(originalParams);
       this.renderer.setPixelRatio(oldRatio);
       this.camera.aspect = oldAspect;
       this.camera.position.copy(oldPosition);
