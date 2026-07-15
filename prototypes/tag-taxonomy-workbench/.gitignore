@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.npm-cache/
+prototype-review.png
+qa-comparison.png
