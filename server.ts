@@ -29,6 +29,7 @@ import {
 import type { DirectUploadGateway } from "./src/server/direct-upload/ossGateway";
 import { createKnowledgeRouter } from "./src/server/knowledge/router";
 import { createKnowledgeService } from "./src/server/knowledge/service";
+import { createOpenAiEmbeddingProvider } from "./src/server/knowledge/embeddings";
 import { getRuntimeCapabilities } from "./src/server/runtimeCapabilities";
 import { withDatabaseTransaction } from "./src/server/database/transaction";
 import { createMiniprogramRouter } from "./src/server/miniprogram/router";
@@ -66,6 +67,14 @@ const runtimeConfigErrors = validateRuntimeConfig(runtimeConfig);
 if (runtimeConfigErrors.length > 0) {
   throw new Error(`Invalid runtime configuration:\n${runtimeConfigErrors.join("\n")}`);
 }
+const knowledgeEmbeddingProvider = runtimeConfig.knowledgeVector.enabled
+  ? createOpenAiEmbeddingProvider({
+      baseUrl: runtimeConfig.knowledgeVector.baseUrl,
+      apiKey: runtimeConfig.knowledgeVector.apiKey,
+      model: runtimeConfig.knowledgeVector.model,
+      dimensions: runtimeConfig.knowledgeVector.dimensions,
+    })
+  : undefined;
 
 const app = express();
 const PORT = runtimeConfig.port;
@@ -1027,6 +1036,9 @@ app.use(
   createKnowledgeRouter({
     mode: runtimeConfig.knowledgeBaseEnabled,
     ...(pgPool ? { pool: pgPool } : {}),
+    serviceFactory: (queryable) => createKnowledgeService(queryable, {
+      ...(knowledgeEmbeddingProvider ? { embeddingProvider: knowledgeEmbeddingProvider } : {}),
+    }),
     aiDefaults: {
       geminiApiKey: apiKey,
       thirdPartyBaseUrl: defaultThirdPartyBaseUrl,

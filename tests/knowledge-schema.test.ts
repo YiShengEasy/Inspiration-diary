@@ -35,3 +35,19 @@ test("knowledge explorer migration keeps folders tenant-safe and indexed", async
   assert.match(sql, /knowledge_folder_nodes_node_idx/i);
   assert.match(sql, /ON CONFLICT \(user_id, folder_id, node_id\) DO NOTHING/i);
 });
+
+test("knowledge vector migration uses exact tenant-scoped pgvector storage", async () => {
+  const sql = await readFile(
+    new URL("../database/migrations/004_knowledge_vectors.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(sql, /CREATE EXTENSION IF NOT EXISTS vector/i);
+  assert.match(sql, /CREATE TABLE knowledge_node_embeddings/i);
+  assert.match(sql, /PRIMARY KEY \(user_id, node_id, model\)/i);
+  assert.match(sql, /FOREIGN KEY \(user_id, node_id\)[\s\S]*REFERENCES knowledge_nodes\(user_id, id\) ON DELETE CASCADE/i);
+  assert.match(sql, /CHECK \(vector_dims\(embedding\) = dimensions\)/i);
+  assert.match(sql, /content_fingerprint TEXT NOT NULL/i);
+  assert.match(sql, /embedding VECTOR NOT NULL/i);
+  assert.doesNotMatch(sql, /USING\s+(hnsw|ivfflat)/i);
+});

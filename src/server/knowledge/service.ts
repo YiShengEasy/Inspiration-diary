@@ -21,12 +21,22 @@ import {
   type KnowledgeNode,
   type KnowledgeNodePage,
   type KnowledgeQueryable,
+  type KnowledgeSuggestionFeedback,
   type ListKnowledgeNodesInput,
   type OptimisticNodeUpdateResult,
 } from "./repository.ts";
 import { createKnowledgeSlug } from "./slug.ts";
 import type { KnowledgeEntityType, KnowledgeLinkOrigin, KnowledgeProperties, KnowledgeRelationType } from "./types.ts";
 import { normalizeKnowledgeTitle, parseWikilinks } from "./wikilinks.ts";
+import {
+  buildKnowledgeEmbeddingText,
+  type KnowledgeEmbeddingProvider,
+} from "./embeddings.ts";
+import {
+  createKnowledgeVectorStore,
+  type KnowledgeVectorStore,
+  type SimilarKnowledgeNode,
+} from "./vectorStore.ts";
 
 export type JoinableKnowledgeEntityType = Exclude<KnowledgeEntityType, "concept">;
 
@@ -43,7 +53,8 @@ export interface KnowledgeAiSuggestionTarget {
   node: KnowledgeNode;
   score: number;
   evidence: KnowledgeCandidateDetail["evidence"] & {
-    source: "ranked" | "exploration";
+    source: "ranked" | "vector" | "exploration";
+    semanticSimilarity?: number;
   };
 }
 
@@ -119,6 +130,9 @@ export interface KnowledgeService {
 
 export interface KnowledgeServiceOptions {
   now?: () => number;
+  embeddingProvider?: KnowledgeEmbeddingProvider;
+  vectorStore?: KnowledgeVectorStore;
+  logVectorWarning?: (message: string) => void;
 }
 
 function normalizeTags(tags: string[]): string[] {
@@ -159,6 +173,26 @@ function candidateFingerprintForPair(source: CandidateNode, target: CandidateNod
   };
 }
 
+function isCurrentDismissal(
+  source: KnowledgeNode,
+  target: KnowledgeNode,
+  feedback: KnowledgeSuggestionFeedback[],
+): boolean {
+  const pair = canonicalNodePair(source.id, target.id);
+  const lowerFingerprint = pair.lowerNodeId === source.id
+    ? source.contentFingerprint
+    : target.contentFingerprint;
+  const higherFingerprint = pair.higherNodeId === source.id
+    ? source.contentFingerprint
+    : target.contentFingerprint;
+  return feedback.some((entry) =>
+    entry.action === "dismissed"
+    && entry.lowerNodeId === pair.lowerNodeId
+    && entry.higherNodeId === pair.higherNodeId
+    && entry.lowerFingerprint === lowerFingerprint
+    && entry.higherFingerprint === higherFingerprint);
+}
+
 function linkToGraphEdge(link: KnowledgeLink): KnowledgeGraphEdge {
   return {
     id: link.id,
@@ -172,6 +206,9 @@ function linkToGraphEdge(link: KnowledgeLink): KnowledgeGraphEdge {
 
 const GRAPH_MAX_NODES = 50;
 const GRAPH_MAX_EDGES = 100;
+const VECTOR_REFRESH_LIMIT = 500;
+const VECTOR_BATCH_SIZE = 64;
+const VECTOR_CANDIDATE_LIMIT = 12;
 
 async function loadCardProjection(
   client: KnowledgeQueryable,
@@ -316,6 +353,9 @@ export function createKnowledgeService(
 ): KnowledgeService {
   const repository = createKnowledgeRepository(client);
   const currentTime = options.now ?? Date.now;
+  const embeddingProvider = options.embeddingProvider;
+  const vectorStore = options.vectorStore ?? (embeddingProvider ? createKnowledgeVectorStore(client) : null);
+  const logVectorWarning = options.logVectorWarning ?? ((message: string) => console.warn(message));
 
   async function isAutoAddEnabled(userId: string): Promise<boolean> {
     const result = await client.query<{ value: string | null }>(
@@ -471,6 +511,52 @@ export function createKnowledgeService(
         candidateNode: candidate.node,
       }];
     });
+  }
+
+  async function findVectorCandidates(
+    userId: string,
+    source: KnowledgeNode,
+  ): Promise<SimilarKnowledgeNode[]> {
+    if (!embeddingProvider || !vectorStore) return [];
+    const staleNodes = await vectorStore.listNodesNeedingEmbedding(
+      userId,
+      source.id,
+      embeddingProvider.model,
+      embeddingProvider.dimensions,
+      VECTOR_REFRESH_LIMIT,
+    );
+    for (let offset = 0; offset < staleNodes.length; offset += VECTOR_BATCH_SIZE) {
+      const batch = staleNodes.slice(offset, offset + VECTOR_BATCH_SIZE);
+      const embeddings = await embeddingProvider.embed(batch.map(buildKnowledgeEmbeddingText));
+      if (embeddings.length !== batch.length) throw new Error("Embedding batch count mismatch.");
+      for (let index = 0; index < batch.length; index += 1) {
+        const node = batch[index]!;
+        const embedding = embeddings[index]!;
+        if (embedding.length !== embeddingProvider.dimensions) {
+          throw new Error("Embedding batch dimension mismatch.");
+        }
+        await vectorStore.upsertEmbedding({
+          userId,
+          node,
+          model: embeddingProvider.model,
+          dimensions: embeddingProvider.dimensions,
+          embedding,
+          now: currentTime(),
+        });
+      }
+    }
+    const [similar, feedback] = await Promise.all([
+      vectorStore.listSimilarNodes(
+        userId,
+        source.id,
+        embeddingProvider.model,
+        embeddingProvider.dimensions,
+        VECTOR_CANDIDATE_LIMIT,
+      ),
+      repository.listFeedbackForNode(userId, source.id),
+    ]);
+    return similar.filter((candidate) =>
+      candidate.similarity > 0 && !isCurrentDismissal(source, candidate.node, feedback));
   }
 
   return {
@@ -735,11 +821,46 @@ export function createKnowledgeService(
       const source = await getNode(userId, nodeId);
       if (!source) return null;
       const ranked = await findCandidateDetails(userId, nodeId, targetLimit);
-      const targets: KnowledgeAiSuggestionTarget[] = (ranked ?? []).slice(0, targetLimit).map((candidate) => ({
-        node: candidate.node,
-        score: candidate.score,
-        evidence: { ...candidate.evidence, source: "ranked" },
-      }));
+      let vectorCandidates: SimilarKnowledgeNode[] = [];
+      try {
+        vectorCandidates = await findVectorCandidates(userId, source.node);
+      } catch {
+        logVectorWarning("Knowledge vector recall unavailable; using deterministic candidate fallback.");
+      }
+      const semanticById = new Map(vectorCandidates.map((candidate) => [candidate.node.id, candidate.similarity]));
+      const combined = new Map<string, KnowledgeAiSuggestionTarget>();
+      for (const candidate of ranked ?? []) {
+        const semanticSimilarity = semanticById.get(candidate.node.id);
+        combined.set(candidate.node.id, {
+          node: candidate.node,
+          score: Math.max(candidate.score, (semanticSimilarity ?? 0) * 0.85),
+          evidence: {
+            ...candidate.evidence,
+            source: "ranked",
+            ...(semanticSimilarity === undefined ? {} : { semanticSimilarity }),
+          },
+        });
+      }
+      for (const candidate of vectorCandidates) {
+        if (candidate.similarity < 0.35 || combined.has(candidate.node.id)) continue;
+        combined.set(candidate.node.id, {
+          node: candidate.node,
+          score: candidate.similarity * 0.85,
+          evidence: {
+            sharedTags: source.node.tags.filter((tag) => candidate.node.tags.includes(tag)),
+            sameBook: false,
+            sharedPropertyRatio: 0,
+            creationProximity: 0,
+            feedbackBoost: 0,
+            feedbackPenalty: 0,
+            semanticSimilarity: candidate.similarity,
+            source: "vector",
+          },
+        });
+      }
+      const targets = [...combined.values()]
+        .sort((first, second) => second.score - first.score || first.node.id.localeCompare(second.node.id))
+        .slice(0, targetLimit);
       const seen = new Set([nodeId, ...targets.map((target) => target.node.id)]);
       const linkedNodeIds = await repository.listLinkedNodeIds(userId, nodeId);
       for (const linkedNodeId of linkedNodeIds) seen.add(linkedNodeId);

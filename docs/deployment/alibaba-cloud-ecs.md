@@ -19,6 +19,21 @@ sudo postgresql-setup --initdb
 sudo systemctl enable --now postgresql
 ```
 
+Install pgvector from the PostgreSQL Yum repository when its PostgreSQL 13
+package is available, or build the pinned release against the host PostgreSQL:
+
+```bash
+sudo dnf install -y postgresql-devel postgresql-server-devel system-rpm-config gcc make git
+git clone --depth 1 --branch v0.8.5 https://github.com/pgvector/pgvector.git /tmp/pgvector
+make -C /tmp/pgvector
+sudo make -C /tmp/pgvector install
+rm -rf /tmp/pgvector
+```
+
+The knowledge migration enables the extension per database with
+`CREATE EXTENSION IF NOT EXISTS vector`. The first lightweight deployment uses
+exact cosine search and intentionally does not create HNSW or IVFFlat indexes.
+
 Create the app database and user:
 
 ```bash
@@ -56,6 +71,11 @@ THIRD_PARTY_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 THIRD_PARTY_API_KEY=<third-party-api-key>
 THIRD_PARTY_MODEL=doubao-seed-2.0-code
 THIRD_PARTY_THINKING=false
+KNOWLEDGE_VECTOR_ENABLED=true
+KNOWLEDGE_EMBEDDING_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+KNOWLEDGE_EMBEDDING_API_KEY=<embedding-api-key>
+KNOWLEDGE_EMBEDDING_MODEL=<enabled-embedding-model-or-endpoint>
+KNOWLEDGE_EMBEDDING_DIMENSIONS=1024
 IMAGE_STORAGE_PROVIDER=oss
 VIDEO_STORAGE_PROVIDER=oss
 IMAGE_ASSET_STORAGE_PROVIDER=oss

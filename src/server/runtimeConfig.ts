@@ -16,6 +16,13 @@ export interface RuntimeConfig {
   authCookieSecure: boolean;
   knowledgeBaseEnabled: boolean;
   knowledgeAiRelationsEnabled: boolean;
+  knowledgeVector: {
+    enabled: boolean;
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    dimensions: number;
+  };
   primaryImageStorageProvider: PrimaryImageStorageProvider;
   videoStorageProvider: AssetStorageProvider;
   imageAssetStorageProvider: AssetStorageProvider;
@@ -126,6 +133,8 @@ export function getRuntimeConfig(): RuntimeConfig {
   const primaryImageStorageProvider = parsePrimaryImageStorageProvider(readEnv("IMAGE_STORAGE_PROVIDER"));
   const videoStorageProvider = parseAssetStorageProvider(readEnv("VIDEO_STORAGE_PROVIDER"));
   const imageAssetStorageProvider = parseAssetStorageProvider(readEnv("IMAGE_ASSET_STORAGE_PROVIDER"));
+  const thirdPartyBaseUrl = readEnv("THIRD_PARTY_BASE_URL") || readEnv("OPENAI_COMPATIBLE_BASE_URL");
+  const thirdPartyApiKey = readEnv("THIRD_PARTY_API_KEY") || readEnv("OPENAI_API_KEY");
 
   return {
     appEnv,
@@ -137,6 +146,13 @@ export function getRuntimeConfig(): RuntimeConfig {
     authCookieSecure: readBoolean("AUTH_COOKIE_SECURE", appEnv === "production"),
     knowledgeBaseEnabled: readStrictBoolean("KNOWLEDGE_BASE_ENABLED", false),
     knowledgeAiRelationsEnabled: readStrictBoolean("KNOWLEDGE_AI_RELATIONS_ENABLED", false),
+    knowledgeVector: {
+      enabled: readStrictBoolean("KNOWLEDGE_VECTOR_ENABLED", false),
+      baseUrl: readEnv("KNOWLEDGE_EMBEDDING_BASE_URL") || thirdPartyBaseUrl,
+      apiKey: readEnv("KNOWLEDGE_EMBEDDING_API_KEY") || thirdPartyApiKey,
+      model: readEnv("KNOWLEDGE_EMBEDDING_MODEL"),
+      dimensions: readPositiveInteger("KNOWLEDGE_EMBEDDING_DIMENSIONS", 1024),
+    },
     primaryImageStorageProvider,
     videoStorageProvider,
     imageAssetStorageProvider,
@@ -173,8 +189,8 @@ export function getRuntimeConfig(): RuntimeConfig {
       maxAnalysisBytes: readPositiveInteger("UPLOAD_MAX_ANALYSIS_BYTES", 5_242_880),
     },
     thirdPartyAi: {
-      baseUrl: readEnv("THIRD_PARTY_BASE_URL") || readEnv("OPENAI_COMPATIBLE_BASE_URL"),
-      apiKey: readEnv("THIRD_PARTY_API_KEY") || readEnv("OPENAI_API_KEY"),
+      baseUrl: thirdPartyBaseUrl,
+      apiKey: thirdPartyApiKey,
       model: readEnv("THIRD_PARTY_MODEL") || "doubao-seed-2.0-code",
     },
   };
@@ -185,11 +201,18 @@ export function validateRuntimeConfig(config = getRuntimeConfig()): string[] {
   const mediaDeliveryMode = readEnv("MEDIA_DELIVERY_MODE");
   const directUploadMode = readEnv("WEB_DIRECT_OSS_UPLOAD_MODE");
 
-  for (const name of ["KNOWLEDGE_BASE_ENABLED", "KNOWLEDGE_AI_RELATIONS_ENABLED"]) {
+  for (const name of ["KNOWLEDGE_BASE_ENABLED", "KNOWLEDGE_AI_RELATIONS_ENABLED", "KNOWLEDGE_VECTOR_ENABLED"]) {
     const value = readEnv(name);
     if (value && value !== "true" && value !== "false") {
       errors.push(`${name} must be true or false.`);
     }
+  }
+
+  if (config.knowledgeVector.enabled) {
+    if (!config.knowledgeVector.baseUrl) errors.push("KNOWLEDGE_EMBEDDING_BASE_URL is required when KNOWLEDGE_VECTOR_ENABLED=true.");
+    if (!config.knowledgeVector.apiKey) errors.push("KNOWLEDGE_EMBEDDING_API_KEY is required when KNOWLEDGE_VECTOR_ENABLED=true.");
+    if (!config.knowledgeVector.model) errors.push("KNOWLEDGE_EMBEDDING_MODEL is required when KNOWLEDGE_VECTOR_ENABLED=true.");
+    if (config.knowledgeVector.dimensions > 4096) errors.push("KNOWLEDGE_EMBEDDING_DIMENSIONS must not exceed 4096.");
   }
 
   if (directUploadMode && !["off", "admin", "all"].includes(directUploadMode)) {

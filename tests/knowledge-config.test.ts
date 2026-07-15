@@ -4,7 +4,15 @@ import { test } from "node:test";
 import { getRuntimeCapabilities } from "../src/server/runtimeCapabilities.ts";
 import { getRuntimeConfig, validateRuntimeConfig } from "../src/server/runtimeConfig.ts";
 
-const KNOWLEDGE_ENV = ["KNOWLEDGE_BASE_ENABLED", "KNOWLEDGE_AI_RELATIONS_ENABLED"] as const;
+const KNOWLEDGE_ENV = [
+  "KNOWLEDGE_BASE_ENABLED",
+  "KNOWLEDGE_AI_RELATIONS_ENABLED",
+  "KNOWLEDGE_VECTOR_ENABLED",
+  "KNOWLEDGE_EMBEDDING_BASE_URL",
+  "KNOWLEDGE_EMBEDDING_API_KEY",
+  "KNOWLEDGE_EMBEDDING_MODEL",
+  "KNOWLEDGE_EMBEDDING_DIMENSIONS",
+] as const;
 
 function withKnowledgeEnv(
   values: Partial<Record<(typeof KNOWLEDGE_ENV)[number], string>>,
@@ -33,6 +41,33 @@ test("keeps the no-AI knowledge core disabled by default", () => {
     const config = getRuntimeConfig();
     assert.equal(config.knowledgeBaseEnabled, false);
     assert.equal(config.knowledgeAiRelationsEnabled, false);
+    assert.equal(config.knowledgeVector.enabled, false);
+  });
+});
+
+test("requires an explicit embedding model when vector recall is enabled", () => {
+  withKnowledgeEnv({ KNOWLEDGE_VECTOR_ENABLED: "true" }, () => {
+    const config = getRuntimeConfig();
+    const errors = validateRuntimeConfig(config).filter((error) => error.startsWith("KNOWLEDGE_"));
+    assert.equal(errors.includes("KNOWLEDGE_EMBEDDING_MODEL is required when KNOWLEDGE_VECTOR_ENABLED=true."), true);
+  });
+
+  withKnowledgeEnv({
+    KNOWLEDGE_VECTOR_ENABLED: "true",
+    KNOWLEDGE_EMBEDDING_BASE_URL: "https://example.test/v1",
+    KNOWLEDGE_EMBEDDING_API_KEY: "secret",
+    KNOWLEDGE_EMBEDDING_MODEL: "embedding-model",
+    KNOWLEDGE_EMBEDDING_DIMENSIONS: "768",
+  }, () => {
+    const config = getRuntimeConfig();
+    assert.deepEqual(config.knowledgeVector, {
+      enabled: true,
+      baseUrl: "https://example.test/v1",
+      apiKey: "secret",
+      model: "embedding-model",
+      dimensions: 768,
+    });
+    assert.deepEqual(validateRuntimeConfig(config).filter((error) => error.startsWith("KNOWLEDGE_")), []);
   });
 });
 
