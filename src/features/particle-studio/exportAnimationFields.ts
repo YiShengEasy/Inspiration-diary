@@ -2,6 +2,9 @@ import type { DissolutionParams } from "./dissolution/types";
 import type { ExportAnimationField } from "./exportAnimation";
 import type { ParticleParams } from "./types";
 
+export const DEPTH_ANIMATION_STORAGE_KEY = "particle-studio.depth-animation.v1";
+export const DISSOLUTION_ANIMATION_STORAGE_KEY = "particle-studio.dissolution-animation.v1";
+
 export type DepthExportAnimationKey = Exclude<keyof ParticleParams,
   "effectMode" | "dissolveDirection" | "backgroundColor" | "autoRotate"
   | "brightnessThreshold" | "contrast" | "edgeStrength" | "alphaThreshold"

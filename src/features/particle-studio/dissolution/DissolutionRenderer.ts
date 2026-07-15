@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   exportCanvasToMp4,
+  MP4_EXPORT_SECONDS,
   MP4_EXPORT_HEIGHT,
   MP4_EXPORT_WIDTH,
 } from "../particleVideoExporter";
@@ -11,7 +12,12 @@ import {
   dissolutionPlaneVertexShader,
 } from "./shaders";
 import type { DissolutionParams } from "./types";
-import { exportAnimationProgress, interpolateExportParams, type ExportAnimationTrack } from "../exportAnimation";
+import {
+  exportAnimationProgress,
+  interpolateExportParams,
+  type ExportAnimationTrack,
+  type PreviewPlaybackState,
+} from "../exportAnimation";
 import type { DissolutionExportAnimationKey } from "../exportAnimationFields";
 
 type ImageCache = {
@@ -22,14 +28,12 @@ type ImageCache = {
 };
 
 type DissolutionRendererOptions = {
-  onInvasionChange?: (value: number) => void;
   onParticleCountChange?: (count: number) => void;
+  onPreviewStateChange?: (state: PreviewPlaybackState) => void;
 };
 
 const FOV = 45;
 const BASE_CAMERA_Z = 1 / Math.tan((FOV / 2) * Math.PI / 180);
-const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
-
 const seededRandom = (index: number): number => {
   const value = Math.sin(index * 12.9898 + 78.233) * 43758.5453;
   return value - Math.floor(value);
@@ -66,10 +70,6 @@ export class DissolutionRenderer {
   private lastFrame = performance.now();
   private paused = false;
   private disposed = false;
-  private autoPlay = false;
-  private autoValue = 0.7;
-  private autoDirection = 1;
-  private progressNotifyAt = 0;
   private dragActive = false;
   private dragX = 0;
   private dragY = 0;
@@ -77,6 +77,13 @@ export class DissolutionRenderer {
   private rotationY = 0;
   private velocityX = 0;
   private velocityY = 0;
+  private preview: {
+    base: DissolutionParams;
+    tracks: ExportAnimationTrack<DissolutionExportAnimationKey>[];
+    state: Exclude<PreviewPlaybackState, "idle">;
+    elapsed: number;
+    startedAt: number;
+  } | null = null;
 
   constructor(container: HTMLElement, params: DissolutionParams, options: DissolutionRendererOptions = {}) {
     this.container = container;
@@ -124,22 +131,49 @@ export class DissolutionRenderer {
   }
 
   setParams(params: DissolutionParams): void {
+    if (this.preview) {
+      this.preview = null;
+      this.options.onPreviewStateChange?.("idle");
+    }
     const rebuild = params.sampleStep !== this.params.sampleStep;
     this.params = params;
     this.applyParams(params, rebuild);
   }
 
-  setAutoPlay(enabled: boolean): void {
-    this.autoPlay = enabled;
-    this.autoValue = this.uniforms.uInvasion.value;
+  startPreview(tracks: ExportAnimationTrack<DissolutionExportAnimationKey>[]): void {
+    if (this.preview) this.resetPreview();
+    this.preview = {
+      base: { ...this.params },
+      tracks,
+      state: "playing",
+      elapsed: 0,
+      startedAt: performance.now(),
+    };
+    this.options.onPreviewStateChange?.("playing");
   }
 
-  resetProgress(): void {
-    this.autoPlay = false;
-    this.autoValue = 0;
-    this.autoDirection = 1;
-    this.uniforms.uInvasion.value = 0;
-    this.options.onInvasionChange?.(0);
+  pausePreview(): void {
+    if (!this.preview || this.preview.state !== "playing") return;
+    this.preview.elapsed = Math.min(
+      MP4_EXPORT_SECONDS,
+      this.preview.elapsed + (performance.now() - this.preview.startedAt) / 1000,
+    );
+    this.preview.state = "paused";
+    this.options.onPreviewStateChange?.("paused");
+  }
+
+  resumePreview(): void {
+    if (!this.preview || this.preview.state !== "paused") return;
+    this.preview.startedAt = performance.now();
+    this.preview.state = "playing";
+    this.options.onPreviewStateChange?.("playing");
+  }
+
+  resetPreview(): void {
+    if (!this.preview) return;
+    this.preview = null;
+    this.applyParams(this.params, false);
+    this.options.onPreviewStateChange?.("idle");
   }
 
   resetRotation(): void {
@@ -185,10 +219,8 @@ export class DissolutionRenderer {
     const oldRatio = this.renderer.getPixelRatio();
     const oldTime = this.uniforms.uTime.value;
     const oldInvasion = this.uniforms.uInvasion.value;
-    const animateInvasion = this.autoPlay;
     const originalParams = { ...this.params };
     const animationTracks = options.animationTracks ?? [];
-    const animatesInvasion = animationTracks.some((track) => track.key === "invasion");
     if (!wasPaused) this.pause();
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(MP4_EXPORT_WIDTH, MP4_EXPORT_HEIGHT, false);
@@ -200,11 +232,8 @@ export class DissolutionRenderer {
         onProgress: options.onProgress,
         renderFrame: (timeSeconds) => {
           this.uniforms.uTime.value = timeSeconds;
-          const frameBase = animateInvasion && !animatesInvasion
-            ? { ...originalParams, invasion: clamp01(0.5 + Math.sin(timeSeconds / 5 * Math.PI * 2) * 0.5) }
-            : originalParams;
           this.applyParams(interpolateExportParams(
-            frameBase,
+            originalParams,
             animationTracks,
             exportAnimationProgress(timeSeconds),
           ), false);
@@ -362,16 +391,10 @@ export class DissolutionRenderer {
     const now = performance.now();
     const delta = Math.min(0.1, Math.max(0, (now - this.lastFrame) / 1000));
     this.lastFrame = now;
-    this.uniforms.uTime.value += delta;
-    if (this.autoPlay) {
-      this.autoValue += delta * 0.14 * this.autoDirection;
-      if (this.autoValue >= 1.12) { this.autoValue = 1.12; this.autoDirection = -1; }
-      if (this.autoValue <= -0.12) { this.autoValue = -0.12; this.autoDirection = 1; }
-      this.uniforms.uInvasion.value = clamp01(this.autoValue);
-      if (now >= this.progressNotifyAt) {
-        this.progressNotifyAt = now + 80;
-        this.options.onInvasionChange?.(this.uniforms.uInvasion.value);
-      }
+    if (this.preview) {
+      this.updatePreview(now);
+    } else {
+      this.uniforms.uTime.value += delta;
     }
     if (!this.dragActive) {
       this.velocityX *= 0.88;
@@ -383,6 +406,23 @@ export class DissolutionRenderer {
     this.group.rotation.y = this.rotationY;
     this.renderer.render(this.scene, this.camera);
   };
+
+  private updatePreview(now: number): void {
+    const preview = this.preview;
+    if (!preview || preview.state !== "playing") return;
+    const elapsed = Math.min(MP4_EXPORT_SECONDS, preview.elapsed + (now - preview.startedAt) / 1000);
+    this.uniforms.uTime.value = elapsed;
+    this.applyParams(interpolateExportParams(
+      preview.base,
+      preview.tracks,
+      elapsed / MP4_EXPORT_SECONDS,
+    ), false);
+    if (elapsed >= MP4_EXPORT_SECONDS) {
+      preview.elapsed = MP4_EXPORT_SECONDS;
+      preview.state = "ended";
+      this.options.onPreviewStateChange?.("ended");
+    }
+  }
 
   private onPointerDown = (event: PointerEvent): void => {
     this.dragActive = true;

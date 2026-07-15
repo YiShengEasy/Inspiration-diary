@@ -19,7 +19,9 @@ import {
 import { DISSOLUTION_PRESETS } from "../src/features/particle-studio/dissolution/presets";
 import {
   clampExportValue,
+  buildExportAnimationTracks,
   interpolateExportParams,
+  sanitizeExportAnimationValues,
   smoothExportProgress,
 } from "../src/features/particle-studio/exportAnimation";
 
@@ -41,6 +43,18 @@ test("clamps export targets and easing progress", () => {
   assert.equal(clampExportValue(12, 0, 10), 10);
   assert.equal(smoothExportProgress(-1), 0);
   assert.equal(smoothExportProgress(2), 1);
+});
+
+test("sanitizes saved animation values and builds tracks from current values", () => {
+  const fields = [{ key: "invasion" as const, label: "侵蚀", min: 0, max: 1, step: 0.1 }];
+  const config = sanitizeExportAnimationValues(fields, [
+    { key: "unknown", to: 2 },
+    { key: "invasion", to: 4 },
+  ]);
+  assert.deepEqual(config, [{ key: "invasion", to: 1 }]);
+  assert.deepEqual(buildExportAnimationTracks({ invasion: 0.25 }, config), [
+    { key: "invasion", from: 0.25, to: 1 },
+  ]);
 });
 
 test("ships only the six approved particle presets", () => {

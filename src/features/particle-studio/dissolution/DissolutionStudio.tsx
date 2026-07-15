@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Download,
@@ -8,13 +8,22 @@ import {
   Pause,
   Play,
   RotateCcw,
+  SlidersHorizontal,
   Sparkles,
   X,
 } from "lucide-react";
 import { particleVideoFilename } from "../particleVideoExporter";
 import { ParticleExportAnimationDialog } from "../ParticleExportAnimationDialog";
-import type { ExportAnimationTrack } from "../exportAnimation";
 import {
+  buildExportAnimationTracks,
+  loadExportAnimationValues,
+  saveExportAnimationValues,
+  sanitizeExportAnimationValues,
+  type PreviewPlaybackState,
+  type SavedExportAnimationValue,
+} from "../exportAnimation";
+import {
+  DISSOLUTION_ANIMATION_STORAGE_KEY,
   DISSOLUTION_EXPORT_ANIMATION_FIELDS,
   type DissolutionExportAnimationKey,
 } from "../exportAnimationFields";
@@ -79,12 +88,14 @@ export default function DissolutionStudio({
   const [activePreset, setActivePreset] = useState<DissolutionPresetId | null>("dust");
   const [rendererReady, setRendererReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [autoPlay, setAutoPlay] = useState(false);
+  const [previewState, setPreviewState] = useState<PreviewPlaybackState>("idle");
   const [particleCount, setParticleCount] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [exporting, setExporting] = useState<"png" | "mp4" | null>(null);
   const [showExportAnimation, setShowExportAnimation] = useState(false);
+  const [animationConfig, setAnimationConfig] = useState<SavedExportAnimationValue<DissolutionExportAnimationKey>[]>(() =>
+    loadExportAnimationValues(DISSOLUTION_ANIMATION_STORAGE_KEY, DISSOLUTION_EXPORT_ANIMATION_FIELDS));
   const [exportProgress, setExportProgress] = useState({ completed: 0, total: 150 });
 
   useEffect(() => onExportingChange(Boolean(exporting) || showExportAnimation), [exporting, onExportingChange, showExportAnimation]);
@@ -93,8 +104,8 @@ export default function DissolutionStudio({
     const container = containerRef.current;
     if (!container) return;
     const renderer = new DissolutionRenderer(container, params, {
-      onInvasionChange: (value) => setParams((current) => ({ ...current, invasion: value })),
       onParticleCountChange: setParticleCount,
+      onPreviewStateChange: setPreviewState,
     });
     rendererRef.current = renderer;
     setRendererReady(true);
@@ -118,6 +129,7 @@ export default function DissolutionStudio({
     const renderer = rendererRef.current;
     if (!renderer || !rendererReady || !file || loadedFileRef.current === file) return;
     loadedFileRef.current = file;
+    renderer.resetPreview();
     setLoading(true);
     setNotice(null);
     void renderer.setFile(file)
@@ -131,8 +143,7 @@ export default function DissolutionStudio({
   const applyPreset = (id: DissolutionPresetId): void => {
     const next = normalizeDissolutionParams({ ...DISSOLUTION_PRESETS[id] });
     setActivePreset(id);
-    setAutoPlay(false);
-    rendererRef.current?.setAutoPlay(false);
+    rendererRef.current?.resetPreview();
     setParams(next);
   };
 
@@ -141,15 +152,16 @@ export default function DissolutionStudio({
     setParams((current) => normalizeDissolutionParams({ ...current, [key]: value }));
   };
 
-  const toggleAutoPlay = (): void => {
-    const next = !autoPlay;
-    setAutoPlay(next);
-    rendererRef.current?.setAutoPlay(next);
+  const togglePreview = (): void => {
+    const renderer = rendererRef.current;
+    if (!renderer || !file) return;
+    if (previewState === "playing") renderer.pausePreview();
+    else if (previewState === "paused") renderer.resumePreview();
+    else renderer.startPreview(animationTracks);
   };
 
   const resetProgress = (): void => {
-    setAutoPlay(false);
-    rendererRef.current?.resetProgress();
+    rendererRef.current?.resetPreview();
   };
 
   const exportPng = async (): Promise<void> => {
@@ -167,8 +179,9 @@ export default function DissolutionStudio({
     }
   };
 
-  const exportMp4 = async (animationTracks: ExportAnimationTrack<DissolutionExportAnimationKey>[]): Promise<void> => {
+  const exportMp4 = async (): Promise<void> => {
     if (!rendererRef.current || !file) return;
+    rendererRef.current.resetPreview();
     const controller = new AbortController();
     exportAbortRef.current = controller;
     setExporting("mp4");
@@ -193,9 +206,20 @@ export default function DissolutionStudio({
 
   const fire = params.effect === 1;
   const visibleSliders = sliders.filter((slider) => !fire || !slider.particleOnly);
-  const exportAnimationValues = Object.fromEntries(
+  const exportAnimationValues = useMemo(() => Object.fromEntries(
     DISSOLUTION_EXPORT_ANIMATION_FIELDS.map((field) => [field.key, params[field.key]]),
-  ) as Record<DissolutionExportAnimationKey, number>;
+  ) as Record<DissolutionExportAnimationKey, number>, [params]);
+  const animationTracks = useMemo(() => buildExportAnimationTracks(
+    exportAnimationValues,
+    animationConfig,
+  ), [animationConfig, exportAnimationValues]);
+  const saveAnimationConfig = (next: SavedExportAnimationValue<DissolutionExportAnimationKey>[]): void => {
+    const safe = sanitizeExportAnimationValues(DISSOLUTION_EXPORT_ANIMATION_FIELDS, next);
+    rendererRef.current?.resetPreview();
+    setAnimationConfig(safe);
+    saveExportAnimationValues(DISSOLUTION_ANIMATION_STORAGE_KEY, safe);
+    setShowExportAnimation(false);
+  };
 
   return <main className="dissolution-studio">
     <div ref={containerRef} className="dissolution-studio__viewport" aria-label="粒子溶解画布" />
@@ -220,16 +244,20 @@ export default function DissolutionStudio({
           }
           event.target.value = "";
         }} />
-      <button type="button" disabled={!file || Boolean(exporting)} onClick={toggleAutoPlay}>
-        {autoPlay ? <Pause size={15} /> : <Play size={15} />}{autoPlay ? "暂停" : "自动播放"}
+      <button type="button" disabled={!file || Boolean(exporting)} onClick={() => setShowExportAnimation(true)}>
+        <SlidersHorizontal size={16} />动画设置
       </button>
-      <button type="button" disabled={!file || Boolean(exporting)} onClick={resetProgress}>从头开始</button>
+      <button type="button" disabled={!file || Boolean(exporting)} onClick={togglePreview}>
+        {previewState === "playing" ? <Pause size={15} /> : <Play size={15} />}
+        {previewState === "playing" ? "暂停" : previewState === "paused" ? "继续" : "播放"}
+      </button>
+      <button type="button" disabled={!file || Boolean(exporting) || previewState === "idle"} onClick={resetProgress}>从头开始</button>
       <button type="button" disabled={!file || Boolean(exporting)} title="复位视角"
         onClick={() => rendererRef.current?.resetRotation()}><RotateCcw size={16} /></button>
       <button type="button" disabled={!file || Boolean(exporting) || loading} onClick={() => void exportPng()}>
         <Download size={16} />{exporting === "png" ? "导出中" : "PNG"}
       </button>
-      <button type="button" disabled={!file || Boolean(exporting) || loading} onClick={() => setShowExportAnimation(true)}>
+      <button type="button" disabled={!file || Boolean(exporting) || loading} onClick={() => void exportMp4()}>
         <Film size={16} />MP4
       </button>
     </div>
@@ -277,8 +305,9 @@ export default function DissolutionStudio({
     {showExportAnimation && <ParticleExportAnimationDialog
       fields={DISSOLUTION_EXPORT_ANIMATION_FIELDS}
       values={exportAnimationValues}
+      config={animationConfig}
       onCancel={() => setShowExportAnimation(false)}
-      onConfirm={(tracks) => { setShowExportAnimation(false); void exportMp4(tracks); }}
+      onConfirm={saveAnimationConfig}
     />}
   </main>;
 }

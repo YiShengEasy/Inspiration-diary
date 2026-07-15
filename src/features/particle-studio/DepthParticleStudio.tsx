@@ -1,13 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Download, Film, ImagePlus, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
+import {
+  ArrowLeft, Download, Film, ImagePlus, LoaderCircle, Pause, Play, RotateCcw,
+  SlidersHorizontal, Sparkles, X,
+} from "lucide-react";
 import { generateAiDepth } from "./aiDepth";
 import { decodeImageFile } from "./fastDepth";
 import { ParticleControls } from "./ParticleControls";
 import { ParticleExportAnimationDialog } from "./ParticleExportAnimationDialog";
 import { ParticleViewport } from "./ParticleViewport";
 import type { ParticleRenderer } from "./ParticleRenderer";
-import type { ExportAnimationTrack } from "./exportAnimation";
-import { DEPTH_EXPORT_ANIMATION_FIELDS, type DepthExportAnimationKey } from "./exportAnimationFields";
+import {
+  buildExportAnimationTracks,
+  loadExportAnimationValues,
+  saveExportAnimationValues,
+  sanitizeExportAnimationValues,
+  type PreviewPlaybackState,
+  type SavedExportAnimationValue,
+} from "./exportAnimation";
+import {
+  DEPTH_ANIMATION_STORAGE_KEY,
+  DEPTH_EXPORT_ANIMATION_FIELDS,
+  type DepthExportAnimationKey,
+} from "./exportAnimationFields";
 import { ParticleWorkerClient } from "./particleWorkerClient";
 import { particleVideoFilename } from "./particleVideoExporter";
 import { DEFAULT_PARTICLE_PARAMS, getQualityProfile, normalizeParams, PARTICLE_PRESETS } from "./presets";
@@ -53,6 +67,9 @@ export default function DepthParticleStudio({
   const [reduced, setReduced] = useState(false);
   const [exporting, setExporting] = useState<"png" | "mp4" | null>(null);
   const [showExportAnimation, setShowExportAnimation] = useState(false);
+  const [previewState, setPreviewState] = useState<PreviewPlaybackState>("idle");
+  const [animationConfig, setAnimationConfig] = useState<SavedExportAnimationValue<DepthExportAnimationKey>[]>(() =>
+    loadExportAnimationValues(DEPTH_ANIMATION_STORAGE_KEY, DEPTH_EXPORT_ANIMATION_FIELDS));
   const [exportProgress, setExportProgress] = useState({ completed: 0, total: 150 });
   const rendererRef = useRef<ParticleRenderer | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -69,6 +86,10 @@ export default function DepthParticleStudio({
   const exportAnimationValues = useMemo(() => Object.fromEntries(
     DEPTH_EXPORT_ANIMATION_FIELDS.map((field) => [field.key, params[field.key]]),
   ) as Record<DepthExportAnimationKey, number>, [params]);
+  const animationTracks = useMemo(() => buildExportAnimationTracks(
+    exportAnimationValues,
+    animationConfig,
+  ), [animationConfig, exportAnimationValues]);
   const handleRendererReady = useCallback((renderer: ParticleRenderer | null) => { rendererRef.current = renderer; }, []);
 
   useEffect(() => onExportingChange(Boolean(exporting) || showExportAnimation), [exporting, onExportingChange, showExportAnimation]);
@@ -130,7 +151,7 @@ export default function DepthParticleStudio({
 
   const loadFile = useCallback(async (nextFile: File) => {
     if (!nextFile.type.match(/^image\/(jpeg|png|webp)$/)) { setNotice("请选择 JPG、PNG 或 WebP 图片"); setStatus("error"); return; }
-    abortRef.current?.abort(); setStatus("decoding"); setNotice(null); setProgress(null); setAiDepth(null); setSource(null);
+    abortRef.current?.abort(); rendererRef.current?.resetPreview(); setStatus("decoding"); setNotice(null); setProgress(null); setAiDepth(null); setSource(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     loadedFileRef.current = nextFile;
     setPreviewUrl(URL.createObjectURL(nextFile));
@@ -178,8 +199,9 @@ export default function DepthParticleStudio({
     try { const blob = await rendererRef.current.exportPng(2); const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 13); downloadBlob(blob, `particle-3d-${stamp}.png`); }
     catch (error) { setNotice(error instanceof Error ? error.message : "导出失败"); } finally { setExporting(null); }
   };
-  const exportMp4 = async (animationTracks: ExportAnimationTrack<DepthExportAnimationKey>[]) => {
+  const exportMp4 = async () => {
     if (!rendererRef.current || !source) return;
+    rendererRef.current.resetPreview();
     const controller = new AbortController();
     exportAbortRef.current = controller;
     setExporting("mp4"); setExportProgress({ completed: 0, total: 150 }); setNotice(null);
@@ -199,9 +221,24 @@ export default function DepthParticleStudio({
       setExporting(null);
     }
   };
+  const togglePreview = () => {
+    const renderer = rendererRef.current;
+    if (!renderer || !source) return;
+    if (previewState === "playing") renderer.pausePreview();
+    else if (previewState === "paused") renderer.resumePreview();
+    else renderer.startPreview(animationTracks);
+  };
+  const saveAnimationConfig = (next: SavedExportAnimationValue<DepthExportAnimationKey>[]) => {
+    const safe = sanitizeExportAnimationValues(DEPTH_EXPORT_ANIMATION_FIELDS, next);
+    rendererRef.current?.resetPreview();
+    setAnimationConfig(safe);
+    saveExportAnimationValues(DEPTH_ANIMATION_STORAGE_KEY, safe);
+    setShowExportAnimation(false);
+  };
 
   return <main className="particle-studio">
-    <ParticleViewport source={source} params={params} profile={profile} onRendererReady={handleRendererReady} onPerformanceMode={setReduced} className="particle-studio__viewport" />
+    <ParticleViewport source={source} params={params} profile={profile} onRendererReady={handleRendererReady}
+      onPerformanceMode={setReduced} onPreviewStateChange={setPreviewState} className="particle-studio__viewport" />
     {!source && <div className="particle-studio__empty">{previewUrl && <img src={previewUrl} alt="待处理图片预览" />}<Sparkles size={34} /><h1>深度辉光粒子画廊</h1><p>上传一张图片，生成可拖拽旋转的立体粒子点云。</p><button type="button" onClick={() => fileInputRef.current?.click()}><ImagePlus size={17} />选择图片</button></div>}
     <div className="particle-studio__toolbar">
       <button type="button" onClick={onBack} title="返回"><ArrowLeft size={17} /></button>
@@ -209,8 +246,13 @@ export default function DepthParticleStudio({
       <input ref={fileInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const next = event.target.files?.[0]; if (next) void loadFile(next); event.target.value = ""; }} />
       <div className="particle-studio__modes" aria-label="深度模式"><button disabled={!!exporting} className={mode === "fast" ? "is-active" : ""} onClick={() => switchMode("fast")}>快速</button><button disabled={!!exporting} className={mode === "ai" ? "is-active" : ""} onClick={() => switchMode("ai")}>AI 精细</button></div>
       <button type="button" disabled={!source || !!exporting} onClick={() => rendererRef.current?.resetCamera()} title="复位视角"><RotateCcw size={16} /></button>
+      <button type="button" disabled={!source || !!exporting} onClick={() => setShowExportAnimation(true)}><SlidersHorizontal size={16} />动画设置</button>
+      <button type="button" disabled={!source || !!exporting} onClick={togglePreview}>
+        {previewState === "playing" ? <Pause size={15} /> : <Play size={15} />}{previewState === "playing" ? "暂停" : previewState === "paused" ? "继续" : "播放"}
+      </button>
+      <button type="button" disabled={!source || !!exporting || previewState === "idle"} onClick={() => rendererRef.current?.resetPreview()}>从头开始</button>
       <button type="button" disabled={!source || !!exporting || rebuilding} onClick={() => void exportPng()}><Download size={16} />{exporting === "png" ? "导出中" : "PNG"}</button>
-      <button type="button" disabled={!source || !!exporting || rebuilding} onClick={() => setShowExportAnimation(true)}><Film size={16} />MP4</button>
+      <button type="button" disabled={!source || !!exporting || rebuilding} onClick={() => void exportMp4()}><Film size={16} />MP4</button>
     </div>
     <div className="particle-studio__presets">{(Object.keys(presetNames) as PresetId[]).map((id) => <button key={id} type="button" disabled={!!exporting} className={activePreset === id ? "is-active" : ""} aria-pressed={activePreset === id} onClick={() => applyPreset(id)}>{presetNames[id]}</button>)}</div>
     {source && <div className="particle-studio__hint">拖拽旋转 · 滚轮缩放 · 双击复位</div>}
@@ -222,8 +264,9 @@ export default function DepthParticleStudio({
     {showExportAnimation && <ParticleExportAnimationDialog
       fields={DEPTH_EXPORT_ANIMATION_FIELDS}
       values={exportAnimationValues}
+      config={animationConfig}
       onCancel={() => setShowExportAnimation(false)}
-      onConfirm={(tracks) => { setShowExportAnimation(false); void exportMp4(tracks); }}
+      onConfirm={saveAnimationConfig}
     />}
     <ParticleControls params={params} collapsed={collapsed} supportsTransparency={supportsTransparency} disabled={!!exporting} onChange={applyParams} onReset={() => applyParams({ ...DEFAULT_PARTICLE_PARAMS })} onToggleCollapsed={() => setCollapsed((value) => !value)} />
   </main>;

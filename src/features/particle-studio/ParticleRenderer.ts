@@ -12,11 +12,17 @@ import {
 } from "./shaders";
 import {
   exportCanvasToMp4,
+  MP4_EXPORT_SECONDS,
   MP4_EXPORT_HEIGHT,
   MP4_EXPORT_WIDTH,
 } from "./particleVideoExporter";
 import { dissolveDirectionToUniform, effectModeToUniform } from "./effectModes";
-import { exportAnimationProgress, interpolateExportParams, type ExportAnimationTrack } from "./exportAnimation";
+import {
+  exportAnimationProgress,
+  interpolateExportParams,
+  type ExportAnimationTrack,
+  type PreviewPlaybackState,
+} from "./exportAnimation";
 import type { DepthExportAnimationKey } from "./exportAnimationFields";
 
 const EXPORT_SCALE_LIMIT = 3;
@@ -215,6 +221,7 @@ export class ParticleRenderer {
   private readonly container: HTMLElement;
   private readonly profile: QualityProfile;
   private readonly onPerformanceMode?: (reduced: boolean) => void;
+  private readonly onPreviewStateChange?: (state: PreviewPlaybackState) => void;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly camera: THREE.PerspectiveCamera;
   private readonly scene = new THREE.Scene();
@@ -236,11 +243,28 @@ export class ParticleRenderer {
   private slowFrames = 0;
   private reduced = false;
   private resizeObserver: ResizeObserver;
+  private preview: {
+    base: ParticleParams;
+    tracks: ExportAnimationTrack<DepthExportAnimationKey>[];
+    state: Exclude<PreviewPlaybackState, "idle">;
+    elapsed: number;
+    startedAt: number;
+    cameraPosition: THREE.Vector3;
+    cameraQuaternion: THREE.Quaternion;
+    cameraTarget: THREE.Vector3;
+    animatesCameraDistance: boolean;
+  } | null = null;
 
-  constructor(container: HTMLElement, profile: QualityProfile, onPerformanceMode?: (reduced: boolean) => void) {
+  constructor(
+    container: HTMLElement,
+    profile: QualityProfile,
+    onPerformanceMode?: (reduced: boolean) => void,
+    onPreviewStateChange?: (state: PreviewPlaybackState) => void,
+  ) {
     this.container = container;
     this.profile = profile;
     this.onPerformanceMode = onPerformanceMode;
+    this.onPreviewStateChange = onPreviewStateChange;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(profile.pixelRatio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -308,7 +332,15 @@ export class ParticleRenderer {
   }
 
   setParams(params: ParticleParams): void {
+    if (this.preview) {
+      this.preview = null;
+      this.onPreviewStateChange?.("idle");
+    }
     this.params = params;
+    this.applyParams(params);
+  }
+
+  private applyParams(params: ParticleParams): void {
     this.scene.background = new THREE.Color(params.backgroundColor);
     this.particleMaterial.uniforms.uDepthStrength.value = params.depthStrength;
     this.particleMaterial.uniforms.uScatter.value = params.scatter;
@@ -405,7 +437,7 @@ export class ParticleRenderer {
         canvas: this.renderer.domElement,
         renderFrame: (timeSeconds) => {
           if (originalParams && animationTracks.length > 0) {
-            this.setParams(interpolateExportParams(
+            this.applyParams(interpolateExportParams(
               originalParams,
               animationTracks,
               exportAnimationProgress(timeSeconds),
@@ -424,7 +456,7 @@ export class ParticleRenderer {
         signal: options.signal,
       });
     } finally {
-      if (originalParams) this.setParams(originalParams);
+      if (originalParams) this.applyParams(originalParams);
       this.renderer.setPixelRatio(oldRatio);
       this.camera.aspect = oldAspect;
       this.camera.position.copy(oldPosition);
@@ -438,6 +470,52 @@ export class ParticleRenderer {
       this.resize();
       if (!wasPaused) this.resume();
     }
+  }
+
+  startPreview(tracks: ExportAnimationTrack<DepthExportAnimationKey>[]): void {
+    if (!this.params) return;
+    if (this.preview) this.resetPreview();
+    this.preview = {
+      base: { ...this.params },
+      tracks,
+      state: "playing",
+      elapsed: 0,
+      startedAt: performance.now(),
+      cameraPosition: this.camera.position.clone(),
+      cameraQuaternion: this.camera.quaternion.clone(),
+      cameraTarget: this.controls.target.clone(),
+      animatesCameraDistance: tracks.some((track) => track.key === "cameraDistance"),
+    };
+    this.onPreviewStateChange?.("playing");
+  }
+
+  pausePreview(): void {
+    if (!this.preview || this.preview.state !== "playing") return;
+    this.preview.elapsed = Math.min(
+      MP4_EXPORT_SECONDS,
+      this.preview.elapsed + (performance.now() - this.preview.startedAt) / 1000,
+    );
+    this.preview.state = "paused";
+    this.onPreviewStateChange?.("paused");
+  }
+
+  resumePreview(): void {
+    if (!this.preview || this.preview.state !== "paused") return;
+    this.preview.startedAt = performance.now();
+    this.preview.state = "playing";
+    this.onPreviewStateChange?.("playing");
+  }
+
+  resetPreview(): void {
+    const preview = this.preview;
+    if (!preview) return;
+    this.preview = null;
+    if (this.params) this.applyParams(this.params);
+    this.camera.position.copy(preview.cameraPosition);
+    this.camera.quaternion.copy(preview.cameraQuaternion);
+    this.controls.target.copy(preview.cameraTarget);
+    this.controls.update();
+    this.onPreviewStateChange?.("idle");
   }
 
   pause(): void {
@@ -549,7 +627,8 @@ export class ParticleRenderer {
     const delta = now - this.lastFrame;
     this.lastFrame = now;
     const elapsed = (now - this.startTime) / 1000;
-    this.setAnimationTime(elapsed, Math.min(1, elapsed / 1.1));
+    const previewTime = this.updatePreview(now);
+    this.setAnimationTime(previewTime ?? elapsed, previewTime === null ? Math.min(1, elapsed / 1.1) : 1);
     if (this.exitingPoints || this.exitingSurface) {
       const exitProgress = Math.min(1, (now - this.exitStartedAt) / 850);
       if (this.exitingPoints) {
@@ -566,6 +645,27 @@ export class ParticleRenderer {
     this.composer.render();
     this.trackPerformance(delta);
   };
+
+  private updatePreview(now: number): number | null {
+    const preview = this.preview;
+    if (!preview) return null;
+    if (preview.state !== "playing") return preview.elapsed;
+    const elapsed = Math.min(MP4_EXPORT_SECONDS, preview.elapsed + (now - preview.startedAt) / 1000);
+    const frameParams = interpolateExportParams(preview.base, preview.tracks, elapsed / MP4_EXPORT_SECONDS);
+    this.applyParams(frameParams);
+    this.controls.autoRotate = false;
+    if (!preview.animatesCameraDistance) {
+      this.camera.position.copy(preview.cameraPosition);
+      this.camera.quaternion.copy(preview.cameraQuaternion);
+      this.controls.target.copy(preview.cameraTarget);
+    }
+    if (elapsed >= MP4_EXPORT_SECONDS) {
+      preview.elapsed = MP4_EXPORT_SECONDS;
+      preview.state = "ended";
+      this.onPreviewStateChange?.("ended");
+    }
+    return elapsed;
+  }
 
   private trackPerformance(deltaMs: number): void {
     if (deltaMs > 1000 / 30) this.slowFrames += 1;

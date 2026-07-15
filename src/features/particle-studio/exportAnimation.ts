@@ -14,6 +14,13 @@ export interface ExportAnimationTrack<K extends string = string> {
   to: number;
 }
 
+export interface SavedExportAnimationValue<K extends string = string> {
+  key: K;
+  to: number;
+}
+
+export type PreviewPlaybackState = "idle" | "playing" | "paused" | "ended";
+
 export const clampExportValue = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
@@ -39,4 +46,54 @@ export function interpolateExportParams<T extends object, K extends string>(
     next[track.key] = track.from + (track.to - track.from) * eased;
   });
   return next as T;
+}
+
+export function sanitizeExportAnimationValues<K extends string>(
+  fields: readonly ExportAnimationField<K>[],
+  input: unknown,
+): SavedExportAnimationValue<K>[] {
+  if (!Array.isArray(input)) return [];
+  const values = new Map(input.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const candidate = item as { key?: unknown; to?: unknown };
+    return typeof candidate.key === "string" && Number.isFinite(Number(candidate.to))
+      ? [[candidate.key, Number(candidate.to)] as const]
+      : [];
+  }));
+  return fields.flatMap((field) => {
+    const value = values.get(field.key);
+    return value === undefined ? [] : [{
+      key: field.key,
+      to: clampExportValue(value, field.min, field.max),
+    }];
+  });
+}
+
+export function buildExportAnimationTracks<K extends string>(
+  values: Record<K, number>,
+  config: readonly SavedExportAnimationValue<K>[],
+): ExportAnimationTrack<K>[] {
+  return config.map((item) => ({ key: item.key, from: values[item.key], to: item.to }));
+}
+
+export function loadExportAnimationValues<K extends string>(
+  storageKey: string,
+  fields: readonly ExportAnimationField<K>[],
+): SavedExportAnimationValue<K>[] {
+  try {
+    return sanitizeExportAnimationValues(fields, JSON.parse(localStorage.getItem(storageKey) ?? "[]"));
+  } catch {
+    return [];
+  }
+}
+
+export function saveExportAnimationValues<K extends string>(
+  storageKey: string,
+  config: readonly SavedExportAnimationValue<K>[],
+): void {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(config));
+  } catch {
+    // Storage can be disabled; the studio still keeps its in-memory configuration.
+  }
 }
